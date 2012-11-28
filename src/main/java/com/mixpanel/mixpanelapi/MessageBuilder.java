@@ -25,7 +25,14 @@ public class MessageBuilder {
             JSONObject dataObj = new JSONObject();
             dataObj.put("event", eventName);
 
-            JSONObject propertiesObj = new JSONObject(properties.toString());
+            JSONObject propertiesObj = null;
+            if (properties == null) {
+                propertiesObj = new JSONObject();
+            }
+            else {
+                propertiesObj = new JSONObject(properties.toString());
+            }
+
             if (! propertiesObj.has("token")) propertiesObj.put("token", mToken);
             if (! propertiesObj.has("time")) propertiesObj.put("time", time);
 

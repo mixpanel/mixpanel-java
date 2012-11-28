@@ -97,6 +97,12 @@ public class MixpanelAPITest
         assertTrue(c.isValidMessage(increment));
     }
 
+    public void testEmptyMessageFormat() {
+        ClientDelivery c = new ClientDelivery();
+        JSONObject eventMessage = mBuilder.event("a distinct id", "empty event", null);
+        assertTrue(c.isValidMessage(eventMessage));
+    }
+
     public void testClientDelivery() {
         ClientDelivery c = new ClientDelivery();
         try {
@@ -160,10 +166,10 @@ public class MixpanelAPITest
                 fail("Can't find $set message in " + mPeopleMessages);
             }
 
-            if (thing1.has("$increment")) {
+            if (thing1.has("$add")) {
                 incrementMessage = thing1;
             }
-            else if (thing2.has("$increment")) {
+            else if (thing2.has("$add")) {
                 incrementMessage = thing2;
             }
             else {
@@ -174,11 +180,12 @@ public class MixpanelAPITest
             String propValue = setProps.getString("prop key");
             assertTrue("Set prop had expected value", "prop value".equals(propValue));
 
-            JSONObject incrementProps = incrementMessage.getJSONObject("$increment");
+            JSONObject incrementProps = incrementMessage.getJSONObject("$add");
             long incrementValue = incrementProps.getLong("a key");
             assertTrue("Increment prop had expected value", 24 == incrementValue);
 
         } catch (JSONException e) {
+            e.printStackTrace();
             fail("Messages can't be interpreted as expected: " + mPeopleMessages);
         }
     }
