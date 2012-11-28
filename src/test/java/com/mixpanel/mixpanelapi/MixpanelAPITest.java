@@ -185,7 +185,6 @@ public class MixpanelAPITest
             assertTrue("Increment prop had expected value", 24 == incrementValue);
 
         } catch (JSONException e) {
-            e.printStackTrace();
             fail("Messages can't be interpreted as expected: " + mPeopleMessages);
         }
     }
