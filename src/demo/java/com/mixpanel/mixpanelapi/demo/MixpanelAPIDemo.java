@@ -15,13 +15,13 @@ import com.mixpanel.mixpanelapi.MessageBuilder;
 import com.mixpanel.mixpanelapi.MixpanelAPI;
 
 /**
- * This is a demonstration of how
- * @author joe
+ * This is a simple demonstration of how you might use the Mixpanel
+ * Java API in your programs.
  *
  */
 public class MixpanelAPIDemo {
 
-    public static String PROJECT_TOKEN = "bce60494cf66783295d377afa351b01d"; // "YOUR TOKEN";
+    public static String PROJECT_TOKEN = "2d7b8a6e7d5d7d81ff4d988bac0be9a7"; // "YOUR TOKEN";
     public static long MILLIS_TO_WAIT = 10 * 1000;
 
     private static class DeliveryThread extends Thread {
@@ -40,6 +40,8 @@ public class MixpanelAPIDemo {
                     do {
                         message = mMessageQueue.poll();
                         if (message != null) {
+                            System.out.println("WILL SEND MESSAGE:\n" + message.toString());
+
                             messageCount = messageCount + 1;
                             delivery.addMessage(message);
                         }
@@ -88,12 +90,16 @@ public class MixpanelAPIDemo {
         BufferedReader inputLines = new BufferedReader(new InputStreamReader(System.in));
         String line = inputLines.readLine();
 
+        // Set the first name of the associated user (to distinct id)
         Map<String, String> namePropsMap = new HashMap<String, String>();
         namePropsMap.put("$first_name", distinctId);
-
         JSONObject nameProps = new JSONObject(namePropsMap);
         JSONObject nameMessage = messageBuilder.set(distinctId, nameProps);
         messages.add(nameMessage);
+
+        // Charge the user $2.50 for using the program :)
+        JSONObject transactionMessage = messageBuilder.trackCharge(distinctId, 2.50, null);
+        messages.add(transactionMessage);
 
         while((line != null) && (line.length() > 0)) {
             System.out.println("SENDING LINE: " + line);
