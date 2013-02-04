@@ -21,8 +21,7 @@ public class MixpanelMessageException extends RuntimeException {
     }
 
     /**
-     * Returns the (possibly null) JSONObject that is associated with the message failure.
-     * @return
+     * @return the (possibly null) JSONObject message associated with the failure
      */
     public JSONObject getBadMessage() {
         return mBadMessage;
