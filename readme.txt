@@ -14,7 +14,6 @@ advantage of the Android libraries or the Javascript library.
 To Use the Library:
 
     MessageBuilder messages = new MessageBuilder("my token");
-    JSONObject loginProps = new JSONObject();
     JSONObject event = messages.event("joe@gribbl.com", "Logged In", null);
 
     // Later, or elsewhere...
