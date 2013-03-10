@@ -55,7 +55,7 @@ public class ClientDelivery {
                 if (messageContents == null) {
                     ret = false;
                 }
-                else if ((messageType != "event") && (messageType != "people")) {
+                else if (!messageType.equals("event") && !messageType.equals("people")) {
                     ret = false;
                 }
             }

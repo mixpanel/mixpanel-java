@@ -103,6 +103,18 @@ public class MixpanelAPITest
         assertTrue(c.isValidMessage(eventMessage));
     }
 
+    public void testValidate() {
+        ClientDelivery c = new ClientDelivery();
+        JSONObject event = mBuilder.event("a distinct id", "login", mSampleProps);
+        assertTrue(c.isValidMessage(event));
+        try {
+            JSONObject rebuitMessage = new JSONObject(event.toString());
+            assertTrue(c.isValidMessage(rebuitMessage));
+        } catch (JSONException e) {
+            fail("Failed to build JSONObject");
+        }
+    }
+
     public void testClientDelivery() {
         ClientDelivery c = new ClientDelivery();
         try {
@@ -118,6 +130,7 @@ public class MixpanelAPITest
 
             JSONObject set = mBuilder.set("a distinct id", mSampleProps);
             c.addMessage(set);
+
 
             Map<String, Long> increments = new HashMap<String, Long>();
             increments.put("a key", 24L);
