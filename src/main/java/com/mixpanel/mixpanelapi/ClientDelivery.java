@@ -27,10 +27,10 @@ public class ClientDelivery {
             String messageType = message.getString("message_type");
             JSONObject messageContent = message.getJSONObject("message");
 
-            if (messageType == "event") {
+            if (messageType.equals("event")) {
                 mEventsMessages.add(messageContent);
             }
-            else if (messageType == "people") {
+            else if (messageType.equals("people")) {
                 mPeopleMessages.add(messageContent);
             }
         } catch (JSONException e) {
