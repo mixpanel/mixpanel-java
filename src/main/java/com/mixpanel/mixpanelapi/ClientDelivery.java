@@ -27,10 +27,10 @@ public class ClientDelivery {
             String messageType = message.getString("message_type");
             JSONObject messageContent = message.getJSONObject("message");
 
-            if (messageType == "event") {
+            if (messageType.equals("event")) {
                 mEventsMessages.add(messageContent);
             }
-            else if (messageType == "people") {
+            else if (messageType.equals("people")) {
                 mPeopleMessages.add(messageContent);
             }
         } catch (JSONException e) {
@@ -55,7 +55,7 @@ public class ClientDelivery {
                 if (messageContents == null) {
                     ret = false;
                 }
-                else if ((messageType != "event") && (messageType != "people")) {
+                else if (!messageType.equals("event") && !messageType.equals("people")) {
                     ret = false;
                 }
             }
