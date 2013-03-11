@@ -58,6 +58,7 @@ public class MessageBuilder {
 
             if (! propertiesObj.has("token")) propertiesObj.put("token", mToken);
             if (! propertiesObj.has("time")) propertiesObj.put("time", time);
+            if (! propertiesObj.has("mp_lib")) propertiesObj.put("mp_lib", "jdk");
 
             if (distinctId != null)
                 propertiesObj.put("distinct_id", distinctId);
