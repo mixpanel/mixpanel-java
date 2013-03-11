@@ -106,13 +106,13 @@ public class MixpanelAPITest
     public void testValidate() {
         ClientDelivery c = new ClientDelivery();
         JSONObject event = mBuilder.event("a distinct id", "login", mSampleProps);
-        assertTrue(c.isValidMessage(event));		
+        assertTrue(c.isValidMessage(event));
         try {
-            JSONObject rebuitMessage = new JSONObject(event.toString());
-            assertTrue(c.isValidMessage(rebuitMessage));
-			assertEquals(c.getEventsMessages().size(), 0);
-			c.addMessage(rebuitMessage);
-			assertEquals(c.getEventsMessages().size(), 1);
+            JSONObject rebuiltMessage = new JSONObject(event.toString());
+            assertTrue(c.isValidMessage(rebuiltMessage));
+            assertEquals(c.getEventsMessages().size(), 0);
+            c.addMessage(rebuiltMessage);
+            assertEquals(c.getEventsMessages().size(), 1);
         } catch (JSONException e) {
             fail("Failed to build JSONObject");
         }
