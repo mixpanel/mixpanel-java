@@ -140,12 +140,14 @@ public class MessageBuilder {
         JSONObject appendProperties = new JSONObject();
         try {
             transactionValue.put("$amount", amount);
-            transactionValue.put("$time", ENGAGE_DATE_FORMAT.format(new Date()));
+            DateFormat dateFormat = new SimpleDateFormat(ENGAGE_DATE_FORMAT);
+            dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+            transactionValue.put("$time", dateFormat.format(new Date()));
 
             if (null != properties) {
                 for (Iterator<?> iter = properties.keys(); iter.hasNext();) {
                     String key = (String) iter.next();
-                    transactionValue.put(key, transactionValue.get(key));
+                    transactionValue.put(key, properties.get(key));
                 }
             }
 
@@ -153,6 +155,7 @@ public class MessageBuilder {
 
             return this.append(distinctId, appendProperties);
         } catch (JSONException e) {
+            e.printStackTrace();
             throw new RuntimeException("Cannot create trackCharge message", e);
         }
     }
@@ -178,8 +181,5 @@ public class MessageBuilder {
 
     private final String mToken;
 
-    private static final DateFormat ENGAGE_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    static {
-        ENGAGE_DATE_FORMAT.setTimeZone(TimeZone.getTimeZone("UTC"));
-    }
+    private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
 }

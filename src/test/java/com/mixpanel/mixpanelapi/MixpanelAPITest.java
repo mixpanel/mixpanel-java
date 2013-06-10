@@ -95,6 +95,9 @@ public class MixpanelAPITest
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         assertTrue(c.isValidMessage(increment));
+
+        JSONObject charge = mBuilder.trackCharge("a distinct id", 100.00, mSampleProps);
+        assertTrue(c.isValidMessage(charge));
     }
 
     public void testEmptyMessageFormat() {
