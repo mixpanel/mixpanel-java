@@ -44,6 +44,10 @@ public class MixpanelAPITest
         try {
             mSampleProps = new JSONObject();
             mSampleProps.put("prop key", "prop value");
+
+            mSampleModifiers = new JSONObject();
+            mSampleModifiers.put("$time", "A TIME");
+            mSampleModifiers.put("Unexpected", "But OK");
         } catch (JSONException e) {
             throw new RuntimeException("Error in test setup");
         }
@@ -98,6 +102,47 @@ public class MixpanelAPITest
 
         JSONObject charge = mBuilder.trackCharge("a distinct id", 100.00, mSampleProps);
         assertTrue(c.isValidMessage(charge));
+    }
+
+    public void testModifiers() {
+        JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
+        try {
+            JSONObject msg = set.getJSONObject("message");
+            assertEquals(msg.getString("$time"), "A TIME");
+            assertEquals(msg.getString("Unexpected"), "But OK");
+            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+        } catch (JSONException e) {
+            fail(e.toString());
+        }
+        Map<String, Long> increments = new HashMap<String, Long>();
+        increments.put("a key", 24L);
+        JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
+        try {
+            JSONObject msg = increment.getJSONObject("message");
+            assertEquals(msg.getString("$time"), "A TIME");
+            assertEquals(msg.getString("Unexpected"), "But OK");
+            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+        } catch (JSONException e) {
+            fail(e.toString());
+        }
+        JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
+        try {
+            JSONObject msg = append.getJSONObject("message");
+            assertEquals(msg.getString("$time"), "A TIME");
+            assertEquals(msg.getString("Unexpected"), "But OK");
+            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+        } catch (JSONException e) {
+            fail(e.toString());
+        }
+        JSONObject trackCharge = mBuilder.trackCharge("a distinct id", 2.2, null, mSampleModifiers);
+        try {
+            JSONObject msg = trackCharge.getJSONObject("message");
+            assertEquals(msg.getString("$time"), "A TIME");
+            assertEquals(msg.getString("Unexpected"), "But OK");
+            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+        } catch (JSONException e) {
+            fail(e.toString());
+        }
     }
 
     public void testEmptyMessageFormat() {
@@ -306,6 +351,7 @@ public class MixpanelAPITest
 
     private MessageBuilder mBuilder;
     private JSONObject mSampleProps;
+    private JSONObject mSampleModifiers;
     private String mEventsMessages;
     private String mPeopleMessages;
     private long mTimeZero;
