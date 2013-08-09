@@ -120,7 +120,7 @@ public class MessageBuilder {
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to set on the associated profile. Each key
      *            in the properties argument will be updated on on the people profile
-     * @param Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
      */
@@ -169,7 +169,7 @@ public class MessageBuilder {
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
      *           each associated with a numeric value.
-     * @param Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
      */
