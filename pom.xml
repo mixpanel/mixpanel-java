@@ -9,7 +9,7 @@
 
   <groupId>com.mixpanel</groupId>
   <artifactId>mixpanel-java</artifactId>
-  <version>1.1.5-SNAPSHOT</version>
+  <version>1.2.0</version>
   <packaging>jar</packaging>
   <description>
     <![CDATA[A library for tracking Mixpanel events and updating Mixpanel people analytics profiles within Java applications.]]>
