@@ -41,7 +41,12 @@ package com.mixpanel.mixpanelapi;
     * @return   A String with the Base64 encoded data.
     */
     public static String encodeString (String s) {
-       return new String(encode(s.getBytes())); }
+	try {
+	    return new String(encode(s.getBytes("utf-8")));
+	} catch (UnsupportedEncodingException e) {
+	    throw new RuntimeException(e);
+	}
+    }
 
     /**
     * Encodes a byte array into Base64 format.
