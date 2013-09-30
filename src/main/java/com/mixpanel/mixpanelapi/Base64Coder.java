@@ -41,11 +41,11 @@ package com.mixpanel.mixpanelapi;
     * @return   A String with the Base64 encoded data.
     */
     public static String encodeString (String s) {
-	try {
-	    return new String(encode(s.getBytes("utf-8")));
-	} catch (UnsupportedEncodingException e) {
-	    throw new RuntimeException(e);
-	}
+        try {
+            return new String(encode(s.getBytes("utf-8")));
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
