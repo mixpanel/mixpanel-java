@@ -44,6 +44,7 @@ public class MixpanelAPITest
         try {
             mSampleProps = new JSONObject();
             mSampleProps.put("prop key", "prop value");
+            mSampleProps.put("ratio", "\u03C0");
 
             mSampleModifiers = new JSONObject();
             mSampleModifiers.put("$time", "A TIME");
