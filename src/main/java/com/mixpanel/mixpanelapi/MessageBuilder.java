@@ -127,11 +127,11 @@ public class MessageBuilder {
     public JSONObject set(String distinctId, JSONObject properties, JSONObject modifiers) {
         return stdPeopleMessage(distinctId, "$set", properties, modifiers);
     }
-    
+
     /**
      * Deletes the People Analytics profile associated with
      * the given distinctId.
-     * 
+     *
      * <pre>
      * {@code
      *     JSONObject message = messageBuilder.delete("12345");
