@@ -127,6 +127,23 @@ public class MessageBuilder {
     public JSONObject set(String distinctId, JSONObject properties, JSONObject modifiers) {
         return stdPeopleMessage(distinctId, "$set", properties, modifiers);
     }
+    
+    /**
+     * Deletes the People Analytics profile associated with
+     * the given distinctId.
+     * 
+     * <pre>
+     * {@code
+     *     JSONObject message = messageBuilder.delete("12345");
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param distinctId a string uniquely identifying the people analytics profile to delete
+     */
+    public JSONObject delete(String distinctId) {
+        return stdPeopleMessage(distinctId, "$delete", new JSONObject(), null);
+    }
 
     /**
      * For each key and value in the properties argument, adds that amount
