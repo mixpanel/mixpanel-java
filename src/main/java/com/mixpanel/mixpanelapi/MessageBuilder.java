@@ -258,7 +258,7 @@ public class MessageBuilder {
         }
     }
 
-    private JSONObject stdPeopleMessage(String distinctId, String actionType, JSONObject properties, JSONObject modifiers) {
+    protected JSONObject stdPeopleMessage(String distinctId, String actionType, JSONObject properties, JSONObject modifiers) {
         // Nothing below should EVER throw a JSONException.
         try {
             JSONObject dataObj = new JSONObject();
