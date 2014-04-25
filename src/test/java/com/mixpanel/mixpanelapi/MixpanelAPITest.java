@@ -2,9 +2,11 @@ package com.mixpanel.mixpanelapi;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import junit.framework.Test;
 import junit.framework.TestCase;
@@ -86,6 +88,127 @@ public class MixpanelAPITest
         mPeopleMessages = sawData.get("people url");
     }
 
+    public void testPeopleMessageBuilds()
+       throws JSONException {
+        {
+            JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
+            checkModifiers(set);
+            checkPeopleProps("$set", set);
+        }
+
+        {
+            JSONObject setOnce = mBuilder.setOnce("a distinct id", mSampleProps, mSampleModifiers);
+            checkModifiers(setOnce);
+            checkPeopleProps("$set_once", setOnce);
+        }
+
+        {
+            JSONObject delete = mBuilder.delete("a distinct id", mSampleModifiers);
+            checkModifiers(delete);
+            assertTrue(delete.getJSONObject("message").has("$delete"));
+        }
+
+        {
+            Map<String, Long> increments = new HashMap<String, Long>();
+            increments.put("k1", 10L);
+            increments.put("k2", 1L);
+            JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
+            checkModifiers(increment);
+            JSONObject payload = increment.getJSONObject("message").getJSONObject("$add");
+            assertEquals(payload.getInt("k1"), 10);
+            assertEquals(payload.getInt("k2"), 1);
+        }
+
+        {
+            JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
+            checkModifiers(append);
+            checkPeopleProps("$append", append);
+        }
+
+        {
+            JSONArray union1 = new JSONArray(new String[]{ "One", "Two" });
+            JSONArray union2 = new JSONArray(new String[]{ "a", "b" });
+
+            Map<String, JSONArray> unions = new HashMap<String, JSONArray>();
+            unions.put("k1", union1);
+            unions.put("k2", union2);
+
+            JSONObject union = mBuilder.union("a distinct id", unions, mSampleModifiers);
+            checkModifiers(union);
+            JSONObject payload = union.getJSONObject("message").getJSONObject("$union");
+            assertEquals(payload.getJSONArray("k1"), union1);
+            assertEquals(payload.getJSONArray("k2"), union2);
+        }
+
+        {
+            Set<String> toUnset = new HashSet<String>();
+            toUnset.add("One");
+            toUnset.add("Two");
+            JSONObject unset = mBuilder.unset("a distinct id", toUnset, mSampleModifiers);
+            checkModifiers(unset);
+            JSONArray payload = unset.getJSONObject("message").getJSONArray("$unset");
+
+            for (int i = 0; i < payload.length(); i++) {
+                String propName = payload.getString(i);
+                assertTrue(toUnset.remove(propName));
+            }
+
+            assertTrue(toUnset.isEmpty());
+        }
+
+    }
+
+    public void testPeopleMessageBadArguments() {
+        mBuilder.peopleMessage("id", "action", true, null);
+        mBuilder.peopleMessage("id", "action", 1.21, null);
+        mBuilder.peopleMessage("id", "action", 100, null);
+        mBuilder.peopleMessage("id", "action", 1000L, null);
+        mBuilder.peopleMessage("id", "action", "String", null);
+        mBuilder.peopleMessage("id", "action", JSONObject.NULL, null);
+
+        JSONArray jsa = new JSONArray();
+        mBuilder.peopleMessage("id", "action", jsa, null);
+
+        JSONObject jso = new JSONObject();
+        mBuilder.peopleMessage("id", "action", jso, null);
+
+        try {
+            mBuilder.peopleMessage("id", "action", null, null);
+            fail("peopleMessage did not throw an exception on null");
+        } catch (IllegalArgumentException e) {
+            // ok
+        }
+
+        try {
+            mBuilder.peopleMessage("id", "action", Double.NaN, null);
+            fail("peopleMessage did not throw on NaN");
+        } catch (IllegalArgumentException e) {
+            // ok
+        }
+
+        try {
+            mBuilder.peopleMessage("id", "action", Double.NaN, null);
+            fail("peopleMessage did not throw on NaN");
+        } catch (IllegalArgumentException e) {
+            // ok
+        }
+
+        try {
+            mBuilder.peopleMessage("id", "action", Double.NEGATIVE_INFINITY, null);
+            fail("peopleMessage did not throw on infinity");
+        } catch (IllegalArgumentException e) {
+            // ok
+        }
+
+        try {
+            JSONObject built = mBuilder.peopleMessage("id", "action", this, null);
+            System.out.println(built.toString());
+            fail("peopleMessage did not throw an exception");
+        } catch(IllegalArgumentException e) {
+            // ok
+        }
+    }
+
     public void testMessageFormat() {
         ClientDelivery c = new ClientDelivery();
         assertFalse(c.isValidMessage(mSampleProps));
@@ -107,43 +230,18 @@ public class MixpanelAPITest
 
     public void testModifiers() {
         JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
-        try {
-            JSONObject msg = set.getJSONObject("message");
-            assertEquals(msg.getString("$time"), "A TIME");
-            assertEquals(msg.getString("Unexpected"), "But OK");
-            assertEquals(msg.getString("$distinct_id"), "a distinct id");
-        } catch (JSONException e) {
-            fail(e.toString());
-        }
+        checkModifiers(set);
+
         Map<String, Long> increments = new HashMap<String, Long>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
-        try {
-            JSONObject msg = increment.getJSONObject("message");
-            assertEquals(msg.getString("$time"), "A TIME");
-            assertEquals(msg.getString("Unexpected"), "But OK");
-            assertEquals(msg.getString("$distinct_id"), "a distinct id");
-        } catch (JSONException e) {
-            fail(e.toString());
-        }
+        checkModifiers(increment);
+
         JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
-        try {
-            JSONObject msg = append.getJSONObject("message");
-            assertEquals(msg.getString("$time"), "A TIME");
-            assertEquals(msg.getString("Unexpected"), "But OK");
-            assertEquals(msg.getString("$distinct_id"), "a distinct id");
-        } catch (JSONException e) {
-            fail(e.toString());
-        }
+        checkModifiers(append);
+
         JSONObject trackCharge = mBuilder.trackCharge("a distinct id", 2.2, null, mSampleModifiers);
-        try {
-            JSONObject msg = trackCharge.getJSONObject("message");
-            assertEquals(msg.getString("$time"), "A TIME");
-            assertEquals(msg.getString("Unexpected"), "But OK");
-            assertEquals(msg.getString("$distinct_id"), "a distinct id");
-        } catch (JSONException e) {
-            fail(e.toString());
-        }
+        checkModifiers(trackCharge);
     }
 
     public void testEmptyMessageFormat() {
@@ -347,6 +445,28 @@ public class MixpanelAPITest
             assertTrue("Third message has all leftover elements", thirdMessage.length() == expectLeftovers);
         } catch (JSONException e) {
             fail("Can't interpret sends appropriately when sending large messages");
+        }
+    }
+
+    private void checkModifiers(JSONObject built) {
+        try {
+            JSONObject msg = built.getJSONObject("message");
+            assertEquals(msg.getString("$time"), "A TIME");
+            assertEquals(msg.getString("Unexpected"), "But OK");
+            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+        } catch (JSONException e) {
+            fail(e.toString());
+        }
+    }
+
+    private void checkPeopleProps(String operation, JSONObject built) {
+        try {
+            JSONObject msg = built.getJSONObject("message");
+            JSONObject props = msg.getJSONObject(operation);
+            assertEquals(props.getString("prop key"), "prop value");
+            assertEquals(props.getString("ratio"), "\u03C0");
+        } catch (JSONException e) {
+            fail(e.toString());
         }
     }
 

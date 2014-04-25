@@ -3,12 +3,14 @@ package com.mixpanel.mixpanelapi;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Collection;
 import java.util.TimeZone;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 /**
  * This class writes JSONObjects of a form appropriate to send as Mixpanel events and
@@ -125,7 +127,37 @@ public class MessageBuilder {
      *            object will be associated directly with the update.
      */
     public JSONObject set(String distinctId, JSONObject properties, JSONObject modifiers) {
-        return stdPeopleMessage(distinctId, "$set", properties, modifiers);
+        return peopleMessage(distinctId, "$set", properties, modifiers);
+    }
+
+    /**
+     * Sets a People Analytics property on the profile associated with
+     * the given distinctId, only if that property is not already set
+     * on the associated profile. So, to set a new property on
+     * on user 12345 if it is not already present, one might call:
+     * <pre>
+     * {@code
+     *     JSONObject userProperties = new JSONObject();
+     *     userProperties.put("Date Began", "2014-08-16");
+     *
+     *     // "Date Began" will not be overwritten, but if it isn't already
+     *     // present it will be set when we send this message.
+     *     JSONObject message = messageBuilder.setOnce("12345", userProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties a collection of properties to set on the associated profile. Each key
+     *            in the properties argument will be updated on on the people profile
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     */
+    public JSONObject setOnce(String distinctId, JSONObject properties, JSONObject modifiers) {
+        return peopleMessage(distinctId, "$set_once", properties, modifiers);
     }
 
     /**
@@ -142,7 +174,27 @@ public class MessageBuilder {
      * @param distinctId a string uniquely identifying the people analytics profile to delete
      */
     public JSONObject delete(String distinctId) {
-        return stdPeopleMessage(distinctId, "$delete", new JSONObject(), null);
+        return delete(distinctId, null);
+    }
+
+    /**
+     * Deletes the People Analytics profile associated with
+     * the given distinctId.
+     *
+     * <pre>
+     * {@code
+     *     JSONObject message = messageBuilder.delete("12345");
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param distinctId a string uniquely identifying the people analytics profile to delete
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     */
+    public JSONObject delete(String distinctId, JSONObject modifiers) {
+        return peopleMessage(distinctId, "$delete", new JSONObject(), modifiers);
     }
 
     /**
@@ -192,7 +244,7 @@ public class MessageBuilder {
      */
     public JSONObject increment(String distinctId, Map<String, Long> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
-        return stdPeopleMessage(distinctId, "$add", jsonProperties, modifiers);
+        return peopleMessage(distinctId, "$add", jsonProperties, modifiers);
     }
 
     /**
@@ -208,7 +260,25 @@ public class MessageBuilder {
      * that value to a list associated with the key in the identified People Analytics profile.
      */
     public JSONObject append(String distinctId, JSONObject properties, JSONObject modifiers) {
-        return stdPeopleMessage(distinctId, "$append", properties, modifiers);
+        return peopleMessage(distinctId, "$append", properties, modifiers);
+    }
+
+    /**
+     * Merges list-valued properties into a user profile.
+     * The list values in the given are merged with the existing list on the user profile,
+     * ignoring duplicate list values.
+     */
+    public JSONObject union(String distinctId, Map<String, JSONArray> properties, JSONObject modifiers) {
+        JSONObject jsonProperties = new JSONObject(properties);
+        return peopleMessage(distinctId, "$union", jsonProperties, modifiers);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile identified by distinctId.
+     */
+    public JSONObject unset(String distinctId, Collection<String> propertyNames, JSONObject modifiers) {
+        JSONArray propNamesArray = new JSONArray(propertyNames);
+        return peopleMessage(distinctId, "$unset", propNamesArray, modifiers);
     }
 
     /**
@@ -258,11 +328,46 @@ public class MessageBuilder {
         }
     }
 
-    private JSONObject stdPeopleMessage(String distinctId, String actionType, JSONObject properties, JSONObject modifiers) {
-        // Nothing below should EVER throw a JSONException.
+    /**
+     * Formats a generic people message.
+     * Use of this method requires familiarity with the underlying Mixpanel HTTP API,
+     * and it may be simpler and clearer to use the pre-built functions for setting,
+     * incrementing, and appending to properties. Use this method directly only
+     * when interacting with experimental APIs, or APIS that the rest of this library
+     * does not yet support.
+     *
+     * The underlying API is documented at https://mixpanel.com/help/reference/http
+     *
+     * @param distinctId a string uniquely identifying the individual cause associated with this event
+     *           (for example, the user id of a signing-in user, or the hostname of a server)
+     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $add)
+     * @param properties a payload of the operation. Will be converted to JSON, and should be of types
+     *           Boolean, Double, Integer, Long, String, JSONArray, JSONObject, the JSONObject.NULL object, or null.
+     *           NaN and negative/positive infinity will throw an IllegalArgumentException
+     * @param modifiers if provided, the keys and values in the modifiers object will
+     *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
+     *
+     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
+     *
+     * @see MessageBuilder#set(String distinctId, JSONObject properties)
+     * @see MessageBuilder#delete(String distinctId)
+     * @see MessageBuilder#increment(String distinctId, Map<String, Long> properties)
+     * @see MessageBuilder#append(String distinctId, JSONObject properties, JSONObject modifiers)
+     */
+    public JSONObject peopleMessage(String distinctId, String actionType, Object properties, JSONObject modifiers) {
+        JSONObject dataObj = new JSONObject();
+        if (null == properties) {
+            throw new IllegalArgumentException("Cannot send null properties, use JSONObject.NULL instead");
+        }
+
         try {
-            JSONObject dataObj = new JSONObject();
             dataObj.put(actionType, properties);
+        } catch (JSONException e) {
+            throw new IllegalArgumentException("Cannot interpret properties as a JSON payload", e);
+        }
+
+        // At this point, nothing should ever throw a JSONException
+        try {
             dataObj.put("$token", mToken);
             dataObj.put("$distinct_id", distinctId);
             dataObj.put("$time", System.currentTimeMillis());
