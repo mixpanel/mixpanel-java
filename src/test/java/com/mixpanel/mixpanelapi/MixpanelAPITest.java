@@ -166,6 +166,10 @@ public class MixpanelAPITest
         mBuilder.peopleMessage("id", "action", "String", null);
         mBuilder.peopleMessage("id", "action", JSONObject.NULL, null);
 
+        // Current, less than wonderful behavior- we'll just call toString()
+        // on random objects passed in.
+        mBuilder.peopleMessage("id", "action", new Object(), null);
+
         JSONArray jsa = new JSONArray();
         mBuilder.peopleMessage("id", "action", jsa, null);
 
@@ -197,14 +201,6 @@ public class MixpanelAPITest
             mBuilder.peopleMessage("id", "action", Double.NEGATIVE_INFINITY, null);
             fail("peopleMessage did not throw on infinity");
         } catch (IllegalArgumentException e) {
-            // ok
-        }
-
-        try {
-            JSONObject built = mBuilder.peopleMessage("id", "action", this, null);
-            System.out.println(built.toString());
-            fail("peopleMessage did not throw an exception");
-        } catch(IllegalArgumentException e) {
             // ok
         }
     }
