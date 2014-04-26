@@ -372,8 +372,11 @@ public class MessageBuilder {
             dataObj.put("$distinct_id", distinctId);
             dataObj.put("$time", System.currentTimeMillis());
             if (null != modifiers) {
-                for(String key : JSONObject.getNames(modifiers)) {
-                    dataObj.put(key, modifiers.get(key));
+                final String[] keys = JSONObject.getNames(modifiers);
+                if (keys != null) {
+                  for(String key : keys) {
+                      dataObj.put(key, modifiers.get(key));
+                  }
                 }
             }
             JSONObject envelope = new JSONObject();
