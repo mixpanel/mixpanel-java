@@ -88,6 +88,11 @@ public class MixpanelAPITest
         mPeopleMessages = sawData.get("people url");
     }
 
+    public void testEmptyJSON() {
+        JSONObject empty = new JSONObject();
+        JSONObject built = mBuilder.set("a distinct id", empty, empty);
+    }
+
     public void testPeopleMessageBuilds()
        throws JSONException {
         {
