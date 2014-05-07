@@ -93,7 +93,7 @@ public class MixpanelAPI {
         List<JSONObject> events = toSend.getEventsMessages();
         sendMessages(events, eventsUrl);
 
-        String peopleUrl = mPeopleEndpoint;
+        String peopleUrl = mPeopleEndpoint + "?" + ipParameter;
         List<JSONObject> people = toSend.getPeopleMessages();
         sendMessages(people, peopleUrl);
     }
