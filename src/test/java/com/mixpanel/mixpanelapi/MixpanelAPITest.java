@@ -85,7 +85,17 @@ public class MixpanelAPITest
         }
 
         mEventsMessages = sawData.get("events url?ip=0");
-        mPeopleMessages = sawData.get("people url");
+        mPeopleMessages = sawData.get("people url?ip=0");
+        sawData.clear();
+
+        try {
+            api.deliver(c, true);
+        } catch (IOException e) {
+            throw new RuntimeException("Impossible IOException", e);
+        }
+
+        mIpEventsMessages = sawData.get("events url?ip=1");
+        mIpPeopleMessages = sawData.get("people url?ip=1");
     }
 
     public void testEmptyJSON() {
@@ -292,6 +302,11 @@ public class MixpanelAPITest
         }
     }
 
+    public void testApiSendIpArgs() {
+        assertEquals(mEventsMessages, mIpEventsMessages);
+        assertEquals(mPeopleMessages, mIpPeopleMessages);
+    }
+
     public void testApiSendEvent() {
         try {
             JSONArray messageArray = new JSONArray(mEventsMessages);
@@ -476,5 +491,7 @@ public class MixpanelAPITest
     private JSONObject mSampleModifiers;
     private String mEventsMessages;
     private String mPeopleMessages;
+    private String mIpEventsMessages;
+    private String mIpPeopleMessages;
     private long mTimeZero;
 }

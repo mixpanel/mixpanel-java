@@ -87,7 +87,9 @@ public class MixpanelAPI {
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
         String ipParameter = "ip=0";
-        if (useIpAddress) ipParameter = "ip=1";
+        if (useIpAddress) {
+            ipParameter = "ip=1";
+        }
 
         String eventsUrl = mEventsEndpoint + "?" + ipParameter;
         List<JSONObject> events = toSend.getEventsMessages();
