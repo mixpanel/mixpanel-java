@@ -106,6 +106,7 @@ public class MixpanelAPI {
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
+        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
 
@@ -198,5 +199,6 @@ public class MixpanelAPI {
     private final String mPeopleEndpoint;
 
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
+    private static final int READ_TIMEOUT_MILLIS = 120000; // Two minutes should be more than enough for a response.
 
 }
