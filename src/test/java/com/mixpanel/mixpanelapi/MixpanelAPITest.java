@@ -19,8 +19,7 @@ import junit.framework.TestSuite;
 /**
  * Unit test for simple App.
  */
-public class MixpanelAPITest
-    extends TestCase
+public class MixpanelAPITest extends TestCase
 {
 
     private MessageBuilder mBuilder;
