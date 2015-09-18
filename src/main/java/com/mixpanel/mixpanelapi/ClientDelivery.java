@@ -10,6 +10,10 @@ import org.json.JSONObject;
  * A ClientDelivery can be used to send multiple messages to Mixpanel.
  */
 public class ClientDelivery {
+
+    private final List<JSONObject> mEventsMessages = new ArrayList<JSONObject>();
+    private final List<JSONObject> mPeopleMessages = new ArrayList<JSONObject>();
+
     /**
      * Adds an individual message to this delivery. Messages to Mixpanel are often more efficient when sent in batches.
      *
@@ -74,6 +78,4 @@ public class ClientDelivery {
         return mPeopleMessages;
     }
 
-    private final List<JSONObject> mEventsMessages = new ArrayList<JSONObject>();
-    private final List<JSONObject> mPeopleMessages = new ArrayList<JSONObject>();
 }

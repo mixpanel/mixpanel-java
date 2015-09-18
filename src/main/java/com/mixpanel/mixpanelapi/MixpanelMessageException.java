@@ -15,6 +15,8 @@ public class MixpanelMessageException extends RuntimeException {
 
     private static final long serialVersionUID = -6256936727567434262L;
 
+    private JSONObject mBadMessage = null;
+
     /* package */ MixpanelMessageException(String message, JSONObject cause) {
         super(message);
         mBadMessage = cause;
@@ -27,5 +29,4 @@ public class MixpanelMessageException extends RuntimeException {
         return mBadMessage;
     }
 
-    private JSONObject mBadMessage = null;
 }
