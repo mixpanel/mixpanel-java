@@ -110,7 +110,7 @@ public class MixpanelAPITest
 
     public void testEmptyJSON() {
         JSONObject empty = new JSONObject();
-        JSONObject built = mBuilder.set("a distinct id", empty, empty);
+        mBuilder.set("a distinct id", empty, empty);
     }
 
     public void testPeopleMessageBuilds()
