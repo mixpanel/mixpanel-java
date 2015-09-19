@@ -9,7 +9,6 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -201,6 +200,6 @@ public class MixpanelAPI {
 
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
     private static final int READ_TIMEOUT_MILLIS = 120000; // Two minutes should be more than enough for a response.
-    private static final int CONNECT_TIMEOUT_MILLIS = 30000; // Two minutes should be more than enough for a response.
+    private static final int CONNECT_TIMEOUT_MILLIS = 30000; // 30 seconds should be more than enough for a response.
 
 }
