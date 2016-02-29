@@ -9,7 +9,6 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -107,6 +106,7 @@ public class MixpanelAPI {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
         conn.setReadTimeout(READ_TIMEOUT_MILLIS);
+        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
 
@@ -200,5 +200,6 @@ public class MixpanelAPI {
 
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
     private static final int READ_TIMEOUT_MILLIS = 120000; // Two minutes should be more than enough for a response.
+    private static final int CONNECT_TIMEOUT_MILLIS = 30000; // 30 seconds should be more than enough for a response.
 
 }
