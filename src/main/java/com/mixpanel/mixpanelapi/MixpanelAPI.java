@@ -200,6 +200,6 @@ public class MixpanelAPI {
 
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
     private static final int READ_TIMEOUT_MILLIS = 10000; // Ten seconds should be more than enough for a response.
-    private static final int CONNECT_TIMEOUT_MILLIS = 30000; // 30 seconds should be more than enough for a response.
+    private static final int CONNECT_TIMEOUT_MILLIS = 2000; // Two seconds should be more than enough for a response.
 
 }
