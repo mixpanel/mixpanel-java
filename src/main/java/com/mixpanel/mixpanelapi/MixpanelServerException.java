@@ -12,7 +12,10 @@ import org.json.JSONObject;
  * event times are too old to accept, the api key is invalid, etc.
  */
 public class MixpanelServerException extends IOException {
+
     private static final long serialVersionUID = 8230724556897575457L;
+
+    private final List<JSONObject> mBadDelivery;
 
     public MixpanelServerException(String message, List<JSONObject> badDelivery) {
         super(message);
@@ -23,5 +26,4 @@ public class MixpanelServerException extends IOException {
         return mBadDelivery;
     }
 
-    private final List<JSONObject> mBadDelivery;
 }

@@ -1,16 +1,16 @@
 package com.mixpanel.mixpanelapi;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Collection;
 import java.util.TimeZone;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.json.JSONArray;
 
 /**
  * This class writes JSONObjects of a form appropriate to send as Mixpanel events and
@@ -20,6 +20,11 @@ import org.json.JSONArray;
  * and the resulting messages are suitable for enqueuing or sending over a local network.
  */
 public class MessageBuilder {
+
+    private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
+
+    private final String mToken;
+
     public MessageBuilder(String token) {
         mToken = token;
     }
@@ -389,7 +394,4 @@ public class MessageBuilder {
         }
     }
 
-    private final String mToken;
-
-    private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
 }

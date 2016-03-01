@@ -2,26 +2,35 @@ package com.mixpanel.mixpanelapi;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import junit.framework.Test;
-import junit.framework.TestCase;
-import junit.framework.TestSuite;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import junit.framework.Test;
+import junit.framework.TestCase;
+import junit.framework.TestSuite;
+
 /**
  * Unit test for simple App.
  */
-public class MixpanelAPITest
-    extends TestCase
+public class MixpanelAPITest extends TestCase
 {
+
+    private MessageBuilder mBuilder;
+    private JSONObject mSampleProps;
+    private JSONObject mSampleModifiers;
+    private String mEventsMessages;
+    private String mPeopleMessages;
+    private String mIpEventsMessages;
+    private String mIpPeopleMessages;
+    private long mTimeZero;
+
     /**
      * Create the test case
      *
@@ -100,7 +109,7 @@ public class MixpanelAPITest
 
     public void testEmptyJSON() {
         JSONObject empty = new JSONObject();
-        JSONObject built = mBuilder.set("a distinct id", empty, empty);
+        mBuilder.set("a distinct id", empty, empty);
     }
 
     public void testPeopleMessageBuilds()
@@ -486,12 +495,4 @@ public class MixpanelAPITest
         }
     }
 
-    private MessageBuilder mBuilder;
-    private JSONObject mSampleProps;
-    private JSONObject mSampleModifiers;
-    private String mEventsMessages;
-    private String mPeopleMessages;
-    private String mIpEventsMessages;
-    private String mIpPeopleMessages;
-    private long mTimeZero;
 }

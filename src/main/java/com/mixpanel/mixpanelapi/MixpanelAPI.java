@@ -25,6 +25,14 @@ import org.json.JSONObject;
  */
 public class MixpanelAPI {
 
+    private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
+
+    private static final int CONNECT_TIMEOUT_MILLIS = 2000;
+    private static final int READ_TIMEOUT_MILLIS = 10000;
+
+    private final String mEventsEndpoint;
+    private final String mPeopleEndpoint;
+
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
@@ -194,12 +202,5 @@ public class MixpanelAPI {
 
         return out.toString();
     }
-
-    private final String mEventsEndpoint;
-    private final String mPeopleEndpoint;
-
-    private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
-    private static final int READ_TIMEOUT_MILLIS = 10000;
-    private static final int CONNECT_TIMEOUT_MILLIS = 2000;
 
 }
