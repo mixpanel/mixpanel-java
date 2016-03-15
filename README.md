@@ -1,4 +1,17 @@
-This is the official Mixpanel tracking library for Java
+This is the official Mixpanel tracking library for Java. 
+
+Latest Version 
+--------------
+##### _March 15th, 2016_ - [v1.4.4](https://github.com/mixpanel/mixpanel-java/releases/tag/mixpanel-java-1.4.4)
+```
+<dependency>
+    <groupId>com.mixpanel</groupId>
+    <artifactId>mixpanel-java</artifactId>
+    <version>1.4.4</version>
+</dependency>
+```
+
+You can alternatively download the library jar directly from Maven [here](http://search.maven.org/#search%7Cgav%7C1%7Cg%3A%22com.mixpanel%22%20AND%20a%3A%22mixpanel-java%22).
 
 How To Use
 ----------
@@ -19,13 +32,14 @@ are built by `MessageBuilder` objects, and those messages can be consumed by the
 
 Learn More
 ----------
+This library in particular has more in-depth documentation at
+
+    https://mixpanel.com/docs/integration-libraries/java
+    
 Mixpanel maintains documentation at
 
     http://www.mixpanel.com/docs
 
-This library in particular has more in-depth documentation at
-
-    https://mixpanel.com/docs/integration-libraries/java
 
 The library also contains a simple demo application, that demonstrates
 using this library in an asynchronous environment.
