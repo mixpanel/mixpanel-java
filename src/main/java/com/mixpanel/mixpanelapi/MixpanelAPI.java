@@ -30,8 +30,8 @@ public class MixpanelAPI {
     private static final int CONNECT_TIMEOUT_MILLIS = 2000;
     private static final int READ_TIMEOUT_MILLIS = 10000;
 
-    private final String mEventsEndpoint;
-    private final String mPeopleEndpoint;
+    protected final String mEventsEndpoint;
+    protected final String mPeopleEndpoint;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -108,6 +108,23 @@ public class MixpanelAPI {
     }
 
     /**
+     * apply Base64 encoding followed by URL encoding
+     *
+     * @param dataString JSON formatted string
+     * @return encoded string for <b>data</b> parameter in API call
+     * @throws NullPointerException If {@code dataString} is {@code null}
+     */
+    protected String encodeDataString(String dataString) {
+        try {
+            byte[] utf8data = dataString.getBytes("utf-8");
+            String base64data = new String(Base64Coder.encode(utf8data));
+            return URLEncoder.encode(base64data, "utf8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException("Mixpanel library requires utf-8 support", e);
+        }
+    }
+
+    /**
      * Package scope for mocking purposes
      */
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
@@ -118,15 +135,7 @@ public class MixpanelAPI {
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
 
-        byte[] utf8data;
-        try {
-            utf8data = dataString.getBytes("utf-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException("Mixpanel library requires utf-8 support", e);
-        }
-
-        String base64data = new String(Base64Coder.encode(utf8data));
-        String encodedData = URLEncoder.encode(base64data, "utf8");
+        String encodedData = encodeDataString(dataString);
         String encodedQuery = "data=" + encodedData;
 
         OutputStream postStream = null;
