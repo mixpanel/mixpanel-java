@@ -2,6 +2,7 @@ package com.mixpanel.mixpanelapi;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -471,6 +472,35 @@ public class MixpanelAPITest extends TestCase
         } catch (JSONException e) {
             fail("Can't interpret sends appropriately when sending large messages");
         }
+    }
+
+    public void testEncodeDataString(){
+        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) {
+                fail("Data sent when no data should be sent");
+                return true;
+            }
+        };
+
+        try{
+            api.encodeDataString(null);
+            fail("encodeDataString doesn't accept null string");
+        }catch(NullPointerException e){
+            // ok
+        }
+
+        // empty string
+        assertEquals("", api.encodeDataString(""));
+        // empty JSON
+        assertEquals("e30%3D", api.encodeDataString(new JSONObject().toString()));
+        // empty Array
+        assertEquals("W10%3D", api.encodeDataString(new JSONArray().toString()));
+        // JSON Object
+        assertEquals("eyJwcm9wIGtleSI6InByb3AgdmFsdWUiLCJyYXRpbyI6Is%2BAIn0%3D", api.encodeDataString(mSampleProps.toString()));
+        // JSON Array
+        JSONArray jsonArray = new JSONArray(Arrays.asList(mSampleProps));
+        assertEquals("W3sicHJvcCBrZXkiOiJwcm9wIHZhbHVlIiwicmF0aW8iOiLPgCJ9XQ%3D%3D", api.encodeDataString(jsonArray.toString()));
     }
 
     private void checkModifiers(JSONObject built) {
