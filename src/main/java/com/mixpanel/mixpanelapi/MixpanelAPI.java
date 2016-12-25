@@ -107,6 +107,25 @@ public class MixpanelAPI {
         sendMessages(people, peopleUrl);
     }
 
+    public void deliver(ClientDelivery toSend, boolean useIpAddress, String apiKey) throws IOException {
+        String ipParameter = "ip=0";
+        String eventsUrl;
+        String peopleUrl;
+
+        if (useIpAddress) {
+            ipParameter = "ip=1";
+        }
+
+        eventsUrl = mEventsEndpoint + "?" + ipParameter + "&api_key=" + apiKey ;
+        peopleUrl = mPeopleEndpoint + "?" + ipParameter + "&api_key=" + apiKey;
+
+        List<JSONObject> events = toSend.getEventsMessages();
+        sendMessages(events, eventsUrl);
+
+        List<JSONObject> people = toSend.getPeopleMessages();
+        sendMessages(people, peopleUrl);
+    }
+
     /**
      * apply Base64 encoding followed by URL encoding
      *
