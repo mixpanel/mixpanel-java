@@ -67,9 +67,9 @@ public class MixpanelAPITest extends TestCase
 
         final Map<String, String> sawData = new HashMap<String, String>();
 
-        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "import url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public boolean sendData(String dataString, String endpointUrl, String apiSecret) {
                 sawData.put(endpointUrl, dataString);
                 return true;
             }
@@ -414,9 +414,9 @@ public class MixpanelAPITest extends TestCase
     }
 
     public void testEmptyDelivery() {
-        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "import url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public boolean sendData(String dataString, String endpointUrl, String apiSecret) {
                 fail("Data sent when no data should be sent");
                 return true;
             }
@@ -433,9 +433,9 @@ public class MixpanelAPITest extends TestCase
     public void testLargeDelivery() {
         final List<String> sends = new ArrayList<String>();
 
-        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "import url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public boolean sendData(String dataString, String endpointUrl, String apiSecret) {
                 sends.add(dataString);
                 return true;
             }
@@ -475,9 +475,9 @@ public class MixpanelAPITest extends TestCase
     }
 
     public void testEncodeDataString(){
-        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "import url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public boolean sendData(String dataString, String endpointUrl, String apiSecret) {
                 fail("Data sent when no data should be sent");
                 return true;
             }
@@ -525,4 +525,12 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void testDeliveryImportWithEmptyApiSecret() throws IOException {
+        try {
+            new MixpanelAPI().deliverImport(new ClientDelivery(), null);
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException ignored) {
+            // do nothing
+        }
+    }
 }

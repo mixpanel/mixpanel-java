@@ -32,12 +32,13 @@ public class MixpanelAPI {
 
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
+    protected final String mImportEndpoint;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
     public MixpanelAPI() {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage");
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/import");
     }
 
     /**
@@ -49,9 +50,10 @@ public class MixpanelAPI {
      * @param peopleEndpoint a URL that will accept Mixpanel people messages
      * @see #MixpanelAPI()
      */
-    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
+    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String importEndpoint) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
+        mImportEndpoint = importEndpoint;
     }
 
     /**
@@ -84,6 +86,23 @@ public class MixpanelAPI {
     }
 
     /**
+     * Sends a ClientDelivery full of messages to <b>import</b> to Mixpanel's servers.
+     * This call will use <b>import endpoint</b>!
+     *
+     * This call will block, possibly for a long time.
+     * @param toSend
+     * @param apiSecret project's API Secret
+     * @throws IOException
+     */
+    public void deliverImport(ClientDelivery toSend, String apiSecret) throws IOException {
+        if(apiSecret == null || apiSecret.isEmpty()) {
+            throw new IllegalArgumentException("API secret is required");
+        }
+        List<JSONObject> events = toSend.getEventsMessages();
+        sendMessages(events, mImportEndpoint, apiSecret);
+    }
+
+    /**
      * Attempts to send a given delivery to the Mixpanel servers. Will block,
      * possibly on multiple server requests. For most applications, this method
      * should be called in a separate thread or in a queue consumer.
@@ -100,11 +119,11 @@ public class MixpanelAPI {
 
         String eventsUrl = mEventsEndpoint + "?" + ipParameter;
         List<JSONObject> events = toSend.getEventsMessages();
-        sendMessages(events, eventsUrl);
+        sendMessages(events, eventsUrl, null);
 
         String peopleUrl = mPeopleEndpoint + "?" + ipParameter;
         List<JSONObject> people = toSend.getPeopleMessages();
-        sendMessages(people, peopleUrl);
+        sendMessages(people, peopleUrl, null);
     }
 
     /**
@@ -127,13 +146,16 @@ public class MixpanelAPI {
     /**
      * Package scope for mocking purposes
      */
-    /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
+    /* package */ boolean sendData(String dataString, String endpointUrl, String apiSecret) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
         conn.setReadTimeout(READ_TIMEOUT_MILLIS);
         conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
+        if (apiSecret != null) {
+            conn.setRequestProperty("Authorization", "Basic " + Base64Coder.encodeString(apiSecret + ":"));
+        }
 
         String encodedData = encodeDataString(dataString);
         String encodedQuery = "data=" + encodedData;
@@ -170,7 +192,7 @@ public class MixpanelAPI {
         return ((response != null) && response.equals("1"));
     }
 
-    private void sendMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
+    private void sendMessages(List<JSONObject> messages, String endpointUrl, String apiSecret) throws IOException {
         for (int i = 0; i < messages.size(); i += Config.MAX_MESSAGE_SIZE) {
             int endIndex = i + Config.MAX_MESSAGE_SIZE;
             endIndex = Math.min(endIndex, messages.size());
@@ -178,7 +200,7 @@ public class MixpanelAPI {
 
             if (batch.size() > 0) {
                 String messagesString = dataString(batch);
-                boolean accepted = sendData(messagesString, endpointUrl);
+                boolean accepted = sendData(messagesString, endpointUrl, apiSecret);
 
                 if (! accepted) {
                     throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
@@ -197,18 +219,24 @@ public class MixpanelAPI {
     }
 
     private String slurp(InputStream in) throws IOException {
-        final StringBuilder out = new StringBuilder();
+        StringBuilder out = new StringBuilder();
         InputStreamReader reader = new InputStreamReader(in, "utf8");
-
-        char[] readBuffer = new char[BUFFER_SIZE];
-        int readCount = 0;
-        do {
-            readCount = reader.read(readBuffer);
-            if (readCount > 0) {
-                out.append(readBuffer, 0, readCount);
+        try {
+            char[] readBuffer = new char[BUFFER_SIZE];
+            int readCount;
+            do {
+                readCount = reader.read(readBuffer);
+                if (readCount > 0) {
+                    out.append(readBuffer, 0, readCount);
+                }
+            } while(readCount != -1);
+        } finally {
+            try {
+                reader.close();
+            } catch (IOException ignore) {
+                // ignore
             }
-        } while(readCount != -1);
-
+        }
         return out.toString();
     }
 
