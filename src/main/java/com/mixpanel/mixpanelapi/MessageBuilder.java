@@ -136,6 +136,33 @@ public class MessageBuilder {
     }
 
     /**
+        * Sets a People Analytics property on the profile associated with
+        * the given distinctId, only if that property is not already set
+        * on the associated profile. So, to set a new property on
+        * on user 12345 if it is not already present, one might call:
+        * <pre>
+        * {@code
+        *     JSONObject userProperties = new JSONObject();
+        *     userProperties.put("Date Began", "2014-08-16");
+        *
+        *     // "Date Began" will not be overwritten, but if it isn't already
+        *     // present it will be set when we send this message.
+        *     JSONObject message = messageBuilder.setOnce("12345", userProperties);
+        *     mixpanelApi.sendMessage(message);
+        * }
+        * </pre>
+        *
+        * @param distinctId a string uniquely identifying the people analytics profile to change,
+        *           for example, a user id of an app, or the hostname of a server. If no profile
+        *           exists for the given id, a new one will be created.
+        * @param properties a collection of properties to set on the associated profile. Each key
+        *            in the properties argument will be updated on on the people profile
+        */
+    public JSONObject setOnce(String distinctId, JSONObject properties) {
+        return setOnce(distinctId, properties, null);
+    }
+
+    /**
      * Sets a People Analytics property on the profile associated with
      * the given distinctId, only if that property is not already set
      * on the associated profile. So, to set a new property on
@@ -273,9 +300,25 @@ public class MessageBuilder {
      * The list values in the given are merged with the existing list on the user profile,
      * ignoring duplicate list values.
      */
+    public JSONObject union(String distinctId, Map<String, JSONArray> properties) {
+        return union(distinctId, properties, null);
+    }
+
+    /**
+     * Merges list-valued properties into a user profile.
+     * The list values in the given are merged with the existing list on the user profile,
+     * ignoring duplicate list values.
+     */
     public JSONObject union(String distinctId, Map<String, JSONArray> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
         return peopleMessage(distinctId, "$union", jsonProperties, modifiers);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile identified by distinctId.
+     */
+    public JSONObject unset(String distinctId, Collection<String> propertyNames) {
+        return unset(distinctId, propertyNames, null);
     }
 
     /**

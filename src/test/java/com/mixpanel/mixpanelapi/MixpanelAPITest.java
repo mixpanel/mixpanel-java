@@ -135,6 +135,11 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
+            JSONObject setOnce = mBuilder.setOnce("a distinct id", mSampleProps);
+            checkProfileProps("$set_once", setOnce);
+        }
+
+        {
             JSONObject delete = mBuilder.delete("a distinct id", mSampleModifiers);
             checkModifiers(delete);
             assertTrue(delete.getJSONObject("message").has("$delete"));
@@ -146,6 +151,16 @@ public class MixpanelAPITest extends TestCase
             increments.put("k2", 1L);
             JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
             checkModifiers(increment);
+            JSONObject payload = increment.getJSONObject("message").getJSONObject("$add");
+            assertEquals(payload.getInt("k1"), 10);
+            assertEquals(payload.getInt("k2"), 1);
+        }
+
+        {
+            Map<String, Long> increments = new HashMap<String, Long>();
+            increments.put("k1", 10L);
+            increments.put("k2", 1L);
+            JSONObject increment = mBuilder.increment("a distinct id", increments);
             JSONObject payload = increment.getJSONObject("message").getJSONObject("$add");
             assertEquals(payload.getInt("k1"), 10);
             assertEquals(payload.getInt("k2"), 1);
@@ -173,11 +188,40 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
+            JSONArray union1 = new JSONArray(new String[]{ "One", "Two" });
+            JSONArray union2 = new JSONArray(new String[]{ "a", "b" });
+
+            Map<String, JSONArray> unions = new HashMap<String, JSONArray>();
+            unions.put("k1", union1);
+            unions.put("k2", union2);
+
+            JSONObject union = mBuilder.union("a distinct id", unions);
+            JSONObject payload = union.getJSONObject("message").getJSONObject("$union");
+            assertEquals(payload.getJSONArray("k1"), union1);
+            assertEquals(payload.getJSONArray("k2"), union2);
+        }
+
+        {
             Set<String> toUnset = new HashSet<String>();
             toUnset.add("One");
             toUnset.add("Two");
             JSONObject unset = mBuilder.unset("a distinct id", toUnset, mSampleModifiers);
             checkModifiers(unset);
+            JSONArray payload = unset.getJSONObject("message").getJSONArray("$unset");
+
+            for (int i = 0; i < payload.length(); i++) {
+                String propName = payload.getString(i);
+                assertTrue(toUnset.remove(propName));
+            }
+
+            assertTrue(toUnset.isEmpty());
+        }
+
+        {
+            Set<String> toUnset = new HashSet<String>();
+            toUnset.add("One");
+            toUnset.add("Two");
+            JSONObject unset = mBuilder.unset("a distinct id", toUnset);
             JSONArray payload = unset.getJSONObject("message").getJSONArray("$unset");
 
             for (int i = 0; i < payload.length(); i++) {
