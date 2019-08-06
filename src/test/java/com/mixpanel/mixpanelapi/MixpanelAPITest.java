@@ -173,6 +173,12 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
+            JSONObject remove = mBuilder.remove("a distinct id", mSampleProps, mSampleModifiers);
+            checkModifiers(remove);
+            checkProfileProps("$remove", remove);
+        }
+
+        {
             JSONArray union1 = new JSONArray(new String[]{ "One", "Two" });
             JSONArray union2 = new JSONArray(new String[]{ "a", "b" });
 
@@ -299,6 +305,12 @@ public class MixpanelAPITest extends TestCase
                 JSONObject groupDelete = mBuilder.groupDelete("company", "Acme Inc.", mSampleModifiers);
                 checkModifiers(groupDelete, true);
                 assertTrue(groupDelete.getJSONObject("message").has("$delete"));
+            }
+
+            {
+                JSONObject groupRemove = mBuilder.groupRemove("company", "Acme Inc.", mSampleProps, mSampleModifiers);
+                checkModifiers(groupRemove, true);
+                checkProfileProps("$remove", groupRemove);
             }
 
             {

@@ -296,6 +296,22 @@ public class MessageBuilder {
     }
 
     /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified user profile.
+     */
+    public JSONObject remove(String distinctId, JSONObject properties) {
+        return remove(distinctId, properties, null);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified user profile.
+     */
+    public JSONObject remove(String distinctId, JSONObject properties, JSONObject modifiers) {
+        return peopleMessage(distinctId, "$remove", properties, modifiers);
+    }
+
+    /**
      * Merges list-valued properties into a user profile.
      * The list values in the given are merged with the existing list on the user profile,
      * ignoring duplicate list values.
@@ -568,6 +584,21 @@ public class MessageBuilder {
         return groupMessage(groupKey, groupId, "$delete", new JSONObject(), modifiers);
     }
 
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified group profile.
+     */
+    public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties) {
+        return groupRemove(groupKey, groupId, properties, null);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified group profile.
+     */
+    public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
+        return groupMessage(groupKey, groupId, "$remove", properties, modifiers);
+    }
 
     /**
      * Merges list-valued properties into a group profile.
