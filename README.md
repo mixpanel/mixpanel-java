@@ -2,12 +2,12 @@ This is the official Mixpanel tracking library for Java.
 
 Latest Version 
 --------------
-##### _March 15th, 2016_ - [v1.4.4](https://github.com/mixpanel/mixpanel-java/releases/tag/mixpanel-java-1.4.4)
+##### _September 19th, 2019_ - [v1.5.0](https://github.com/mixpanel/mixpanel-java/releases/tag/mixpanel-java-1.5.0)
 ```
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java</artifactId>
-    <version>1.4.4</version>
+    <version>1.5.0</version>
 </dependency>
 ```
 
