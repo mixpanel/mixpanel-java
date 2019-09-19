@@ -32,16 +32,17 @@ public class MixpanelAPI {
 
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
+    protected final String mGroupsEndpoint;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
     public MixpanelAPI() {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage");
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups");
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     * Create a MixpaneAPI associated with custom URLS for events and people updates.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -52,6 +53,23 @@ public class MixpanelAPI {
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
+        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
+    }
+
+    /**
+     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     *
+     * Useful for testing and proxying. Most callers should use the constructor with no arguments.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
+     * @see #MixpanelAPI()
+     */
+    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
+        mEventsEndpoint = eventsEndpoint;
+        mPeopleEndpoint = peopleEndpoint;
+        mGroupsEndpoint = groupsEndpoint;
     }
 
     /**
@@ -105,6 +123,10 @@ public class MixpanelAPI {
         String peopleUrl = mPeopleEndpoint + "?" + ipParameter;
         List<JSONObject> people = toSend.getPeopleMessages();
         sendMessages(people, peopleUrl);
+
+        String groupsUrl = mGroupsEndpoint + "?" + ipParameter;
+        List<JSONObject> groupMessages = toSend.getGroupMessages();
+        sendMessages(groupMessages, groupsUrl);
     }
 
     /**

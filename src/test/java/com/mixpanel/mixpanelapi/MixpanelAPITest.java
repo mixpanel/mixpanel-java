@@ -28,8 +28,10 @@ public class MixpanelAPITest extends TestCase
     private JSONObject mSampleModifiers;
     private String mEventsMessages;
     private String mPeopleMessages;
+    private String mGroupMessages;
     private String mIpEventsMessages;
     private String mIpPeopleMessages;
+    private String mIpGroupMessages;
     private long mTimeZero;
 
     /**
@@ -67,7 +69,7 @@ public class MixpanelAPITest extends TestCase
 
         final Map<String, String> sawData = new HashMap<String, String>();
 
-        MixpanelAPI api = new MixpanelAPI("events url", "people url") {
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url") {
             @Override
             public boolean sendData(String dataString, String endpointUrl) {
                 sawData.put(endpointUrl, dataString);
@@ -88,6 +90,9 @@ public class MixpanelAPITest extends TestCase
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         c.addMessage(increment);
 
+        JSONObject groupSet = mBuilder.groupSet("company", "Acme Inc.", mSampleProps);
+        c.addMessage(groupSet);
+
         try {
             api.deliver(c, false);
         } catch (IOException e) {
@@ -96,6 +101,7 @@ public class MixpanelAPITest extends TestCase
 
         mEventsMessages = sawData.get("events url?ip=0");
         mPeopleMessages = sawData.get("people url?ip=0");
+        mGroupMessages = sawData.get("groups url?ip=0");
         sawData.clear();
 
         try {
@@ -106,6 +112,7 @@ public class MixpanelAPITest extends TestCase
 
         mIpEventsMessages = sawData.get("events url?ip=1");
         mIpPeopleMessages = sawData.get("people url?ip=1");
+        mIpGroupMessages = sawData.get("groups url?ip=1");
     }
 
     public void testEmptyJSON() {
@@ -118,13 +125,18 @@ public class MixpanelAPITest extends TestCase
         {
             JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
             checkModifiers(set);
-            checkPeopleProps("$set", set);
+            checkProfileProps("$set", set);
         }
 
         {
             JSONObject setOnce = mBuilder.setOnce("a distinct id", mSampleProps, mSampleModifiers);
             checkModifiers(setOnce);
-            checkPeopleProps("$set_once", setOnce);
+            checkProfileProps("$set_once", setOnce);
+        }
+
+        {
+            JSONObject setOnce = mBuilder.setOnce("a distinct id", mSampleProps);
+            checkProfileProps("$set_once", setOnce);
         }
 
         {
@@ -145,9 +157,25 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
+            Map<String, Long> increments = new HashMap<String, Long>();
+            increments.put("k1", 10L);
+            increments.put("k2", 1L);
+            JSONObject increment = mBuilder.increment("a distinct id", increments);
+            JSONObject payload = increment.getJSONObject("message").getJSONObject("$add");
+            assertEquals(payload.getInt("k1"), 10);
+            assertEquals(payload.getInt("k2"), 1);
+        }
+
+        {
             JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
             checkModifiers(append);
-            checkPeopleProps("$append", append);
+            checkProfileProps("$append", append);
+        }
+
+        {
+            JSONObject remove = mBuilder.remove("a distinct id", mSampleProps, mSampleModifiers);
+            checkModifiers(remove);
+            checkProfileProps("$remove", remove);
         }
 
         {
@@ -166,11 +194,40 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
+            JSONArray union1 = new JSONArray(new String[]{ "One", "Two" });
+            JSONArray union2 = new JSONArray(new String[]{ "a", "b" });
+
+            Map<String, JSONArray> unions = new HashMap<String, JSONArray>();
+            unions.put("k1", union1);
+            unions.put("k2", union2);
+
+            JSONObject union = mBuilder.union("a distinct id", unions);
+            JSONObject payload = union.getJSONObject("message").getJSONObject("$union");
+            assertEquals(payload.getJSONArray("k1"), union1);
+            assertEquals(payload.getJSONArray("k2"), union2);
+        }
+
+        {
             Set<String> toUnset = new HashSet<String>();
             toUnset.add("One");
             toUnset.add("Two");
             JSONObject unset = mBuilder.unset("a distinct id", toUnset, mSampleModifiers);
             checkModifiers(unset);
+            JSONArray payload = unset.getJSONObject("message").getJSONArray("$unset");
+
+            for (int i = 0; i < payload.length(); i++) {
+                String propName = payload.getString(i);
+                assertTrue(toUnset.remove(propName));
+            }
+
+            assertTrue(toUnset.isEmpty());
+        }
+
+        {
+            Set<String> toUnset = new HashSet<String>();
+            toUnset.add("One");
+            toUnset.add("Two");
+            JSONObject unset = mBuilder.unset("a distinct id", toUnset);
             JSONArray payload = unset.getJSONObject("message").getJSONArray("$unset");
 
             for (int i = 0; i < payload.length(); i++) {
@@ -229,6 +286,112 @@ public class MixpanelAPITest extends TestCase
             // ok
         }
     }
+
+    public void testGroupProfileMessageBuilds()
+           throws JSONException {
+            {
+                JSONObject groupSet = mBuilder.groupSet("company", "Acme Inc.", mSampleProps, mSampleModifiers);
+                checkModifiers(groupSet, true);
+                checkProfileProps("$set", groupSet);
+            }
+
+            {
+                JSONObject groupSetOnce = mBuilder.groupSetOnce("company", "Acme Inc.", mSampleProps, mSampleModifiers);
+                checkModifiers(groupSetOnce, true);
+                checkProfileProps("$set_once", groupSetOnce);
+            }
+
+            {
+                JSONObject groupDelete = mBuilder.groupDelete("company", "Acme Inc.", mSampleModifiers);
+                checkModifiers(groupDelete, true);
+                assertTrue(groupDelete.getJSONObject("message").has("$delete"));
+            }
+
+            {
+                JSONObject groupRemove = mBuilder.groupRemove("company", "Acme Inc.", mSampleProps, mSampleModifiers);
+                checkModifiers(groupRemove, true);
+                checkProfileProps("$remove", groupRemove);
+            }
+
+            {
+                JSONArray union1 = new JSONArray(new String[]{ "One", "Two" });
+                JSONArray union2 = new JSONArray(new String[]{ "a", "b" });
+
+                Map<String, JSONArray> unions = new HashMap<String, JSONArray>();
+                unions.put("k1", union1);
+                unions.put("k2", union2);
+
+                JSONObject groupUnion = mBuilder.groupUnion("company", "Acme Inc.", unions, mSampleModifiers);
+                checkModifiers(groupUnion, true);
+                JSONObject payload = groupUnion.getJSONObject("message").getJSONObject("$union");
+                assertEquals(payload.getJSONArray("k1"), union1);
+                assertEquals(payload.getJSONArray("k2"), union2);
+            }
+
+            {
+                Set<String> toUnset = new HashSet<String>();
+                toUnset.add("One");
+                toUnset.add("Two");
+                JSONObject groupUnset = mBuilder.groupUnset("company", "Acme Inc.", toUnset, mSampleModifiers);
+                checkModifiers(groupUnset, true);
+                JSONArray payload = groupUnset.getJSONObject("message").getJSONArray("$unset");
+
+                for (int i = 0; i < payload.length(); i++) {
+                    String propName = payload.getString(i);
+                    assertTrue(toUnset.remove(propName));
+                }
+
+                assertTrue(toUnset.isEmpty());
+            }
+
+        }
+
+        public void testGroupMessageBadArguments() {
+            mBuilder.groupMessage("group_key", "group_id", "action", true, null);
+            mBuilder.groupMessage("group_key", "group_id", "action", 1.21, null);
+            mBuilder.groupMessage("group_key", "group_id", "action", 100, null);
+            mBuilder.groupMessage("group_key", "group_id", "action", 1000L, null);
+            mBuilder.groupMessage("group_key", "group_id", "action", "String", null);
+            mBuilder.groupMessage("group_key", "group_id", "action", JSONObject.NULL, null);
+
+            // Current, less than wonderful behavior- we'll just call toString()
+            // on random objects passed in.
+            mBuilder.groupMessage("group_key", "group_id", "action", new Object(), null);
+
+            JSONArray jsa = new JSONArray();
+            mBuilder.groupMessage("group_key", "group_id", "action", jsa, null);
+
+            JSONObject jso = new JSONObject();
+            mBuilder.groupMessage("group_key", "group_id", "action", jso, null);
+
+            try {
+                mBuilder.groupMessage("group_key", "group_id", "action", null, null);
+                fail("groupMessage did not throw an exception on null");
+            } catch (IllegalArgumentException e) {
+                // ok
+            }
+
+            try {
+                mBuilder.groupMessage("group_key", "group_id", "action", Double.NaN, null);
+                fail("groupMessage did not throw on NaN");
+            } catch (IllegalArgumentException e) {
+                // ok
+            }
+
+            try {
+                mBuilder.groupMessage("group_key", "group_id", "action", Double.NaN, null);
+                fail("groupMessage did not throw on NaN");
+            } catch (IllegalArgumentException e) {
+                // ok
+            }
+
+            try {
+                mBuilder.groupMessage("group_key", "group_id", "action", Double.NEGATIVE_INFINITY, null);
+                fail("groupMessage did not throw on infinity");
+            } catch (IllegalArgumentException e) {
+                // ok
+            }
+        }
 
     public void testMessageFormat() {
         ClientDelivery c = new ClientDelivery();
@@ -302,6 +465,9 @@ public class MixpanelAPITest extends TestCase
             JSONObject set = mBuilder.set("a distinct id", mSampleProps);
             c.addMessage(set);
 
+            JSONObject groupSet = mBuilder.groupSet("company", "Acme Inc.", mSampleProps);
+            c.addMessage(groupSet);
+
 
             Map<String, Long> increments = new HashMap<String, Long>();
             increments.put("a key", 24L);
@@ -315,6 +481,7 @@ public class MixpanelAPITest extends TestCase
     public void testApiSendIpArgs() {
         assertEquals(mEventsMessages, mIpEventsMessages);
         assertEquals(mPeopleMessages, mIpPeopleMessages);
+        assertEquals(mGroupMessages, mIpGroupMessages);
     }
 
     public void testApiSendEvent() {
@@ -504,17 +671,25 @@ public class MixpanelAPITest extends TestCase
     }
 
     private void checkModifiers(JSONObject built) {
+        checkModifiers(built, false);
+    }
+    private void checkModifiers(JSONObject built, boolean forGroups) {
         try {
             JSONObject msg = built.getJSONObject("message");
             assertEquals(msg.getString("$time"), "A TIME");
             assertEquals(msg.getString("Unexpected"), "But OK");
-            assertEquals(msg.getString("$distinct_id"), "a distinct id");
+            if (forGroups) {
+                assertEquals(msg.getString("$group_key"), "company");
+                assertEquals(msg.getString("$group_id"), "Acme Inc.");
+            } else {
+                assertEquals(msg.getString("$distinct_id"), "a distinct id");
+            }
         } catch (JSONException e) {
             fail(e.toString());
         }
     }
 
-    private void checkPeopleProps(String operation, JSONObject built) {
+    private void checkProfileProps(String operation, JSONObject built) {
         try {
             JSONObject msg = built.getJSONObject("message");
             JSONObject props = msg.getJSONObject(operation);

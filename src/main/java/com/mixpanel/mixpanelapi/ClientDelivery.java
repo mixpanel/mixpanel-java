@@ -13,6 +13,7 @@ public class ClientDelivery {
 
     private final List<JSONObject> mEventsMessages = new ArrayList<JSONObject>();
     private final List<JSONObject> mPeopleMessages = new ArrayList<JSONObject>();
+    private final List<JSONObject> mGroupMessages = new ArrayList<JSONObject>();
 
     /**
      * Adds an individual message to this delivery. Messages to Mixpanel are often more efficient when sent in batches.
@@ -37,6 +38,9 @@ public class ClientDelivery {
             else if (messageType.equals("people")) {
                 mPeopleMessages.add(messageContent);
             }
+            else if (messageType.equals("group")) {
+                mGroupMessages.add(messageContent);
+            }
         } catch (JSONException e) {
             throw new RuntimeException("Apparently valid mixpanel message could not be interpreted.", e);
         }
@@ -59,7 +63,7 @@ public class ClientDelivery {
                 if (messageContents == null) {
                     ret = false;
                 }
-                else if (!messageType.equals("event") && !messageType.equals("people")) {
+                else if (!messageType.equals("event") && !messageType.equals("people") && !messageType.equals("group")) {
                     ret = false;
                 }
             }
@@ -76,6 +80,10 @@ public class ClientDelivery {
 
     /* package */ List<JSONObject> getPeopleMessages() {
         return mPeopleMessages;
+    }
+
+    /* package */ List<JSONObject> getGroupMessages() {
+        return mGroupMessages;
     }
 
 }

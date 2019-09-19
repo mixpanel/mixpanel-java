@@ -136,6 +136,33 @@ public class MessageBuilder {
     }
 
     /**
+        * Sets a People Analytics property on the profile associated with
+        * the given distinctId, only if that property is not already set
+        * on the associated profile. So, to set a new property on
+        * on user 12345 if it is not already present, one might call:
+        * <pre>
+        * {@code
+        *     JSONObject userProperties = new JSONObject();
+        *     userProperties.put("Date Began", "2014-08-16");
+        *
+        *     // "Date Began" will not be overwritten, but if it isn't already
+        *     // present it will be set when we send this message.
+        *     JSONObject message = messageBuilder.setOnce("12345", userProperties);
+        *     mixpanelApi.sendMessage(message);
+        * }
+        * </pre>
+        *
+        * @param distinctId a string uniquely identifying the people analytics profile to change,
+        *           for example, a user id of an app, or the hostname of a server. If no profile
+        *           exists for the given id, a new one will be created.
+        * @param properties a collection of properties to set on the associated profile. Each key
+        *            in the properties argument will be updated on on the people profile
+        */
+    public JSONObject setOnce(String distinctId, JSONObject properties) {
+        return setOnce(distinctId, properties, null);
+    }
+
+    /**
      * Sets a People Analytics property on the profile associated with
      * the given distinctId, only if that property is not already set
      * on the associated profile. So, to set a new property on
@@ -269,6 +296,31 @@ public class MessageBuilder {
     }
 
     /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified user profile.
+     */
+    public JSONObject remove(String distinctId, JSONObject properties) {
+        return remove(distinctId, properties, null);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified user profile.
+     */
+    public JSONObject remove(String distinctId, JSONObject properties, JSONObject modifiers) {
+        return peopleMessage(distinctId, "$remove", properties, modifiers);
+    }
+
+    /**
+     * Merges list-valued properties into a user profile.
+     * The list values in the given are merged with the existing list on the user profile,
+     * ignoring duplicate list values.
+     */
+    public JSONObject union(String distinctId, Map<String, JSONArray> properties) {
+        return union(distinctId, properties, null);
+    }
+
+    /**
      * Merges list-valued properties into a user profile.
      * The list values in the given are merged with the existing list on the user profile,
      * ignoring duplicate list values.
@@ -276,6 +328,13 @@ public class MessageBuilder {
     public JSONObject union(String distinctId, Map<String, JSONArray> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
         return peopleMessage(distinctId, "$union", jsonProperties, modifiers);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile identified by distinctId.
+     */
+    public JSONObject unset(String distinctId, Collection<String> propertyNames) {
+        return unset(distinctId, propertyNames, null);
     }
 
     /**
@@ -387,6 +446,253 @@ public class MessageBuilder {
             JSONObject envelope = new JSONObject();
             envelope.put("envelope_version", 1);
             envelope.put("message_type", "people");
+            envelope.put("message", dataObj);
+            return envelope;
+        } catch (JSONException e) {
+            throw new RuntimeException("Can't construct a Mixpanel message", e);
+        }
+    }
+
+    /**
+     * Sets properties on the group profile identified by the given groupKey
+     * and groupId, creating the profile if needed. Existing values for the
+     * given properties are replaced. Example:
+     * <pre>
+     * {@code
+     *     JSONObject groupProperties = new JSONObject();
+     *     groupProperties.put("$name", "Acme Incorporated");
+     *     groupProperties.put("Industry", "Manufacturing");
+     *     JSONObject message = messageBuilder.groupSet("company", "Acme Inc.", groupProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties a collection of properties to set on the associated profile. Each key
+     *            in the properties argument will be updated on on the people profile.
+     */
+    public JSONObject groupSet(String groupKey, String groupId, JSONObject properties) {
+        return groupSet(groupKey, groupId, properties, null);
+    }
+
+    /**
+     * Sets properties on the group profile identified by the given groupKey
+     * and groupId, creating the profile if needed. Existing values for the
+     * given properties are replaced. Example:
+     * <pre>
+     * {@code
+     *     JSONObject groupProperties = new JSONObject();
+     *     groupProperties.put("$name", "Acme Incorporated");
+     *     groupProperties.put("Industry", "Manufacturing");
+     *     JSONObject message = messageBuilder.groupSet("company", "Acme Inc.", groupProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties a collection of properties to set on the associated profile. Each key
+     *            in the properties argument will be updated on on the people profile.
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     */
+    public JSONObject groupSet(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
+        return groupMessage(groupKey, groupId, "$set", properties, modifiers);
+    }
+
+    /**
+     * Sets properties if they do not already exist on the group profile identified by the given groupKey
+     * and groupId. Example:
+     * <pre>
+     * {@code
+     *     JSONObject groupProperties = new JSONObject();
+     *     groupProperties.put("First Purchase", "Steel");
+     *     JSONObject message = messageBuilder.groupSetOnce("company", "Acme Inc.", groupProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties a collection of properties to set on the associated profile. Each key
+     *            in the properties argument will be updated on on the people profile.
+     */
+    public JSONObject groupSetOnce(String groupKey, String groupId, JSONObject properties) {
+        return groupSetOnce(groupKey, groupId, properties, null);
+    }
+
+    /**
+     * Sets properties if they do not already exist on the group profile identified by the given groupKey
+     * and groupId. Example:
+     * <pre>
+     * {@code
+     *     JSONObject groupProperties = new JSONObject();
+     *     groupProperties.put("First Purchase", "Steel");
+     *     JSONObject message = messageBuilder.groupSetOnce("company", "Acme Inc.", groupProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties a collection of properties to set on the associated profile. Each key
+     *            in the properties argument will be updated on on the people profile.
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     */
+    public JSONObject groupSetOnce(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
+        return groupMessage(groupKey, groupId, "$set_once", properties, modifiers);
+    }
+
+    /**
+     * Deletes the group profile identified by the given groupKey and groupId.
+     *
+     * <pre>
+     * {@code
+     *     JSONObject message = messageBuilder.groupDelete("company", "Acme Inc.");
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     */
+    public JSONObject groupDelete(String groupKey, String groupId) {
+        return groupDelete(groupKey, groupId, null);
+    }
+
+    /**
+     * Deletes the group profile identified by the given groupKey and groupId.
+     *
+     * <pre>
+     * {@code
+     *     JSONObject message = messageBuilder.groupDelete("company", "Acme Inc.");
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     */
+    public JSONObject groupDelete(String groupKey, String groupId, JSONObject modifiers) {
+        return groupMessage(groupKey, groupId, "$delete", new JSONObject(), modifiers);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified group profile.
+     */
+    public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties) {
+        return groupRemove(groupKey, groupId, properties, null);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove
+     * that value from a list associated with the key in the specified group profile.
+     */
+    public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
+        return groupMessage(groupKey, groupId, "$remove", properties, modifiers);
+    }
+
+    /**
+     * Merges list-valued properties into a group profile.
+     * The list values given are merged with the existing list on the group profile,
+     * ignoring duplicate list values.
+     */
+    public JSONObject groupUnion(String groupKey, String groupId, Map<String, JSONArray> properties) {
+        return groupUnion(groupKey, groupId, properties, null);
+    }
+
+    /**
+     * Merges list-valued properties into a group profile.
+     * The list values given are merged with the existing list on the group profile,
+     * ignoring duplicate list values.
+     */
+    public JSONObject groupUnion(String groupKey, String groupId, Map<String, JSONArray> properties,
+                              JSONObject modifiers) {
+        JSONObject jsonProperties = new JSONObject(properties);
+        return groupMessage(groupKey, groupId, "$union", jsonProperties, modifiers);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the group profile identified by groupKey and groupId.
+     */
+    public JSONObject groupUnset(String groupKey, String groupId, Collection<String> propertyNames) {
+        return groupUnset(groupKey, groupId, propertyNames, null);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile identified by distinctId.
+     */
+    public JSONObject groupUnset(String groupKey, String groupId, Collection<String> propertyNames,
+                                 JSONObject modifiers) {
+        JSONArray propNamesArray = new JSONArray(propertyNames);
+        return groupMessage(groupKey, groupId, "$unset", propNamesArray, modifiers);
+    }
+
+    /**
+     * Formats a generic group profile message.
+     * Use of this method requires familiarity with the underlying Mixpanel HTTP API,
+     * and it may be simpler and clearer to use the pre-built update methods. Use this
+     * method directly only when interacting with experimental APIs, or APIS that the
+     * rest of this library does not yet support.
+     *
+     * The underlying API is documented at https://mixpanel.com/help/reference/http
+     *
+     * @param groupKey string identifier for the type of group, e.g. 'Company'
+     * @param groupId unique string identifier for the group, e.g. 'Acme Inc.'
+     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $add)
+     * @param properties a payload of the operation. Will be converted to JSON, and should be of types
+     *           Boolean, Double, Integer, Long, String, JSONArray, JSONObject, the JSONObject.NULL object, or null.
+     *           NaN and negative/positive infinity will throw an IllegalArgumentException
+     * @param modifiers if provided, the keys and values in the modifiers object will
+     *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
+     *
+     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
+     *
+     * @see MessageBuilder#groupSet(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#groupSetOnce(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#union(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#remove(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#unset(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#groupDelete(String groupKey, String groupId)
+     */
+    public JSONObject groupMessage(String groupKey, String groupId, String actionType, Object properties,
+                                   JSONObject modifiers) {
+        JSONObject dataObj = new JSONObject();
+        if (null == properties) {
+            throw new IllegalArgumentException("Cannot send null properties, use JSONObject.NULL instead");
+        }
+
+        try {
+            dataObj.put(actionType, properties);
+        } catch (JSONException e) {
+            throw new IllegalArgumentException("Cannot interpret properties as a JSON payload", e);
+        }
+
+        // At this point, nothing should ever throw a JSONException
+        try {
+            dataObj.put("$token", mToken);
+            dataObj.put("$group_key", groupKey);
+            dataObj.put("$group_id", groupId);
+            dataObj.put("$time", System.currentTimeMillis());
+            if (null != modifiers) {
+                final String[] keys = JSONObject.getNames(modifiers);
+                if (keys != null) {
+                  for(String key : keys) {
+                      dataObj.put(key, modifiers.get(key));
+                  }
+                }
+            }
+            JSONObject envelope = new JSONObject();
+            envelope.put("envelope_version", 1);
+            envelope.put("message_type", "group");
             envelope.put("message", dataObj);
             return envelope;
         } catch (JSONException e) {
