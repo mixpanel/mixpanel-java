@@ -14,7 +14,7 @@ import org.json.JSONObject;
 
 /**
  * This class writes JSONObjects of a form appropriate to send as Mixpanel events and
- * updates to people analytics profiles via the MixpanelAPI class.
+ * updates to profiles via the MixpanelAPI class.
  *
  * Instances of this class can be instantiated separately from instances of MixpanelAPI,
  * and the resulting messages are suitable for enqueuing or sending over a local network.
@@ -33,7 +33,7 @@ public class MessageBuilder {
      * Creates a message tracking an event, for consumption by MixpanelAPI
      * See:
      *
-     *    http://blog.mixpanel.com/2012/09/12/best-practices-updated/
+     *    https://help.mixpanel.com/hc/en-us/articles/360000857366-Guide-to-Mixpanel-Basics
      *
      * for a detailed discussion of event names, distinct ids, event properties, and how to use them
      * to get the most out of your metrics.
@@ -46,6 +46,7 @@ public class MessageBuilder {
      *           properties of the event itself (for example { 'Item Purchased' : 'Hat' } or
      *           { 'ExceptionType' : 'OutOfMemory' }), but also properties associated with the
      *           identified user (for example { 'MemberSince' : '2012-01-10' } or { 'TotalMemory' : '10TB' })
+     * @return event message for consumption by MixpanelAPI
      */
     public JSONObject event(String distinctId, String eventName, JSONObject properties) {
         long time = System.currentTimeMillis() / 1000;
@@ -83,10 +84,9 @@ public class MessageBuilder {
     }
 
     /**
-     * Sets a People Analytics property on the profile associated with
-     * the given distinctId. When sent, this message will overwrite any
-     * existing values for the given properties. So, to set some properties
-     * on user 12345, one might call:
+     * Sets a property on the profile associated with the given distinctId. When
+     * sent, this message will overwrite any existing values for the given
+     * properties. So, to set some properties on user 12345, one might call:
      * <pre>
      * {@code
      *     JSONObject userProperties = new JSONObject();
@@ -97,21 +97,21 @@ public class MessageBuilder {
      * }
      * </pre>
      *
-     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile.
+     *            in the properties argument will be updated on on the profile.
+     * @return user profile set message for consumption by MixpanelAPI
      */
     public JSONObject set(String distinctId, JSONObject properties) {
         return set(distinctId, properties, null);
     }
 
     /**
-     * Sets a People Analytics property on the profile associated with
-     * the given distinctId. When sent, this message will overwrite any
-     * existing values for the given properties. So, to set some properties
-     * on user 12345, one might call:
+     * Sets a property on the profile associated with the given distinctId. When
+     * sent, this message will overwrite any existing values for the given
+     * properties. So, to set some properties on user 12345, one might call:
      * <pre>
      * {@code
      *     JSONObject userProperties = new JSONObject();
@@ -122,51 +122,53 @@ public class MessageBuilder {
      * }
      * </pre>
      *
-     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile
+     *            in the properties argument will be updated on on the profile
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return user profile set message for consumption by MixpanelAPI
      */
     public JSONObject set(String distinctId, JSONObject properties, JSONObject modifiers) {
         return peopleMessage(distinctId, "$set", properties, modifiers);
     }
 
     /**
-        * Sets a People Analytics property on the profile associated with
-        * the given distinctId, only if that property is not already set
-        * on the associated profile. So, to set a new property on
-        * on user 12345 if it is not already present, one might call:
-        * <pre>
-        * {@code
-        *     JSONObject userProperties = new JSONObject();
-        *     userProperties.put("Date Began", "2014-08-16");
-        *
-        *     // "Date Began" will not be overwritten, but if it isn't already
-        *     // present it will be set when we send this message.
-        *     JSONObject message = messageBuilder.setOnce("12345", userProperties);
-        *     mixpanelApi.sendMessage(message);
-        * }
-        * </pre>
-        *
-        * @param distinctId a string uniquely identifying the people analytics profile to change,
-        *           for example, a user id of an app, or the hostname of a server. If no profile
-        *           exists for the given id, a new one will be created.
-        * @param properties a collection of properties to set on the associated profile. Each key
-        *            in the properties argument will be updated on on the people profile
-        */
+    * Sets a property on the profile associated with the given distinctId,
+    * only if that property is not already set on the associated profile. So,
+    * to set a new property on on user 12345 if it is not already present, one
+    * might call:
+    * <pre>
+    * {@code
+    *     JSONObject userProperties = new JSONObject();
+    *     userProperties.put("Date Began", "2014-08-16");
+    *
+    *     // "Date Began" will not be overwritten, but if it isn't already
+    *     // present it will be set when we send this message.
+    *     JSONObject message = messageBuilder.setOnce("12345", userProperties);
+    *     mixpanelApi.sendMessage(message);
+    * }
+    * </pre>
+    *
+    * @param distinctId a string uniquely identifying the profile to change,
+    *           for example, a user id of an app, or the hostname of a server. If no profile
+    *           exists for the given id, a new one will be created.
+    * @param properties a collection of properties to set on the associated profile. Each key
+    *            in the properties argument will be updated on on the profile
+    * @return user profile setOnce message for consumption by MixpanelAPI
+    */
     public JSONObject setOnce(String distinctId, JSONObject properties) {
         return setOnce(distinctId, properties, null);
     }
 
     /**
-     * Sets a People Analytics property on the profile associated with
-     * the given distinctId, only if that property is not already set
-     * on the associated profile. So, to set a new property on
-     * on user 12345 if it is not already present, one might call:
+     * Sets a property on the profile associated with the given distinctId,
+     * only if that property is not already set on the associated profile. So,
+     * to set a new property on on user 12345 if it is not already present, one
+     * might call:
      * <pre>
      * {@code
      *     JSONObject userProperties = new JSONObject();
@@ -179,22 +181,22 @@ public class MessageBuilder {
      * }
      * </pre>
      *
-     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile
+     *            in the properties argument will be updated on on the profile
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return user profile setOnce message for consumption by MixpanelAPI
      */
     public JSONObject setOnce(String distinctId, JSONObject properties, JSONObject modifiers) {
         return peopleMessage(distinctId, "$set_once", properties, modifiers);
     }
 
     /**
-     * Deletes the People Analytics profile associated with
-     * the given distinctId.
+     * Deletes the profile associated with the given distinctId.
      *
      * <pre>
      * {@code
@@ -203,15 +205,15 @@ public class MessageBuilder {
      * }
      * </pre>
      *
-     * @param distinctId a string uniquely identifying the people analytics profile to delete
+     * @param distinctId a string uniquely identifying the profile to delete
+     * @return user profile delete message for consumption by MixpanelAPI
      */
     public JSONObject delete(String distinctId) {
         return delete(distinctId, null);
     }
 
     /**
-     * Deletes the People Analytics profile associated with
-     * the given distinctId.
+     * Deletes the profile associated with the given distinctId.
      *
      * <pre>
      * {@code
@@ -220,10 +222,11 @@ public class MessageBuilder {
      * }
      * </pre>
      *
-     * @param distinctId a string uniquely identifying the people analytics profile to delete
+     * @param distinctId a string uniquely identifying the profile to delete
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return user profile delete message for consumption by MixpanelAPI
      */
     public JSONObject delete(String distinctId, JSONObject modifiers) {
         return peopleMessage(distinctId, "$delete", new JSONObject(), modifiers);
@@ -231,7 +234,7 @@ public class MessageBuilder {
 
     /**
      * For each key and value in the properties argument, adds that amount
-     * to the associated property in the People Analytics profile with the given distinct id.
+     * to the associated property in the profile with the given distinct id.
      * So, to maintain a login count for user 12345, one might run the following code
      * at every login:
      * <pre>
@@ -242,11 +245,12 @@ public class MessageBuilder {
      *    mixpanelApi.sendMessage(message);
      * }
      * </pre>
-     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
      *           each associated with a numeric value.
+     * @return user profile increment message for consumption by MixpanelAPI
      */
     public JSONObject increment(String distinctId, Map<String, Long> properties) {
         return increment(distinctId, properties, null);
@@ -254,7 +258,7 @@ public class MessageBuilder {
 
     /**
      * For each key and value in the properties argument, adds that amount
-     * to the associated property in the People Analytics profile with the given distinct id.
+     * to the associated property in the profile with the given distinct id.
      * So, to maintain a login count for user 12345, one might run the following code
      * at every login:
      * <pre>
@@ -265,7 +269,7 @@ public class MessageBuilder {
      *    mixpanelApi.sendMessage(message);
      * }
      * </pre>
-     * @param distinctId a string uniquely identifying the people analytics profile to change,
+     * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
@@ -273,6 +277,7 @@ public class MessageBuilder {
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return user profile increment message for consumption by MixpanelAPI
      */
     public JSONObject increment(String distinctId, Map<String, Long> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
@@ -281,7 +286,12 @@ public class MessageBuilder {
 
     /**
      * For each key and value in the properties argument, attempts to append
-     * that value to a list associated with the key in the identified People Analytics profile.
+     * that value to a list associated with the key in the identified profile.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the append operation
+     * @return user profile append message for consumption by MixpanelAPI
      */
     public JSONObject append(String distinctId, JSONObject properties) {
         return append(distinctId, properties, null);
@@ -289,7 +299,15 @@ public class MessageBuilder {
 
     /**
      * For each key and value in the properties argument, attempts to append
-     * that value to a list associated with the key in the identified People Analytics profile.
+     * that value to a list associated with the key in the identified profile.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the append operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return user profile append message for consumption by MixpanelAPI
      */
     public JSONObject append(String distinctId, JSONObject properties, JSONObject modifiers) {
         return peopleMessage(distinctId, "$append", properties, modifiers);
@@ -298,6 +316,11 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, attempts to remove
      * that value from a list associated with the key in the specified user profile.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the remove operation
+     * @return user profile remove message for consumption by MixpanelAPI
      */
     public JSONObject remove(String distinctId, JSONObject properties) {
         return remove(distinctId, properties, null);
@@ -306,6 +329,14 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, attempts to remove
      * that value from a list associated with the key in the specified user profile.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the remove operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return user profile remove message for consumption by MixpanelAPI
      */
     public JSONObject remove(String distinctId, JSONObject properties, JSONObject modifiers) {
         return peopleMessage(distinctId, "$remove", properties, modifiers);
@@ -315,6 +346,11 @@ public class MessageBuilder {
      * Merges list-valued properties into a user profile.
      * The list values in the given are merged with the existing list on the user profile,
      * ignoring duplicate list values.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the union operation
+     * @return user profile union message for consumption by MixpanelAPI
      */
     public JSONObject union(String distinctId, Map<String, JSONArray> properties) {
         return union(distinctId, properties, null);
@@ -324,6 +360,14 @@ public class MessageBuilder {
      * Merges list-valued properties into a user profile.
      * The list values in the given are merged with the existing list on the user profile,
      * ignoring duplicate list values.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param properties properties for the union operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return user profile union message for consumption by MixpanelAPI
      */
     public JSONObject union(String distinctId, Map<String, JSONArray> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
@@ -332,6 +376,11 @@ public class MessageBuilder {
 
     /**
      * Removes the properties named in propertyNames from the profile identified by distinctId.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param propertyNames properties for the unset operation
+     * @return user profile unset message for consumption by MixpanelAPI
      */
     public JSONObject unset(String distinctId, Collection<String> propertyNames) {
         return unset(distinctId, propertyNames, null);
@@ -339,6 +388,14 @@ public class MessageBuilder {
 
     /**
      * Removes the properties named in propertyNames from the profile identified by distinctId.
+     * @param distinctId a string uniquely identifying the profile to change,
+     *           for example, a user id of an app, or the hostname of a server. If no profile
+     *           exists for the given id, a new one will be created.
+     * @param propertyNames properties for the unset operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return user profile unset message for consumption by MixpanelAPI
      */
     public JSONObject unset(String distinctId, Collection<String> propertyNames, JSONObject modifiers) {
         JSONArray propNamesArray = new JSONArray(propertyNames);
@@ -348,10 +405,11 @@ public class MessageBuilder {
     /**
      * Tracks revenue associated with the given distinctId.
      *
-     * @param distinctId an identifier associated with a People Analytics profile
+     * @param distinctId an identifier associated with a profile
      * @param amount a double revenue amount. Positive amounts represent income for your business.
      * @param properties can be null. If provided, a set of properties to associate with
      *           the individual transaction.
+     * @return user profile trackCharge message for consumption by MixpanelAPI
      */
     public JSONObject trackCharge(String distinctId, double amount, JSONObject properties) {
         return trackCharge(distinctId, amount, properties, null);
@@ -360,12 +418,13 @@ public class MessageBuilder {
     /**
      * Tracks revenue associated with the given distinctId.
      *
-     * @param distinctId an identifier associated with a People Analytics profile
+     * @param distinctId an identifier associated with a profile
      * @param amount a double revenue amount. Positive amounts represent income for your business.
      * @param properties can be null. If provided, a set of properties to associate with
      *           the individual transaction.
      * @param modifiers can be null. If provided, the keys and values in the object will
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
+     * @return user profile trackCharge message for consumption by MixpanelAPI
      */
     public JSONObject trackCharge(String distinctId, double amount, JSONObject properties, JSONObject modifiers) {
         JSONObject transactionValue = new JSONObject();
@@ -393,14 +452,14 @@ public class MessageBuilder {
     }
 
     /**
-     * Formats a generic people message.
+     * Formats a generic user profile message.
      * Use of this method requires familiarity with the underlying Mixpanel HTTP API,
      * and it may be simpler and clearer to use the pre-built functions for setting,
      * incrementing, and appending to properties. Use this method directly only
      * when interacting with experimental APIs, or APIS that the rest of this library
      * does not yet support.
      *
-     * The underlying API is documented at https://mixpanel.com/help/reference/http
+     * The underlying API is documented at https://developer.mixpanel.com/docs/http
      *
      * @param distinctId a string uniquely identifying the individual cause associated with this event
      *           (for example, the user id of a signing-in user, or the hostname of a server)
@@ -410,12 +469,12 @@ public class MessageBuilder {
      *           NaN and negative/positive infinity will throw an IllegalArgumentException
      * @param modifiers if provided, the keys and values in the modifiers object will
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
+     * @return generic user profile message for consumption by MixpanelAPI
      *
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
      *
      * @see MessageBuilder#set(String distinctId, JSONObject properties)
      * @see MessageBuilder#delete(String distinctId)
-     * @see MessageBuilder#increment(String distinctId, Map<String, Long> properties)
      * @see MessageBuilder#append(String distinctId, JSONObject properties, JSONObject modifiers)
      */
     public JSONObject peopleMessage(String distinctId, String actionType, Object properties, JSONObject modifiers) {
@@ -470,7 +529,8 @@ public class MessageBuilder {
      * @param groupKey the property that connects event data for Group Analytics
      * @param groupId the identifier for a specific group
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile.
+     *            in the properties argument will be updated on on the profile.
+     * @return group profile set message for consumption by MixpanelAPI
      */
     public JSONObject groupSet(String groupKey, String groupId, JSONObject properties) {
         return groupSet(groupKey, groupId, properties, null);
@@ -493,10 +553,11 @@ public class MessageBuilder {
      * @param groupKey the property that connects event data for Group Analytics
      * @param groupId the identifier for a specific group
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile.
+     *            in the properties argument will be updated on on the profile.
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return group profile set message for consumption by MixpanelAPI
      */
     public JSONObject groupSet(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
         return groupMessage(groupKey, groupId, "$set", properties, modifiers);
@@ -517,7 +578,8 @@ public class MessageBuilder {
      * @param groupKey the property that connects event data for Group Analytics
      * @param groupId the identifier for a specific group
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile.
+     *            in the properties argument will be updated on on the profile.
+     * @return group profile setOnce message for consumption by MixpanelAPI
      */
     public JSONObject groupSetOnce(String groupKey, String groupId, JSONObject properties) {
         return groupSetOnce(groupKey, groupId, properties, null);
@@ -538,10 +600,11 @@ public class MessageBuilder {
      * @param groupKey the property that connects event data for Group Analytics
      * @param groupId the identifier for a specific group
      * @param properties a collection of properties to set on the associated profile. Each key
-     *            in the properties argument will be updated on on the people profile.
+     *            in the properties argument will be updated on on the profile.
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return group profile setOnce message for consumption by MixpanelAPI
      */
     public JSONObject groupSetOnce(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
         return groupMessage(groupKey, groupId, "$set_once", properties, modifiers);
@@ -559,6 +622,7 @@ public class MessageBuilder {
      *
      * @param groupKey the property that connects event data for Group Analytics
      * @param groupId the identifier for a specific group
+     * @return group profile delete message for consumption by MixpanelAPI
      */
     public JSONObject groupDelete(String groupKey, String groupId) {
         return groupDelete(groupKey, groupId, null);
@@ -579,6 +643,7 @@ public class MessageBuilder {
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
+     * @return group profile delete message for consumption by MixpanelAPI
      */
     public JSONObject groupDelete(String groupKey, String groupId, JSONObject modifiers) {
         return groupMessage(groupKey, groupId, "$delete", new JSONObject(), modifiers);
@@ -587,6 +652,10 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, attempts to remove
      * that value from a list associated with the key in the specified group profile.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties properties for the remove operation
+     * @return group profile remove message for consumption by MixpanelAPI
      */
     public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties) {
         return groupRemove(groupKey, groupId, properties, null);
@@ -595,6 +664,13 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, attempts to remove
      * that value from a list associated with the key in the specified group profile.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties properties for the remove operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return group profile remove message for consumption by MixpanelAPI
      */
     public JSONObject groupRemove(String groupKey, String groupId, JSONObject properties, JSONObject modifiers) {
         return groupMessage(groupKey, groupId, "$remove", properties, modifiers);
@@ -604,6 +680,10 @@ public class MessageBuilder {
      * Merges list-valued properties into a group profile.
      * The list values given are merged with the existing list on the group profile,
      * ignoring duplicate list values.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties properties for the union operation
+     * @return group profile union message for consumption by MixpanelAPI
      */
     public JSONObject groupUnion(String groupKey, String groupId, Map<String, JSONArray> properties) {
         return groupUnion(groupKey, groupId, properties, null);
@@ -613,6 +693,13 @@ public class MessageBuilder {
      * Merges list-valued properties into a group profile.
      * The list values given are merged with the existing list on the group profile,
      * ignoring duplicate list values.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param properties properties for the union operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return group profile union message for consumption by MixpanelAPI
      */
     public JSONObject groupUnion(String groupKey, String groupId, Map<String, JSONArray> properties,
                               JSONObject modifiers) {
@@ -622,13 +709,24 @@ public class MessageBuilder {
 
     /**
      * Removes the properties named in propertyNames from the group profile identified by groupKey and groupId.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param propertyNames properties for the unset operation
+     * @return group profile unset message for consumption by MixpanelAPI
      */
     public JSONObject groupUnset(String groupKey, String groupId, Collection<String> propertyNames) {
         return groupUnset(groupKey, groupId, propertyNames, null);
     }
 
     /**
-     * Removes the properties named in propertyNames from the profile identified by distinctId.
+     * Removes the properties named in propertyNames from the group profile identified by groupKey and groupId.
+     * @param groupKey the property that connects event data for Group Analytics
+     * @param groupId the identifier for a specific group
+     * @param propertyNames properties for the unset operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return group profile unset message for consumption by MixpanelAPI
      */
     public JSONObject groupUnset(String groupKey, String groupId, Collection<String> propertyNames,
                                  JSONObject modifiers) {
@@ -653,14 +751,13 @@ public class MessageBuilder {
      *           NaN and negative/positive infinity will throw an IllegalArgumentException
      * @param modifiers if provided, the keys and values in the modifiers object will
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
+     * @return generic group profile message for consumption by MixpanelAPI
      *
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
      *
      * @see MessageBuilder#groupSet(String groupKey, String groupId, JSONObject properties)
      * @see MessageBuilder#groupSetOnce(String groupKey, String groupId, JSONObject properties)
-     * @see MessageBuilder#union(String groupKey, String groupId, JSONObject properties)
-     * @see MessageBuilder#remove(String groupKey, String groupId, JSONObject properties)
-     * @see MessageBuilder#unset(String groupKey, String groupId, JSONObject properties)
+     * @see MessageBuilder#groupRemove(String groupKey, String groupId, JSONObject properties)
      * @see MessageBuilder#groupDelete(String groupKey, String groupId)
      */
     public JSONObject groupMessage(String groupKey, String groupId, String actionType, Object properties,
