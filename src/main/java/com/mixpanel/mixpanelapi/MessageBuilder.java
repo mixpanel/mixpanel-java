@@ -49,7 +49,7 @@ public class MessageBuilder {
      * @return event message for consumption by MixpanelAPI
      */
     public JSONObject event(String distinctId, String eventName, JSONObject properties) {
-        long time = System.currentTimeMillis() / 1000;
+        long time = System.currentTimeMillis();
 
         // Nothing below should EVER throw a JSONException.
         try {
