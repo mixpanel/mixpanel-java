@@ -3,7 +3,7 @@
 
   <groupId>com.mixpanel</groupId>
   <artifactId>mixpanel-java</artifactId>
-  <version>1.5.2</version>
+  <version>1.5.3-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>mixpanel-java</name>
   <description>
