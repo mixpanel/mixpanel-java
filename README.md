@@ -7,7 +7,7 @@ Latest Version
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java</artifactId>
-    <version>1.5.2</version>
+    <version>1.5.3</version>
 </dependency>
 ```
 
