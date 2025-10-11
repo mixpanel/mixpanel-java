@@ -20,6 +20,7 @@ import com.mixpanel.mixpanelapi.MixpanelAPI;
  *
  */
 public class MixpanelAPIDemo {
+    
 
     public static String PROJECT_TOKEN = "2d7b8a6e7d5d7d81ff4d988bac0be9a7"; // "YOUR TOKEN";
     public static long MILLIS_TO_WAIT = 10 * 1000;
@@ -69,6 +70,12 @@ public class MixpanelAPIDemo {
         System.out.println("");
         System.out.println("This is a simple program demonstrating Mixpanel's Java library.");
         System.out.println("It reads lines from standard input and sends them to Mixpanel as events.");
+        System.out.println("");
+        System.out.println("The demo also shows:");
+        System.out.println("  - Setting user properties");
+        System.out.println("  - Tracking charges");
+        System.out.println("  - Importing historical events");
+        System.out.println("  - Incrementing user properties");
     }
 
     /**
@@ -100,6 +107,27 @@ public class MixpanelAPIDemo {
         // Charge the user $2.50 for using the program :)
         JSONObject transactionMessage = messageBuilder.trackCharge(distinctId, 2.50, null);
         messages.add(transactionMessage);
+
+        // Import a historical event (30 days ago) with explicit time and $insert_id
+        long thirtyDaysAgo = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L);
+        Map<String, Object> importPropsMap = new HashMap<String, Object>();
+        importPropsMap.put("time", thirtyDaysAgo);
+        importPropsMap.put("$insert_id", "demo-import-" + System.currentTimeMillis());
+        importPropsMap.put("Event Type", "Historical");
+        importPropsMap.put("Source", "Demo Import");
+        JSONObject importProps = new JSONObject(importPropsMap);
+        JSONObject importMessage = messageBuilder.importEvent(distinctId, "Program Started", importProps);
+        messages.add(importMessage);
+
+        // Import another event using defaults (time and $insert_id auto-generated)
+        Map<String, String> simpleImportProps = new HashMap<String, String>();
+        simpleImportProps.put("Source", "Demo Simple Import");
+        JSONObject simpleImportMessage = messageBuilder.importEvent(distinctId, "Simple Import Event", new JSONObject(simpleImportProps));
+        messages.add(simpleImportMessage);
+
+        // Import event with no properties at all (time and $insert_id both auto-generated)
+        JSONObject minimalImportMessage = messageBuilder.importEvent(distinctId, "Minimal Import Event", null);
+        messages.add(minimalImportMessage);
 
         while((line != null) && (line.length() > 0)) {
             System.out.println("SENDING LINE: " + line);

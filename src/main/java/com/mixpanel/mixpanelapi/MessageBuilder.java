@@ -83,6 +83,72 @@ public class MessageBuilder {
         }
     }
 
+    /***
+     * Creates a message for importing historical events (events older than 5 days) to Mixpanel via the /import endpoint.
+     * This method is similar to event(), but is designed for the import endpoint which requires:
+     * - A custom timestamp (defaults to current time if not provided)
+     * - An insert_id for deduplication (auto-generated if not provided)
+     * - Basic authentication using the project token
+     *
+     * See:
+     *    https://developer.mixpanel.com/reference/import-events
+     *
+     * @param distinctId a string uniquely identifying the individual cause associated with this event
+     * @param eventName a human readable name for the event, for example "Purchase", or "Threw Exception"
+     * @param properties a JSONObject associating properties with the event. Optional properties:
+     *           - "time": timestamp in milliseconds since epoch (defaults to current time)
+     *           - "$insert_id": unique identifier for deduplication (auto-generated if not provided)
+     * @return import event message for consumption by MixpanelAPI
+     */
+    public JSONObject importEvent(String distinctId, String eventName, JSONObject properties) {
+        long time = System.currentTimeMillis();
+        
+        // Nothing below should EVER throw a JSONException.
+        try {
+            JSONObject dataObj = new JSONObject();
+            dataObj.put("event", eventName);
+
+            JSONObject propertiesObj = null;
+            if (properties == null) {
+                propertiesObj = new JSONObject();
+            }
+            else {
+                propertiesObj = new JSONObject(properties.toString());
+            }
+            // no need to add $import true property as this is added by the backend for any event imported 
+            if (! propertiesObj.has("token")) propertiesObj.put("token", mToken);
+            
+            // Set default time to current time if not provided
+            if (! propertiesObj.has("time")) propertiesObj.put("time", time);
+            
+            // Generate default $insert_id if not provided (to prevent duplicates)
+            // Format: distinctId-eventName-timestamp-random
+            if (! propertiesObj.has("$insert_id")) {
+                String insertId = String.format("%s-%s-%d-%d",
+                    distinctId != null ? distinctId : "unknown",
+                    eventName.replaceAll("[^a-zA-Z0-9]", "-"),
+                    time,
+                    (long)(Math.random() * 1000000));
+                propertiesObj.put("$insert_id", insertId);
+            }
+            
+            if (! propertiesObj.has("mp_lib")) propertiesObj.put("mp_lib", "jdk");
+
+            if (distinctId != null)
+                propertiesObj.put("distinct_id", distinctId);
+
+            dataObj.put("properties", propertiesObj);
+
+            JSONObject envelope = new JSONObject();
+            envelope.put("envelope_version", 1);
+            envelope.put("message_type", "import");
+            envelope.put("message", dataObj);
+            return envelope;
+        } catch (JSONException e) {
+            throw new RuntimeException("Can't construct a Mixpanel import message", e);
+        }
+    }
+
     /**
      * Sets a property on the profile associated with the given distinctId. When
      * sent, this message will overwrite any existing values for the given

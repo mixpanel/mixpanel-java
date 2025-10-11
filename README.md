@@ -30,6 +30,10 @@ are built by `MessageBuilder` objects, and those messages can be consumed by the
     MixpanelAPI mixpanel = new MixpanelAPI();
     mixpanel.deliver(delivery);
 
+### Importing Historical Events
+
+The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
+
 Learn More
 ----------
 This library in particular has more in-depth documentation at

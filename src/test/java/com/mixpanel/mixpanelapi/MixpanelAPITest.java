@@ -700,4 +700,247 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void testImportEvent() {
+        // Test creating an import event message
+        try {
+            // Time more than 5 days ago and less than 1 year ago (30 days)
+            long historicalTime = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L);
+            
+            JSONObject properties = new JSONObject();
+            properties.put("time", historicalTime);
+            properties.put("$insert_id", "test-insert-id-123");
+            properties.put("prop key", "prop value");
+            
+            JSONObject importMessage = mBuilder.importEvent("a distinct id", "Historical Event", properties);
+            
+            // Verify the message structure
+            assertTrue("Message is valid", new ClientDelivery().isValidMessage(importMessage));
+            assertEquals("Message type is import", "import", importMessage.getString("message_type"));
+            
+            JSONObject message = importMessage.getJSONObject("message");
+            assertEquals("Event name correct", "Historical Event", message.getString("event"));
+            
+            JSONObject props = message.getJSONObject("properties");
+            assertEquals("distinct_id correct", "a distinct id", props.getString("distinct_id"));
+            assertEquals("time correct", historicalTime, props.getLong("time"));
+            assertEquals("$insert_id correct", "test-insert-id-123", props.getString("$insert_id"));
+            assertEquals("token present", "a token", props.getString("token"));
+            assertEquals("custom property present", "prop value", props.getString("prop key"));
+        } catch (JSONException e) {
+            fail("Failed to create or parse import event: " + e.toString());
+        }
+    }
+
+    public void testImportMessageDelivery() {
+        // Test that import messages are properly sent
+        final Map<String, String> sawData = new HashMap<String, String>();
+        final Map<String, String> sawToken = new HashMap<String, String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                sawData.put(endpointUrl, dataString);
+                sawToken.put(endpointUrl, token);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        
+        // Create import events with historical timestamps (90 days ago, within >5 days and <1 year range)
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props1 = new JSONObject();
+            props1.put("time", historicalTime);
+            props1.put("$insert_id", "import-id-1");
+            props1.put("Item", "Widget");
+            
+            JSONObject importEvent1 = mBuilder.importEvent("a distinct id", "Purchase", props1);
+            c.addMessage(importEvent1);
+            
+            JSONObject props2 = new JSONObject();
+            props2.put("time", historicalTime + 1000);
+            props2.put("$insert_id", "import-id-2");
+            props2.put("Page", "Home");
+            
+            JSONObject importEvent2 = mBuilder.importEvent("a distinct id", "Page View", props2);
+            c.addMessage(importEvent2);
+            
+            api.deliver(c);
+            
+            // Verify the import data was sent
+            String importData = sawData.get("import url?strict=1");
+            assertNotNull("Import data was sent", importData);
+            
+            // Verify token was extracted and used for auth
+            String usedToken = sawToken.get("import url?strict=1");
+            assertEquals("Token extracted correctly", "a token", usedToken);
+            
+            // Parse and verify the import data
+            JSONArray sentMessages = new JSONArray(importData);
+            assertEquals("Two import messages sent", 2, sentMessages.length());
+            
+            JSONObject sentEvent1 = sentMessages.getJSONObject(0);
+            assertEquals("First event name correct", "Purchase", sentEvent1.getString("event"));
+            
+            JSONObject sentProps1 = sentEvent1.getJSONObject("properties");
+            assertEquals("First event distinct_id correct", "a distinct id", sentProps1.getString("distinct_id"));
+            assertTrue("First event has $insert_id", sentProps1.has("$insert_id"));
+            
+        } catch (IOException e) {
+            fail("IOException during delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON parsing error: " + e.toString());
+        }
+    }
+
+    public void testImportLargeBatch() {
+        // Test that import messages respect the 2000 message batch size limit
+        final List<String> sends = new ArrayList<String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                sends.add(dataString);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        // Use 180 days ago (6 months, within >5 days and <1 year range)
+        long historicalTime = System.currentTimeMillis() - (180L * 24L * 60L * 60L * 1000L);
+        
+        // Create more than 2000 import events
+        int totalEvents = 2500;
+        for (int i = 0; i < totalEvents; i++) {
+            try {
+                JSONObject props = new JSONObject();
+                props.put("time", historicalTime + i);
+                props.put("$insert_id", "insert-id-" + i);
+                props.put("count", i);
+                
+                JSONObject importEvent = mBuilder.importEvent("a distinct id", "Test Event", props);
+                c.addMessage(importEvent);
+            } catch (JSONException e) {
+                fail("Failed to create import event: " + e.toString());
+            }
+        }
+        
+        try {
+            api.deliver(c);
+            
+            // Should be split into 2 batches (2000 + 500)
+            assertEquals("Messages split into batches", 2, sends.size());
+            
+            JSONArray firstBatch = new JSONArray(sends.get(0));
+            assertEquals("First batch has 2000 events", Config.IMPORT_MAX_MESSAGE_SIZE, firstBatch.length());
+            
+            JSONArray secondBatch = new JSONArray(sends.get(1));
+            assertEquals("Second batch has 500 events", 500, secondBatch.length());
+            
+        } catch (IOException e) {
+            fail("IOException during delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON parsing error: " + e.toString());
+        }
+    }
+
+    public void testImportMessageValidation() {
+        // Test that import messages are validated correctly
+        ClientDelivery c = new ClientDelivery();
+        
+        // Use 300 days ago (within >5 days and <1 year range)
+        long historicalTime = System.currentTimeMillis() - (300L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject properties = new JSONObject();
+            properties.put("time", historicalTime);
+            properties.put("$insert_id", "validation-test-id");
+            
+            JSONObject importMessage = mBuilder.importEvent("a distinct id", "Test", properties);
+            
+            assertTrue("Import message is valid", c.isValidMessage(importMessage));
+            
+            // Add to delivery and verify it's in the import messages list
+            c.addMessage(importMessage);
+            assertEquals("Import message added to import list", 1, c.getImportMessages().size());
+            assertEquals("No regular event messages", 0, c.getEventsMessages().size());
+            
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+    }
+
+    public void testImportEventWithDefaults() {
+        // Test that import events automatically generate time and $insert_id if not provided
+        long beforeTime = System.currentTimeMillis();
+        
+        try {
+            // Test 1: No properties at all - should generate both time and $insert_id
+            JSONObject importMessage1 = mBuilder.importEvent("user-123", "Test Event", null);
+            
+            assertTrue("Message is valid", new ClientDelivery().isValidMessage(importMessage1));
+            assertEquals("Message type is import", "import", importMessage1.getString("message_type"));
+            
+            JSONObject message1 = importMessage1.getJSONObject("message");
+            JSONObject props1 = message1.getJSONObject("properties");
+            
+            assertTrue("Has auto-generated time", props1.has("time"));
+            long generatedTime = props1.getLong("time");
+            assertTrue("Generated time is recent", generatedTime >= beforeTime && generatedTime <= System.currentTimeMillis());
+            
+            assertTrue("Has auto-generated $insert_id", props1.has("$insert_id"));
+            String insertId1 = props1.getString("$insert_id");
+            assertTrue("$insert_id contains distinct_id", insertId1.contains("user-123"));
+            assertTrue("$insert_id contains event name", insertId1.contains("Test-Event"));
+            
+            // Test 2: Empty properties object - should generate both
+            JSONObject emptyProps = new JSONObject();
+            JSONObject importMessage2 = mBuilder.importEvent("user-456", "Another Event", emptyProps);
+            
+            JSONObject props2 = importMessage2.getJSONObject("message").getJSONObject("properties");
+            assertTrue("Has auto-generated time", props2.has("time"));
+            assertTrue("Has auto-generated $insert_id", props2.has("$insert_id"));
+            
+            String insertId2 = props2.getString("$insert_id");
+            assertFalse("Different events get different insert_ids", insertId1.equals(insertId2));
+            
+            // Test 3: Custom time provided, should generate $insert_id only
+            long customTime = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L);
+            JSONObject propsWithTime = new JSONObject();
+            propsWithTime.put("time", customTime);
+            
+            JSONObject importMessage3 = mBuilder.importEvent("user-789", "Custom Time Event", propsWithTime);
+            JSONObject props3 = importMessage3.getJSONObject("message").getJSONObject("properties");
+            
+            assertEquals("Custom time preserved", customTime, props3.getLong("time"));
+            assertTrue("$insert_id auto-generated", props3.has("$insert_id"));
+            
+            // Test 4: Custom $insert_id provided, should generate time only
+            JSONObject propsWithInsertId = new JSONObject();
+            propsWithInsertId.put("$insert_id", "my-custom-insert-id");
+            
+            JSONObject importMessage4 = mBuilder.importEvent("user-abc", "Custom Insert ID Event", propsWithInsertId);
+            JSONObject props4 = importMessage4.getJSONObject("message").getJSONObject("properties");
+            
+            assertTrue("Time auto-generated", props4.has("time"));
+            assertEquals("Custom $insert_id preserved", "my-custom-insert-id", props4.getString("$insert_id"));
+            
+            // Test 5: Both custom time and $insert_id provided - should preserve both
+            JSONObject propsWithBoth = new JSONObject();
+            propsWithBoth.put("time", customTime);
+            propsWithBoth.put("$insert_id", "fully-custom-id");
+            
+            JSONObject importMessage5 = mBuilder.importEvent("user-xyz", "Fully Custom Event", propsWithBoth);
+            JSONObject props5 = importMessage5.getJSONObject("message").getJSONObject("properties");
+            
+            assertEquals("Custom time preserved", customTime, props5.getLong("time"));
+            assertEquals("Custom $insert_id preserved", "fully-custom-id", props5.getString("$insert_id"));
+            
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+    }
+
 }
