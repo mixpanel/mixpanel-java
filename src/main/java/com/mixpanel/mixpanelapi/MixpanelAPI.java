@@ -338,7 +338,7 @@ public class MixpanelAPI {
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
                 try {
-                    String errorResponse = slurp(errorStream);
+                    slurp(errorStream);
                     errorStream.close();
                     // Return false to indicate rejection, which will throw MixpanelServerException
                     return false;
