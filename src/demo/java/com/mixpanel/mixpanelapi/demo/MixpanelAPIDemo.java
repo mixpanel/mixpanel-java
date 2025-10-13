@@ -22,13 +22,14 @@ import com.mixpanel.mixpanelapi.MixpanelAPI;
 public class MixpanelAPIDemo {
     
 
-    public static String PROJECT_TOKEN = "2d7b8a6e7d5d7d81ff4d988bac0be9a7"; // "YOUR TOKEN";
+    public static String PROJECT_TOKEN = "d1a82dc38adb1e0452f848867b67f9d2"; // "YOUR TOKEN";
     public static long MILLIS_TO_WAIT = 10 * 1000;
 
     private static class DeliveryThread extends Thread {
-        public DeliveryThread(Queue<JSONObject> messages) {
-            mMixpanel = new MixpanelAPI();
+        public DeliveryThread(Queue<JSONObject> messages, boolean useGzipCompression) {
+            mMixpanel = new MixpanelAPI(useGzipCompression);
             mMessageQueue = messages;
+            mUseGzipCompression = useGzipCompression;
         }
 
         @Override
@@ -41,7 +42,7 @@ public class MixpanelAPIDemo {
                     do {
                         message = mMessageQueue.poll();
                         if (message != null) {
-                            System.out.println("WILL SEND MESSAGE:\n" + message.toString());
+                            System.out.println("WILL SEND MESSAGE" + (mUseGzipCompression ? " (with gzip compression)" : "") + ":\n" + message.toString());
 
                             messageCount = messageCount + 1;
                             delivery.addMessage(message);
@@ -51,7 +52,7 @@ public class MixpanelAPIDemo {
 
                     mMixpanel.deliver(delivery);
 
-                    System.out.println("Sent " + messageCount + " messages.");
+                    System.out.println("Sent " + messageCount + " messages" + (mUseGzipCompression ? " with gzip compression" : "") + ".");
                     Thread.sleep(MILLIS_TO_WAIT);
                 }
             } catch (IOException e) {
@@ -63,6 +64,7 @@ public class MixpanelAPIDemo {
 
         private final MixpanelAPI mMixpanel;
         private final Queue<JSONObject> mMessageQueue;
+        private final boolean mUseGzipCompression;
     }
 
     public static void printUsage() {
@@ -76,6 +78,7 @@ public class MixpanelAPIDemo {
         System.out.println("  - Tracking charges");
         System.out.println("  - Importing historical events");
         System.out.println("  - Incrementing user properties");
+        System.out.println("  - Using gzip compression");
     }
 
     /**
@@ -84,7 +87,12 @@ public class MixpanelAPIDemo {
     public static void main(String[] args)
         throws IOException, InterruptedException {
         Queue<JSONObject> messages = new ConcurrentLinkedQueue<JSONObject>();
-        DeliveryThread worker = new DeliveryThread(messages);
+        Queue<JSONObject> messagesWithGzip = new ConcurrentLinkedQueue<JSONObject>();
+        
+        // Create two delivery threads - one without gzip and one with gzip compression
+        DeliveryThread worker = new DeliveryThread(messages, false);
+        DeliveryThread workerWithGzip = new DeliveryThread(messagesWithGzip, true);
+        
         MessageBuilder messageBuilder = new MessageBuilder(PROJECT_TOKEN);
 
         if (args.length != 1) {
@@ -93,6 +101,8 @@ public class MixpanelAPIDemo {
         }
 
         worker.start();
+        workerWithGzip.start();
+        
         String distinctId = args[0];
         BufferedReader inputLines = new BufferedReader(new InputStreamReader(System.in));
         String line = inputLines.readLine();
@@ -129,6 +139,28 @@ public class MixpanelAPIDemo {
         JSONObject minimalImportMessage = messageBuilder.importEvent(distinctId, "Minimal Import Event", null);
         messages.add(minimalImportMessage);
 
+        // Demonstrate gzip compression by sending some messages with compression enabled
+        System.out.println("\n=== Demonstrating gzip compression ===");
+        
+        // Send a regular event with gzip compression
+        Map<String, String> gzipEventProps = new HashMap<String, String>();
+        gzipEventProps.put("Compression", "gzip");
+        gzipEventProps.put("Demo", "true");
+        JSONObject gzipEvent = messageBuilder.event(distinctId, "Gzip Compressed Event", new JSONObject(gzipEventProps));
+        messagesWithGzip.add(gzipEvent);
+        
+        // Send an import event with gzip compression
+        long historicalTime = System.currentTimeMillis() - (60L * 24L * 60L * 60L * 1000L);
+        Map<String, Object> gzipImportProps = new HashMap<String, Object>();
+        gzipImportProps.put("time", historicalTime);
+        gzipImportProps.put("$insert_id", "gzip-import-" + System.currentTimeMillis());
+        gzipImportProps.put("Compression", "gzip");
+        gzipImportProps.put("Event Type", "Historical with Gzip");
+        JSONObject gzipImportEvent = messageBuilder.importEvent(distinctId, "Gzip Compressed Import", new JSONObject(gzipImportProps));
+        messagesWithGzip.add(gzipImportEvent);
+        
+        System.out.println("Added events to gzip compression queue\n");
+
         while((line != null) && (line.length() > 0)) {
             System.out.println("SENDING LINE: " + line);
             Map<String, String> propMap = new HashMap<String, String>();
@@ -145,10 +177,11 @@ public class MixpanelAPIDemo {
             line = inputLines.readLine();
         }
 
-        while(! messages.isEmpty()) {
+        while(! messages.isEmpty() || ! messagesWithGzip.isEmpty()) {
             Thread.sleep(1000);
         }
 
         worker.interrupt();
+        workerWithGzip.interrupt();
     }
 }

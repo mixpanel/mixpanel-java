@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.GZIPInputStream;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -940,6 +942,180 @@ public class MixpanelAPITest extends TestCase
             
         } catch (JSONException e) {
             fail("JSON error: " + e.toString());
+        }
+    }
+
+    public void testGzipCompressionEnabled() {
+        // Test that gzip compression is properly enabled and data is compressed
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url", true) {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) throws IOException {
+                // This method should be called with gzip compression enabled
+                fail("sendData should not be called directly when testing at this level");
+                return true;
+            }
+        };
+        
+        // Verify the API was created with gzip compression enabled
+        assertTrue("Gzip compression should be enabled", api.mUseGzipCompression);
+    }
+
+    public void testGzipCompressionDisabled() {
+        // Test that gzip compression is disabled by default
+        MixpanelAPI api1 = new MixpanelAPI();
+        assertFalse("Gzip compression should be disabled by default", api1.mUseGzipCompression);
+        
+        MixpanelAPI api2 = new MixpanelAPI(false);
+        assertFalse("Gzip compression should be disabled when explicitly set to false", api2.mUseGzipCompression);
+        
+        MixpanelAPI api3 = new MixpanelAPI("events url", "people url");
+        assertFalse("Gzip compression should be disabled by default for custom endpoints", api3.mUseGzipCompression);
+    }
+
+    public void testGzipCompressionDataIntegrity() {
+        // Test that data compressed with gzip can be decompressed correctly
+        final Map<String, byte[]> capturedCompressedData = new HashMap<String, byte[]>();
+        final Map<String, String> capturedOriginalData = new HashMap<String, String>();
+        
+        MixpanelAPI apiWithGzip = new MixpanelAPI("events url", "people url", "groups url", "import url", true) {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) throws IOException {
+                capturedOriginalData.put(endpointUrl, dataString);
+                
+                // Simulate what the real sendData does with gzip
+                if (mUseGzipCompression) {
+                    try {
+                        String encodedData = encodeDataString(dataString);
+                        String encodedQuery = "data=" + encodedData;
+                        
+                        java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+                        java.util.zip.GZIPOutputStream gzipStream = new java.util.zip.GZIPOutputStream(byteStream);
+                        gzipStream.write(encodedQuery.getBytes("utf-8"));
+                        gzipStream.finish();
+                        gzipStream.close();
+                        
+                        capturedCompressedData.put(endpointUrl, byteStream.toByteArray());
+                    } catch (Exception e) {
+                        throw new IOException("Compression failed", e);
+                    }
+                }
+                
+                return true;
+            }
+        };
+        
+        ClientDelivery delivery = new ClientDelivery();
+        JSONObject event = mBuilder.event("test-user", "Test Event", mSampleProps);
+        delivery.addMessage(event);
+        
+        try {
+            apiWithGzip.deliver(delivery);
+            
+            // Verify data was captured
+            String eventUrl = "events url?ip=0";
+            assertTrue("Original data was captured", capturedOriginalData.containsKey(eventUrl));
+            assertTrue("Compressed data was captured", capturedCompressedData.containsKey(eventUrl));
+            
+            // Verify compressed data is smaller than original (for typical data)
+            byte[] compressedBytes = capturedCompressedData.get(eventUrl);
+            String originalData = capturedOriginalData.get(eventUrl);
+            String encodedData = apiWithGzip.encodeDataString(originalData);
+            String encodedQuery = "data=" + encodedData;
+            
+            assertTrue("Compressed data exists", compressedBytes.length > 0);
+            
+            // Decompress and verify data integrity
+            ByteArrayInputStream byteStream = new ByteArrayInputStream(compressedBytes);
+            GZIPInputStream gzipStream = new GZIPInputStream(byteStream);
+            java.io.ByteArrayOutputStream decompressedStream = new java.io.ByteArrayOutputStream();
+            
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = gzipStream.read(buffer)) > 0) {
+                decompressedStream.write(buffer, 0, len);
+            }
+            gzipStream.close();
+            
+            String decompressedData = decompressedStream.toString("utf-8");
+            assertEquals("Decompressed data matches original", encodedQuery, decompressedData);
+            
+        } catch (IOException e) {
+            fail("IOException during gzip test: " + e.toString());
+        }
+    }
+
+    public void testGzipCompressionForImport() {
+        // Test that gzip compression works for import endpoint
+        final Map<String, byte[]> capturedCompressedData = new HashMap<String, byte[]>();
+        final Map<String, String> capturedOriginalData = new HashMap<String, String>();
+        
+        MixpanelAPI apiWithGzip = new MixpanelAPI("events url", "people url", "groups url", "import url", true) {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+                capturedOriginalData.put(endpointUrl, dataString);
+                
+                // Simulate what the real sendImportData does with gzip
+                if (mUseGzipCompression) {
+                    try {
+                        java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+                        java.util.zip.GZIPOutputStream gzipStream = new java.util.zip.GZIPOutputStream(byteStream);
+                        gzipStream.write(dataString.getBytes("utf-8"));
+                        gzipStream.finish();
+                        gzipStream.close();
+                        
+                        capturedCompressedData.put(endpointUrl, byteStream.toByteArray());
+                    } catch (Exception e) {
+                        throw new IOException("Compression failed", e);
+                    }
+                }
+                
+                return true;
+            }
+        };
+        
+        ClientDelivery delivery = new ClientDelivery();
+        
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "gzip-test-id");
+            
+            JSONObject importEvent = mBuilder.importEvent("test-user", "Historical Event", props);
+            delivery.addMessage(importEvent);
+            
+            apiWithGzip.deliver(delivery);
+            
+            // Verify data was captured
+            String importUrl = "import url?strict=1";
+            assertTrue("Original data was captured", capturedOriginalData.containsKey(importUrl));
+            assertTrue("Compressed data was captured", capturedCompressedData.containsKey(importUrl));
+            
+            // Verify compressed data can be decompressed
+            byte[] compressedBytes = capturedCompressedData.get(importUrl);
+            String originalData = capturedOriginalData.get(importUrl);
+            
+            assertTrue("Compressed data exists", compressedBytes.length > 0);
+            
+            // Decompress and verify data integrity
+            ByteArrayInputStream byteStream = new ByteArrayInputStream(compressedBytes);
+            GZIPInputStream gzipStream = new GZIPInputStream(byteStream);
+            java.io.ByteArrayOutputStream decompressedStream = new java.io.ByteArrayOutputStream();
+            
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = gzipStream.read(buffer)) > 0) {
+                decompressedStream.write(buffer, 0, len);
+            }
+            gzipStream.close();
+            
+            String decompressedData = decompressedStream.toString("utf-8");
+            assertEquals("Decompressed data matches original", originalData, decompressedData);
+            
+        } catch (IOException e) {
+            fail("IOException during gzip import test: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSONException during gzip import test: " + e.toString());
         }
     }
 

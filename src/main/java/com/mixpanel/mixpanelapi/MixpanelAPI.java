@@ -10,6 +10,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,12 +37,22 @@ public class MixpanelAPI {
     protected final String mPeopleEndpoint;
     protected final String mGroupsEndpoint;
     protected final String mImportEndpoint;
+    protected final boolean mUseGzipCompression;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
     public MixpanelAPI() {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import");
+        this(false);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param useGzipCompression whether to use gzip compression for network requests
+     */
+    public MixpanelAPI(boolean useGzipCompression) {
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression);
     }
 
     /**
@@ -54,10 +65,7 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        mEventsEndpoint = eventsEndpoint;
-        mPeopleEndpoint = peopleEndpoint;
-        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
-        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false);
     }
 
     /**
@@ -71,7 +79,7 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import");
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false);
     }
 
     /**
@@ -86,10 +94,27 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false);
+    }
+
+    /**
+     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     *
+     * Useful for testing and proxying. Most callers should use the constructor with no arguments.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
+     * @param importEndpoint a URL that will accept Mixpanel import messages
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @see #MixpanelAPI()
+     */
+    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
         mImportEndpoint = importEndpoint;
+        mUseGzipCompression = useGzipCompression;
     }
 
     /**
@@ -182,15 +207,45 @@ public class MixpanelAPI {
         conn.setReadTimeout(READ_TIMEOUT_MILLIS);
         conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
         conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
 
-        String encodedData = encodeDataString(dataString);
-        String encodedQuery = "data=" + encodedData;
+        byte[] dataToSend;
+        if (mUseGzipCompression) {
+            // Use gzip compression
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
+            conn.setRequestProperty("Content-Encoding", "gzip");
+            
+            String encodedData = encodeDataString(dataString);
+            String encodedQuery = "data=" + encodedData;
+            
+            // Compress the data
+            java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+            GZIPOutputStream gzipStream = null;
+            try {
+                gzipStream = new GZIPOutputStream(byteStream);
+                gzipStream.write(encodedQuery.getBytes("utf-8"));
+                gzipStream.finish();
+                dataToSend = byteStream.toByteArray();
+            } finally {
+                if (gzipStream != null) {
+                    try {
+                        gzipStream.close();
+                    } catch (IOException e) {
+                        // ignore
+                    }
+                }
+            }
+        } else {
+            // No compression
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
+            String encodedData = encodeDataString(dataString);
+            String encodedQuery = "data=" + encodedData;
+            dataToSend = encodedQuery.getBytes("utf-8");
+        }
 
         OutputStream postStream = null;
         try {
             postStream = conn.getOutputStream();
-            postStream.write(encodedQuery.getBytes());
+            postStream.write(dataToSend);
         } finally {
             if (postStream != null) {
                 try {
@@ -313,10 +368,37 @@ public class MixpanelAPI {
             throw new RuntimeException("Mixpanel library requires utf-8 support", e);
         }
 
+        byte[] dataToSend;
+        if (mUseGzipCompression) {
+            // Use gzip compression
+            conn.setRequestProperty("Content-Encoding", "gzip");
+            
+            // Compress the data
+            java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+            GZIPOutputStream gzipStream = null;
+            try {
+                gzipStream = new GZIPOutputStream(byteStream);
+                gzipStream.write(dataString.getBytes("utf-8"));
+                gzipStream.finish();
+                dataToSend = byteStream.toByteArray();
+            } finally {
+                if (gzipStream != null) {
+                    try {
+                        gzipStream.close();
+                    } catch (IOException e) {
+                        // ignore
+                    }
+                }
+            }
+        } else {
+            // No compression
+            dataToSend = dataString.getBytes("utf-8");
+        }
+
         OutputStream postStream = null;
         try {
             postStream = conn.getOutputStream();
-            postStream.write(dataString.getBytes("utf-8"));
+            postStream.write(dataToSend);
         } finally {
             if (postStream != null) {
                 try {
