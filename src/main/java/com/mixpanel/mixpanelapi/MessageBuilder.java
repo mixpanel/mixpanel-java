@@ -83,7 +83,7 @@ public class MessageBuilder {
         }
     }
 
-    /***
+    /**
      * Creates a message for importing historical events (events older than 5 days) to Mixpanel via the /import endpoint.
      * This method is similar to event(), but is designed for the import endpoint which requires:
      * - A custom timestamp (defaults to current time if not provided)
