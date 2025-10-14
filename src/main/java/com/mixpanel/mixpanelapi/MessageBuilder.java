@@ -115,7 +115,7 @@ public class MessageBuilder {
             else {
                 propertiesObj = new JSONObject(properties.toString());
             }
-            // no need to add $import true property as this is added by the backend for any event imported 
+            // no need to add $import true property as this is added by the backend for any event imported.
             if (! propertiesObj.has("token")) propertiesObj.put("token", mToken);
             
             // Set default time to current time if not provided
