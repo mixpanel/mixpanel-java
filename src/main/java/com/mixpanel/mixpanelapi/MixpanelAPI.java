@@ -440,8 +440,24 @@ public class MixpanelAPI {
             }
         }
 
-        // Import endpoint returns "1" for success
-        return ((response != null) && response.equals("1"));
+        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        if (response == null) {
+            return false;
+        }
+        
+        // Parse JSON response
+        try {
+            JSONObject jsonResponse = new JSONObject(response);
+            
+            // Check for {"status":"OK"} and {"code":200}
+            boolean statusOk = jsonResponse.has("status") && "OK".equals(jsonResponse.getString("status"));
+            boolean codeOk = jsonResponse.has("code") && jsonResponse.getInt("code") == 200;
+            
+            return statusOk && codeOk;
+        } catch (JSONException e) {
+            // Not valid JSON or missing expected fields
+            return false;
+        }
     }
 
     private String slurp(InputStream in) throws IOException {
