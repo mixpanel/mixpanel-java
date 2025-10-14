@@ -22,7 +22,7 @@ import com.mixpanel.mixpanelapi.MixpanelAPI;
 public class MixpanelAPIDemo {
     
 
-    public static String PROJECT_TOKEN = "d1a82dc38adb1e0452f848867b67f9d2"; // "YOUR TOKEN";
+    public static String PROJECT_TOKEN = "bf2a25faaefdeed4aecde6e177d111bf"; // "YOUR TOKEN";
     public static long MILLIS_TO_WAIT = 10 * 1000;
 
     private static class DeliveryThread extends Thread {
