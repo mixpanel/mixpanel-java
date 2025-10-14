@@ -7,6 +7,7 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.UUID;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -122,13 +123,9 @@ public class MessageBuilder {
             if (! propertiesObj.has("time")) propertiesObj.put("time", time);
             
             // Generate default $insert_id if not provided (to prevent duplicates)
-            // Format: distinctId-eventName-timestamp-random
+            // Uses UUID v4 (random) in hex format, matching Python SDK implementation
             if (! propertiesObj.has("$insert_id")) {
-                String insertId = String.format("%s-%s-%d-%d",
-                    distinctId != null ? distinctId : "unknown",
-                    eventName.replaceAll("[^a-zA-Z0-9]", "-"),
-                    time,
-                    (long)(Math.random() * 1000000));
+                String insertId = UUID.randomUUID().toString().replace("-", "");
                 propertiesObj.put("$insert_id", insertId);
             }
             
