@@ -894,8 +894,8 @@ public class MixpanelAPITest extends TestCase
             
             assertTrue("Has auto-generated $insert_id", props1.has("$insert_id"));
             String insertId1 = props1.getString("$insert_id");
-            assertTrue("$insert_id contains distinct_id", insertId1.contains("user-123"));
-            assertTrue("$insert_id contains event name", insertId1.contains("Test-Event"));
+            assertEquals("$insert_id is 32 characters (UUID hex format)", 32, insertId1.length());
+            assertTrue("$insert_id is valid hex", insertId1.matches("[0-9a-f]{32}"));
             
             // Test 2: Empty properties object - should generate both
             JSONObject emptyProps = new JSONObject();
