@@ -83,7 +83,7 @@ public class MessageBuilder {
         }
     }
 
-    /***
+    /**
      * Creates a message for importing historical events (events older than 5 days) to Mixpanel via the /import endpoint.
      * This method is similar to event(), but is designed for the import endpoint which requires:
      * - A custom timestamp (defaults to current time if not provided)
@@ -115,7 +115,7 @@ public class MessageBuilder {
             else {
                 propertiesObj = new JSONObject(properties.toString());
             }
-            // no need to add $import true property as this is added by the backend for any event imported 
+            // no need to add $import true property as this is added by the backend for any event imported.
             if (! propertiesObj.has("token")) propertiesObj.put("token", mToken);
             
             // Set default time to current time if not provided
