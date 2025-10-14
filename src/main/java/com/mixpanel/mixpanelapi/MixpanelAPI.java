@@ -56,7 +56,7 @@ public class MixpanelAPI {
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for events and people updates.
+     * Create a MixpanelAPI associated with custom URLS for events and people updates.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -69,7 +69,7 @@ public class MixpanelAPI {
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -83,7 +83,7 @@ public class MixpanelAPI {
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -98,7 +98,7 @@ public class MixpanelAPI {
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
