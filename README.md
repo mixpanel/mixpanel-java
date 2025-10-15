@@ -30,6 +30,18 @@ are built by `MessageBuilder` objects, and those messages can be consumed by the
     MixpanelAPI mixpanel = new MixpanelAPI();
     mixpanel.deliver(delivery);
 
+### Gzip Compression
+
+The library supports gzip compression for both tracking events (`/track`) and importing historical events (`/import`). To enable gzip compression, pass `true` to the `MixpanelAPI` constructor:
+
+    MixpanelAPI mixpanel = new MixpanelAPI(true); // Enable gzip compression
+
+Gzip compression can reduce bandwidth usage and improve performance, especially when sending large batches of events.
+
+### Importing Historical Events
+
+The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
+
 Learn More
 ----------
 This library in particular has more in-depth documentation at

@@ -5,11 +5,14 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -33,16 +36,27 @@ public class MixpanelAPI {
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
     protected final String mGroupsEndpoint;
+    protected final String mImportEndpoint;
+    protected final boolean mUseGzipCompression;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
     public MixpanelAPI() {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups");
+        this(false);
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for events and people updates.
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param useGzipCompression whether to use gzip compression for network requests
+     */
+    public MixpanelAPI(boolean useGzipCompression) {
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression);
+    }
+
+    /**
+     * Create a MixpanelAPI associated with custom URLS for events and people updates.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -51,13 +65,11 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        mEventsEndpoint = eventsEndpoint;
-        mPeopleEndpoint = peopleEndpoint;
-        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false);
     }
 
     /**
-     * Create a MixpaneAPI associated with custom URLS for the Mixpanel service.
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
      *
      * Useful for testing and proxying. Most callers should use the constructor with no arguments.
      *
@@ -67,9 +79,42 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false);
+    }
+
+    /**
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
+     *
+     * Useful for testing and proxying. Most callers should use the constructor with no arguments.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
+     * @param importEndpoint a URL that will accept Mixpanel import messages
+     * @see #MixpanelAPI()
+     */
+    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false);
+    }
+
+    /**
+     * Create a MixpanelAPI associated with custom URLS for the Mixpanel service.
+     *
+     * Useful for testing and proxying. Most callers should use the constructor with no arguments.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
+     * @param importEndpoint a URL that will accept Mixpanel import messages
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @see #MixpanelAPI()
+     */
+    public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
+        mImportEndpoint = importEndpoint;
+        mUseGzipCompression = useGzipCompression;
     }
 
     /**
@@ -127,6 +172,13 @@ public class MixpanelAPI {
         String groupsUrl = mGroupsEndpoint + "?" + ipParameter;
         List<JSONObject> groupMessages = toSend.getGroupMessages();
         sendMessages(groupMessages, groupsUrl);
+
+        // Handle import messages - use strict mode and extract token for auth
+        List<JSONObject> importMessages = toSend.getImportMessages();
+        if (importMessages.size() > 0) {
+            String importUrl = mImportEndpoint + "?strict=1";
+            sendImportMessages(importMessages, importUrl);
+        }
     }
 
     /**
@@ -155,15 +207,45 @@ public class MixpanelAPI {
         conn.setReadTimeout(READ_TIMEOUT_MILLIS);
         conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
         conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
 
-        String encodedData = encodeDataString(dataString);
-        String encodedQuery = "data=" + encodedData;
+        byte[] dataToSend;
+        if (mUseGzipCompression) {
+            // Use gzip compression
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
+            conn.setRequestProperty("Content-Encoding", "gzip");
+            
+            String encodedData = encodeDataString(dataString);
+            String encodedQuery = "data=" + encodedData;
+            
+            // Compress the data
+            java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+            GZIPOutputStream gzipStream = null;
+            try {
+                gzipStream = new GZIPOutputStream(byteStream);
+                gzipStream.write(encodedQuery.getBytes("utf-8"));
+                gzipStream.finish();
+                dataToSend = byteStream.toByteArray();
+            } finally {
+                if (gzipStream != null) {
+                    try {
+                        gzipStream.close();
+                    } catch (IOException e) {
+                        // ignore
+                    }
+                }
+            }
+        } else {
+            // No compression
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
+            String encodedData = encodeDataString(dataString);
+            String encodedQuery = "data=" + encodedData;
+            dataToSend = encodedQuery.getBytes("utf-8");
+        }
 
         OutputStream postStream = null;
         try {
             postStream = conn.getOutputStream();
-            postStream.write(encodedQuery.getBytes());
+            postStream.write(dataToSend);
         } finally {
             if (postStream != null) {
                 try {
@@ -209,6 +291,42 @@ public class MixpanelAPI {
         }
     }
 
+    private void sendImportMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
+        // Extract token from first message for authentication
+        // If token is missing, we'll still attempt to send and let the server reject it
+        String token = "";
+        if (messages.size() > 0) {
+            try {
+                JSONObject firstMessage = messages.get(0);
+                if (firstMessage.has("properties")) {
+                    JSONObject properties = firstMessage.getJSONObject("properties");
+                    if (properties.has("token")) {
+                        token = properties.getString("token");
+                    }
+                }
+            } catch (JSONException e) {
+                // Malformed message - continue with empty token and let server reject it
+            }
+        }
+
+        // Send messages in batches (max 2000 per batch for /import)
+        // If token is empty, the server will reject with 401 Unauthorized
+        for (int i = 0; i < messages.size(); i += Config.IMPORT_MAX_MESSAGE_SIZE) {
+            int endIndex = i + Config.IMPORT_MAX_MESSAGE_SIZE;
+            endIndex = Math.min(endIndex, messages.size());
+            List<JSONObject> batch = messages.subList(i, endIndex);
+
+            if (batch.size() > 0) {
+                String messagesString = dataString(batch);
+                boolean accepted = sendImportData(messagesString, endpointUrl, token);
+
+                if (! accepted) {
+                    throw new MixpanelServerException("Server refused to accept import messages, they may be malformed.", batch);
+                }
+            }
+        }
+    }
+
     private String dataString(List<JSONObject> messages) {
         JSONArray array = new JSONArray();
         for (JSONObject message:messages) {
@@ -216,6 +334,130 @@ public class MixpanelAPI {
         }
 
         return array.toString();
+    }
+
+    /**
+     * Sends import data to the /import endpoint with Basic Auth using the project token.
+     * The /import endpoint requires:
+     * - JSON content type (not URL-encoded like /track)
+     * - Basic authentication with token as username and empty password
+     * - strict=1 parameter for validation
+     *
+     * @param dataString JSON array of events to import
+     * @param endpointUrl The import endpoint URL
+     * @param token The project token for Basic Auth
+     * @return true if the server accepted the data
+     * @throws IOException if there's a network error
+     */
+    /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+        URL endpoint = new URL(endpointUrl);
+        HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
+        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
+        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setDoOutput(true);
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        
+        // Add Basic Auth header: username is token, password is empty
+        try {
+            String authString = token + ":";
+            byte[] authBytes = authString.getBytes("utf-8");
+            String base64Auth = new String(Base64Coder.encode(authBytes));
+            conn.setRequestProperty("Authorization", "Basic " + base64Auth);
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException("Mixpanel library requires utf-8 support", e);
+        }
+
+        byte[] dataToSend;
+        if (mUseGzipCompression) {
+            // Use gzip compression
+            conn.setRequestProperty("Content-Encoding", "gzip");
+            
+            // Compress the data
+            java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
+            GZIPOutputStream gzipStream = null;
+            try {
+                gzipStream = new GZIPOutputStream(byteStream);
+                gzipStream.write(dataString.getBytes("utf-8"));
+                gzipStream.finish();
+                dataToSend = byteStream.toByteArray();
+            } finally {
+                if (gzipStream != null) {
+                    try {
+                        gzipStream.close();
+                    } catch (IOException e) {
+                        // ignore
+                    }
+                }
+            }
+        } else {
+            // No compression
+            dataToSend = dataString.getBytes("utf-8");
+        }
+
+        OutputStream postStream = null;
+        try {
+            postStream = conn.getOutputStream();
+            postStream.write(dataToSend);
+        } finally {
+            if (postStream != null) {
+                try {
+                    postStream.close();
+                } catch (IOException e) {
+                    // ignore, in case we've already thrown
+                }
+            }
+        }
+
+        InputStream responseStream = null;
+        String response = null;
+        try {
+            responseStream = conn.getInputStream();
+            response = slurp(responseStream);
+        } catch (IOException e) {
+            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // Check if it's an HTTP error and read the error stream for details
+            InputStream errorStream = conn.getErrorStream();
+            if (errorStream != null) {
+                try {
+                    slurp(errorStream);
+                    errorStream.close();
+                    // Return false to indicate rejection, which will throw MixpanelServerException
+                    return false;
+                } catch (IOException ignored) {
+                    // If we can't read the error stream, just let the original exception propagate
+                }
+            }
+            // Network error or other IOException - propagate it
+            throw e;
+        } finally {
+            if (responseStream != null) {
+                try {
+                    responseStream.close();
+                } catch (IOException e) {
+                    // ignore, in case we've already thrown
+                }
+            }
+        }
+
+        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        if (response == null) {
+            return false;
+        }
+        
+        // Parse JSON response
+        try {
+            JSONObject jsonResponse = new JSONObject(response);
+            
+            // Check for {"status":"OK"} and {"code":200}
+            boolean statusOk = jsonResponse.has("status") && "OK".equals(jsonResponse.getString("status"));
+            boolean codeOk = jsonResponse.has("code") && jsonResponse.getInt("code") == 200;
+            
+            return statusOk && codeOk;
+        } catch (JSONException e) {
+            // Not valid JSON or missing expected fields
+            return false;
+        }
     }
 
     private String slurp(InputStream in) throws IOException {
