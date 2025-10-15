@@ -11,7 +11,7 @@ Latest Version
 </dependency>
 ```
 
-You can alternatively download the library jar directly from Maven [here](http://search.maven.org/#search%7Cgav%7C1%7Cg%3A%22com.mixpanel%22%20AND%20a%3A%22mixpanel-java%22).
+You can alternatively download the library jar directly from Maven Central [here](https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java).
 
 How To Use
 ----------
