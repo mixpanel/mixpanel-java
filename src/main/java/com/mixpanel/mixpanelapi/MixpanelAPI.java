@@ -15,6 +15,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
+import com.mixpanel.mixpanelapi.featureflags.MixpanelFlagsClient;
+import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
+import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
+
 /**
  * Simple interface to the Mixpanel tracking API, intended for use in
  * server-side applications. Users are encouraged to review our Javascript
@@ -26,7 +33,7 @@ import org.json.JSONObject;
  *
  *
  */
-public class MixpanelAPI {
+public class MixpanelAPI implements AutoCloseable {
 
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
 
@@ -38,6 +45,7 @@ public class MixpanelAPI {
     protected final String mGroupsEndpoint;
     protected final String mImportEndpoint;
     protected final boolean mUseGzipCompression;
+    protected final MixpanelFlagsClient mFlagsClient;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -52,7 +60,35 @@ public class MixpanelAPI {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression);
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object with local feature flags evaluation.
+     *
+     * @param localFlagsConfig configuration for local feature flags evaluation
+     */
+    public MixpanelAPI(LocalFlagsConfig localFlagsConfig) {
+        mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
+        mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
+        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
+        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
+        mUseGzipCompression = false;
+        mFlagsClient = createFlagsClient(localFlagsConfig, this);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object with remote feature flags evaluation.
+     *
+     * @param remoteFlagsConfig configuration for remote feature flags evaluation
+     */
+    public MixpanelAPI(RemoteFlagsConfig remoteFlagsConfig) {
+        mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
+        mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
+        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
+        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
+        mUseGzipCompression = false;
+        mFlagsClient = createFlagsClient(remoteFlagsConfig, this);
     }
 
     /**
@@ -65,7 +101,7 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false);
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null);
     }
 
     /**
@@ -79,7 +115,7 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null);
     }
 
     /**
@@ -94,7 +130,7 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null);
     }
 
     /**
@@ -110,11 +146,26 @@ public class MixpanelAPI {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null);
+    }
+
+    /**
+     * Main constructor used by all other constructors.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
+     * @param importEndpoint a URL that will accept Mixpanel import messages
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @param flagsClient optional MixpanelFlagsClient for feature flags (can be null)
+     */
+    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, MixpanelFlagsClient flagsClient) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
         mImportEndpoint = importEndpoint;
         mUseGzipCompression = useGzipCompression;
+        mFlagsClient = flagsClient;
     }
 
     /**
@@ -213,10 +264,10 @@ public class MixpanelAPI {
             // Use gzip compression
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf8");
             conn.setRequestProperty("Content-Encoding", "gzip");
-            
+
             String encodedData = encodeDataString(dataString);
             String encodedQuery = "data=" + encodedData;
-            
+
             // Compress the data
             java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
             GZIPOutputStream gzipStream = null;
@@ -357,7 +408,7 @@ public class MixpanelAPI {
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
-        
+
         // Add Basic Auth header: username is token, password is empty
         try {
             String authString = token + ":";
@@ -372,7 +423,7 @@ public class MixpanelAPI {
         if (mUseGzipCompression) {
             // Use gzip compression
             conn.setRequestProperty("Content-Encoding", "gzip");
-            
+
             // Compress the data
             java.io.ByteArrayOutputStream byteStream = new java.io.ByteArrayOutputStream();
             GZIPOutputStream gzipStream = null;
@@ -444,15 +495,15 @@ public class MixpanelAPI {
         if (response == null) {
             return false;
         }
-        
+
         // Parse JSON response
         try {
             JSONObject jsonResponse = new JSONObject(response);
-            
+
             // Check for {"status":"OK"} and {"code":200}
             boolean statusOk = jsonResponse.has("status") && "OK".equals(jsonResponse.getString("status"));
             boolean codeOk = jsonResponse.has("code") && jsonResponse.getInt("code") == 200;
-            
+
             return statusOk && codeOk;
         } catch (JSONException e) {
             // Not valid JSON or missing expected fields
@@ -474,6 +525,73 @@ public class MixpanelAPI {
         } while(readCount != -1);
 
         return out.toString();
+    }
+
+    /**
+     * Gets the local flags provider for evaluating feature flags locally.
+     *
+     * @return the LocalFlagsProvider, or null if not configured
+     */
+    public LocalFlagsProvider getLocalFlags() {
+        return mFlagsClient != null ? mFlagsClient.getLocalFlags() : null;
+    }
+
+    /**
+     * Gets the remote flags provider for evaluating feature flags remotely.
+     *
+     * @return the RemoteFlagsProvider, or null if not configured
+     */
+    public RemoteFlagsProvider getRemoteFlags() {
+        return mFlagsClient != null ? mFlagsClient.getRemoteFlags() : null;
+    }
+
+    /**
+     * Creates a MixpanelFlagsClient for local evaluation.
+     * The EventSender uses the provided MixpanelAPI instance for sending events.
+     */
+    private static MixpanelFlagsClient createFlagsClient(LocalFlagsConfig config, MixpanelAPI api) {
+        final MessageBuilder builder = new MessageBuilder(config.getProjectToken());
+
+        EventSender eventSender = (distinctId, eventName, properties) -> {
+            try {
+                JSONObject event = builder.event(distinctId, eventName, properties);
+                api.sendMessage(event);
+            } catch (IOException e) {
+                // Silently fail - exposure tracking should not break flag evaluation
+            }
+        };
+
+        return new MixpanelFlagsClient(config, eventSender);
+    }
+
+    /**
+     * Creates a MixpanelFlagsClient for remote evaluation.
+     * The EventSender uses the provided MixpanelAPI instance for sending events.
+     */
+    private static MixpanelFlagsClient createFlagsClient(RemoteFlagsConfig config, MixpanelAPI api) {
+        final MessageBuilder builder = new MessageBuilder(config.getProjectToken());
+
+        EventSender eventSender = (distinctId, eventName, properties) -> {
+            try {
+                JSONObject event = builder.event(distinctId, eventName, properties);
+                api.sendMessage(event);
+            } catch (IOException e) {
+                // Silently fail - exposure tracking should not break flag evaluation
+            }
+        };
+
+        return new MixpanelFlagsClient(config, eventSender);
+    }
+
+    /**
+     * Closes this MixpanelAPI instance and releases any resources held by the flags client.
+     * This method should be called when the MixpanelAPI instance is no longer needed.
+     */
+    @Override
+    public void close() {
+        if (mFlagsClient != null) {
+            mFlagsClient.close();
+        }
     }
 
 }
