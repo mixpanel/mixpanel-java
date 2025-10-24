@@ -16,12 +16,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
-import com.mixpanel.mixpanelapi.featureflags.MixpanelFlagsClient;
 import com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
+import com.mixpanel.mixpanelapi.featureflags.util.VersionUtil;
 
 /**
  * Simple interface to the Mixpanel tracking API, intended for use in
@@ -46,7 +46,8 @@ public class MixpanelAPI implements AutoCloseable {
     protected final String mGroupsEndpoint;
     protected final String mImportEndpoint;
     protected final boolean mUseGzipCompression;
-    protected final MixpanelFlagsClient mFlagsClient;
+    protected final LocalFlagsProvider mLocalFlags;
+    protected final RemoteFlagsProvider mRemoteFlags;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -61,7 +62,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null);
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null, null);
     }
 
     /**
@@ -97,9 +98,16 @@ public class MixpanelAPI implements AutoCloseable {
         mUseGzipCompression = false;
 
         if (localFlagsConfig != null) {
-            mFlagsClient = createFlagsClient(localFlagsConfig, this);
+            EventSender eventSender = createEventSender(localFlagsConfig, this);
+            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
+            mRemoteFlags = null;
+        } else if (remoteFlagsConfig != null) {
+            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
+            mLocalFlags = null;
+            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
         } else {
-            mFlagsClient = createFlagsClient(remoteFlagsConfig, this);
+            mLocalFlags = null;
+            mRemoteFlags = null;
         }
     }
 
@@ -113,7 +121,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null);
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null, null);
     }
 
     /**
@@ -127,7 +135,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null, null);
     }
 
     /**
@@ -142,7 +150,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null);
     }
 
     /**
@@ -158,7 +166,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null);
     }
 
     /**
@@ -169,15 +177,17 @@ public class MixpanelAPI implements AutoCloseable {
      * @param groupsEndpoint a URL that will accept Mixpanel groups messages
      * @param importEndpoint a URL that will accept Mixpanel import messages
      * @param useGzipCompression whether to use gzip compression for network requests
-     * @param flagsClient optional MixpanelFlagsClient for feature flags (can be null)
+     * @param localFlags optional LocalFlagsProvider for local feature flags (can be null)
+     * @param remoteFlags optional RemoteFlagsProvider for remote feature flags (can be null)
      */
-    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, MixpanelFlagsClient flagsClient) {
+    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
         mImportEndpoint = importEndpoint;
         mUseGzipCompression = useGzipCompression;
-        mFlagsClient = flagsClient;
+        mLocalFlags = localFlags;
+        mRemoteFlags = remoteFlags;
     }
 
     /**
@@ -545,7 +555,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @return the LocalFlagsProvider, or null if not configured
      */
     public LocalFlagsProvider getLocalFlags() {
-        return mFlagsClient != null ? mFlagsClient.getLocalFlags() : null;
+        return mLocalFlags;
     }
 
     /**
@@ -554,25 +564,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @return the RemoteFlagsProvider, or null if not configured
      */
     public RemoteFlagsProvider getRemoteFlags() {
-        return mFlagsClient != null ? mFlagsClient.getRemoteFlags() : null;
-    }
-
-    /**
-     * Creates a MixpanelFlagsClient for local evaluation.
-     * The EventSender uses the provided MixpanelAPI instance for sending events.
-     */
-    private static MixpanelFlagsClient createFlagsClient(LocalFlagsConfig config, MixpanelAPI api) {
-        EventSender eventSender = createEventSender(config, api);
-        return new MixpanelFlagsClient(config, eventSender);
-    }
-
-    /**
-     * Creates a MixpanelFlagsClient for remote evaluation.
-     * The EventSender uses the provided MixpanelAPI instance for sending events.
-     */
-    private static MixpanelFlagsClient createFlagsClient(RemoteFlagsConfig config, MixpanelAPI api) {
-        EventSender eventSender = createEventSender(config, api);
-        return new MixpanelFlagsClient(config, eventSender);
+        return mRemoteFlags;
     }
 
     /**
@@ -593,13 +585,13 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Closes this MixpanelAPI instance and releases any resources held by the flags client.
+     * Closes this MixpanelAPI instance and releases any resources held by the flags providers.
      * This method should be called when the MixpanelAPI instance is no longer needed.
      */
     @Override
     public void close() {
-        if (mFlagsClient != null) {
-            mFlagsClient.close();
+        if (mLocalFlags != null) {
+            mLocalFlags.close();
         }
     }
 

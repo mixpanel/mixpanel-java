@@ -1,8 +1,11 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 import com.mixpanel.mixpanelapi.featureflags.util.TraceparentUtil;
+
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +14,8 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,6 +34,7 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     protected final String projectToken;
     protected final C config;
     protected final String sdkVersion;
+    protected final EventSender eventSender;
 
     /**
      * Creates a new BaseFlagsProvider.
@@ -36,11 +42,13 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @param projectToken the Mixpanel project token
      * @param config the flags configuration
      * @param sdkVersion the SDK version string
+     * @param eventSender the EventSender implementation for tracking exposure events
      */
-    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion) {
+    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion, EventSender eventSender) {
         this.projectToken = projectToken;
         this.config = config;
         this.sdkVersion = sdkVersion;
+        this.eventSender = eventSender;
     }
 
     // #region HTTP Methods
@@ -177,6 +185,46 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         Object value = result.getVariantValue();
 
         return value instanceof Boolean && (Boolean) value;
+    }
+
+    // #endregion
+
+    // #region Exposure Tracking
+
+    /**
+     * Common helper method for tracking exposure events.
+     */
+    protected void trackExposure(String distinctId, String flagKey, String variantKey,
+                                 String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                                 UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        try {
+            JSONObject properties = new JSONObject();
+            properties.put("Experiment name", flagKey);
+            properties.put("Variant name", variantKey);
+            properties.put("$experiment_type", "feature_flag");
+            properties.put("Flag evaluation mode", evaluationMode);
+
+            // Add experiment metadata
+            if (experimentId != null) {
+                properties.put("$experiment_id", experimentId.toString());
+            }
+            if (isExperimentActive != null) {
+                properties.put("$is_experiment_active", isExperimentActive);
+            }
+            if (isQaTester != null) {
+                properties.put("$is_qa_tester", isQaTester);
+            }
+
+            // Add timing-specific properties
+            addTimingProperties.accept(properties);
+
+            // Send via EventSender interface
+            eventSender.sendEvent(distinctId, "$experiment_started", properties);
+
+            getLogger().log(Level.FINE, "Tracked exposure event for flag: " + flagKey + ", variant: " + variantKey);
+        } catch (Exception e) {
+            getLogger().log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
+        }
     }
 
     // #endregion

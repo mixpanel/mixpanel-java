@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 
@@ -28,38 +29,15 @@ import java.util.logging.Logger;
 public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
     private static final Logger logger = Logger.getLogger(RemoteFlagsProvider.class.getName());
 
-    private final ExposureTracker exposureTracker;
-
-    /**
-     * Interface for tracking exposure events.
-     */
-    public interface ExposureTracker {
-        /**
-         * Track an exposure event.
-         *
-         * @param distinctId the user's distinct ID
-         * @param flagKey the flag key
-         * @param variantKey the selected variant key
-         * @param evaluationMode the evaluation mode ("local" or "remote")
-         * @param startTime ISO 8601 timestamp of evaluation start
-         * @param completeTime ISO 8601 timestamp of evaluation completion
-         * @param experimentId the experiment ID (may be null)
-         * @param isExperimentActive whether the experiment is active (may be null)
-         * @param isQaTester whether the user is a QA tester (may be null)
-         */
-        void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
-    }
-
     /**
      * Creates a new RemoteFlagsProvider.
      *
      * @param config the remote flags configuration
      * @param sdkVersion the SDK version string
-     * @param exposureTracker callback for tracking exposure events
+     * @param eventSender the EventSender implementation for tracking exposure events
      */
-    public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, ExposureTracker exposureTracker) {
-        super(config.getProjectToken(), config, sdkVersion);
-        this.exposureTracker = exposureTracker;
+    public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender);
     }
 
     // #region Evaluation
@@ -122,7 +100,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             // Track exposure
             String completeTime = getCurrentIso8601Timestamp();
             if (reportExposure) {
-                trackExposureIfPossible(context, flagKey, variantKey, startTime, completeTime, experimentId, isExperimentActive, isQaTester);
+                trackRemoteExposure(context, flagKey, variantKey, startTime, completeTime, experimentId, isExperimentActive, isQaTester);
             }
 
             @SuppressWarnings("unchecked")
@@ -168,10 +146,10 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
     // #endregion
 
     /**
-     * Tracks exposure event if possible.
+     * Tracks an exposure event for remote evaluation.
      */
-    private void trackExposureIfPossible(Map<String, Object> context, String flagKey, String variantKey, String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
-        if (exposureTracker == null) {
+    private void trackRemoteExposure(Map<String, Object> context, String flagKey, String variantKey, String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        if (eventSender == null) {
             return;
         }
 
@@ -180,11 +158,10 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             return;
         }
 
-        try {
-            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, "remote", startTime, completeTime, experimentId, isExperimentActive, isQaTester);
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Failed to track exposure event", e);
-        }
+        trackExposure(distinctIdObj.toString(), flagKey, variantKey, "remote", properties -> {
+            properties.put("Variant fetch start time", startTime);
+            properties.put("Variant fetch complete time", completeTime);
+        }, experimentId, isExperimentActive, isQaTester);
     }
 
     @Override

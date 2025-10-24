@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 
@@ -22,7 +23,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
 
     private TestableRemoteFlagsProvider provider;
     private RemoteFlagsConfig config;
-    private MockExposureTracker exposureTracker;
+    private MockEventSender eventSender;
 
     /**
      * Testable subclass of RemoteFlagsProvider that allows mocking HTTP responses.
@@ -30,8 +31,8 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
     private static class TestableRemoteFlagsProvider extends RemoteFlagsProvider {
         private final MockHttpProvider httpMock = new MockHttpProvider();
 
-        public TestableRemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, ExposureTracker exposureTracker) {
-            super(config, sdkVersion, exposureTracker);
+        public TestableRemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender) {
+            super(config, sdkVersion, eventSender);
         }
 
         public void setMockResponse(String urlPattern, String response) {
@@ -48,36 +49,32 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         }
     }
 
-    private static class MockExposureTracker extends BaseExposureTrackerMock<MockExposureTracker.ExposureEvent>
-            implements RemoteFlagsProvider.ExposureTracker {
+    private static class MockEventSender implements EventSender {
+        private final List<ExposureEvent> events = new ArrayList<>();
 
         static class ExposureEvent {
             String distinctId;
-            String flagKey;
-            String variantKey;
-            String evaluationMode;
-            String startTime;
-            String completeTime;
-            java.util.UUID experimentId;
-            Boolean isExperimentActive;
-            Boolean isQaTester;
+            String eventName;
+            JSONObject properties;
 
-            ExposureEvent(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+            ExposureEvent(String distinctId, String eventName, JSONObject properties) {
                 this.distinctId = distinctId;
-                this.flagKey = flagKey;
-                this.variantKey = variantKey;
-                this.evaluationMode = evaluationMode;
-                this.startTime = startTime;
-                this.completeTime = completeTime;
-                this.experimentId = experimentId;
-                this.isExperimentActive = isExperimentActive;
-                this.isQaTester = isQaTester;
+                this.eventName = eventName;
+                this.properties = properties;
             }
         }
 
         @Override
-        public void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
-            events.add(new ExposureEvent(distinctId, flagKey, variantKey, evaluationMode, startTime, completeTime, experimentId, isExperimentActive, isQaTester));
+        public void sendEvent(String distinctId, String eventName, JSONObject properties) {
+            events.add(new ExposureEvent(distinctId, eventName, properties));
+        }
+
+        public List<ExposureEvent> getEvents() {
+            return events;
+        }
+
+        public void reset() {
+            events.clear();
         }
     }
 
@@ -87,7 +84,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
             .projectToken(TEST_TOKEN)
             .requestTimeoutSeconds(5)
             .build();
-        exposureTracker = new MockExposureTracker();
+        eventSender = new MockEventSender();
     }
 
     @Override
@@ -122,7 +119,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
      * The response will be returned when the flags API URL is called.
      */
     private TestableRemoteFlagsProvider createProviderWithResponse(String jsonResponse) {
-        TestableRemoteFlagsProvider testProvider = new TestableRemoteFlagsProvider(config, SDK_VERSION, exposureTracker);
+        TestableRemoteFlagsProvider testProvider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender);
 
         if (jsonResponse != null) {
             // Mock the flags endpoint
@@ -149,12 +146,12 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Should return fallback due to network error
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
     public void testReturnFallbackWhenResponseFormatIsInvalid() {
-        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, exposureTracker);
+        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender);
 
         // Set invalid JSON response
         provider.setMockResponse("/flags", "invalid json {{{");
@@ -164,7 +161,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Should return fallback due to JSON parse error
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -178,7 +175,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Should return fallback when flag not found
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     // #endregion
@@ -212,14 +209,15 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         provider.getVariantValue("test-flag", "fallback", context);
 
         // Should track exposure
-        assertEquals(1, exposureTracker.getEventCount());
-        MockExposureTracker.ExposureEvent event = exposureTracker.getLastEvent();
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("user-123", event.distinctId);
-        assertEquals("test-flag", event.flagKey);
-        assertEquals("variant-a", event.variantKey);
-        assertEquals("remote", event.evaluationMode);
-        assertNotNull(event.startTime);
-        assertNotNull(event.completeTime);
+        assertEquals("$experiment_started", event.eventName);
+        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals("variant-a", event.properties.getString("Variant name"));
+        assertEquals("remote", event.properties.getString("Flag evaluation mode"));
+        assertNotNull(event.properties.getString("Variant fetch start time"));
+        assertNotNull(event.properties.getString("Variant fetch complete time"));
     }
 
     @Test
@@ -231,7 +229,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         provider.getVariantValue("test-flag", "fallback", context);
 
         // Should not track exposure when returning fallback
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     // #endregion

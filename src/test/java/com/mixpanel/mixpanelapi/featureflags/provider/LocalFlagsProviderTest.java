@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.*;
 
@@ -33,7 +34,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
     private TestableLocalFlagsProvider provider;
     private LocalFlagsConfig config;
-    private MockExposureTracker exposureTracker;
+    private MockEventSender eventSender;
 
     // #region Mocks
 
@@ -43,8 +44,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     private static class TestableLocalFlagsProvider extends LocalFlagsProvider {
         private final MockHttpProvider httpMock = new MockHttpProvider();
 
-        public TestableLocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, ExposureTracker exposureTracker) {
-            super(config, sdkVersion, exposureTracker);
+        public TestableLocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender) {
+            super(config, sdkVersion, eventSender);
         }
 
         public void setMockResponse(String urlPattern, String response) {
@@ -61,34 +62,32 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         }
     }
 
-    private static class MockExposureTracker extends BaseExposureTrackerMock<MockExposureTracker.ExposureEvent>
-            implements LocalFlagsProvider.ExposureTracker {
+    private static class MockEventSender implements EventSender {
+        private final List<ExposureEvent> events = new ArrayList<>();
 
         static class ExposureEvent {
             String distinctId;
-            String flagKey;
-            String variantKey;
-            String evaluationMode;
-            long latencyMs;
-            java.util.UUID experimentId;
-            Boolean isExperimentActive;
-            Boolean isQaTester;
+            String eventName;
+            JSONObject properties;
 
-            ExposureEvent(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+            ExposureEvent(String distinctId, String eventName, JSONObject properties) {
                 this.distinctId = distinctId;
-                this.flagKey = flagKey;
-                this.variantKey = variantKey;
-                this.evaluationMode = evaluationMode;
-                this.latencyMs = latencyMs;
-                this.experimentId = experimentId;
-                this.isExperimentActive = isExperimentActive;
-                this.isQaTester = isQaTester;
+                this.eventName = eventName;
+                this.properties = properties;
             }
         }
 
         @Override
-        public void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
-            events.add(new ExposureEvent(distinctId, flagKey, variantKey, evaluationMode, latencyMs, experimentId, isExperimentActive, isQaTester));
+        public void sendEvent(String distinctId, String eventName, JSONObject properties) {
+            events.add(new ExposureEvent(distinctId, eventName, properties));
+        }
+
+        public List<ExposureEvent> getEvents() {
+            return events;
+        }
+
+        public void reset() {
+            events.clear();
         }
     }
 
@@ -98,7 +97,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             .projectToken(TEST_TOKEN)
             .enablePolling(false)
             .build();
-        exposureTracker = new MockExposureTracker();
+        eventSender = new MockEventSender();
     }
 
     @Override
@@ -115,7 +114,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
      * The response will be returned when the flags definitions URL is called.
      */
     private TestableLocalFlagsProvider createProviderWithResponse(String jsonResponse) {
-        TestableLocalFlagsProvider testProvider = new TestableLocalFlagsProvider(config, SDK_VERSION, exposureTracker);
+        TestableLocalFlagsProvider testProvider = new TestableLocalFlagsProvider(config, SDK_VERSION, eventSender);
 
         if (jsonResponse != null) {
             // Mock the flags definitions endpoint
@@ -294,7 +293,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("any-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -307,7 +306,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -324,7 +323,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("non-existent-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -341,7 +340,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -359,7 +358,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -375,7 +374,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     // #endregion
@@ -402,8 +401,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("red", result);
-        assertEquals(1, exposureTracker.getEventCount());
-        assertEquals("treatment", exposureTracker.getLastEvent().variantKey);
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("treatment", eventSender.getEvents().get(eventSender.getEvents().size() - 1).properties.getString("Variant name"));
     }
 
     @Test
@@ -427,8 +426,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Should fall through to normal evaluation and select "control" based on 100% split
         assertEquals("blue", result);
-        assertEquals(1, exposureTracker.getEventCount());
-        assertEquals("control", exposureTracker.getLastEvent().variantKey);
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("control", eventSender.getEvents().get(eventSender.getEvents().size() - 1).properties.getString("Variant name"));
     }
 
     // #endregion
@@ -447,7 +446,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("value-a", result);
-        assertEquals(1, exposureTracker.getEventCount());
+        assertEquals(1, eventSender.getEvents().size());
     }
 
     @Test
@@ -467,8 +466,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("value-b", result);
-        assertEquals(1, exposureTracker.getEventCount());
-        assertEquals("variant-b", exposureTracker.getLastEvent().variantKey);
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("variant-b", eventSender.getEvents().get(eventSender.getEvents().size() - 1).properties.getString("Variant name"));
     }
 
     @Test
@@ -488,8 +487,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("red", result);
-        assertEquals(1, exposureTracker.getEventCount());
-        assertEquals("treatment", exposureTracker.getLastEvent().variantKey);
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("treatment", eventSender.getEvents().get(eventSender.getEvents().size() - 1).properties.getString("Variant name"));
     }
 
     // #endregion
@@ -517,7 +516,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("gold", result);
-        assertEquals(1, exposureTracker.getEventCount());
+        assertEquals(1, eventSender.getEvents().size());
     }
 
     @Test
@@ -542,7 +541,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         String result = provider.getVariantValue("test-flag", "fallback", context);
 
         assertEquals("fallback", result);
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     // #endregion
@@ -560,13 +559,14 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider.startPollingForDefinitions();
         provider.getVariantValue("test-flag", "fallback", context);
 
-        assertEquals(1, exposureTracker.getEventCount());
-        MockExposureTracker.ExposureEvent event = exposureTracker.getLastEvent();
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("user-123", event.distinctId);
-        assertEquals("test-flag", event.flagKey);
-        assertEquals("variant-a", event.variantKey);
-        assertEquals("local", event.evaluationMode);
-        assertTrue(event.latencyMs >= 0);
+        assertEquals("$experiment_started", event.eventName);
+        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals("variant-a", event.properties.getString("Variant name"));
+        assertEquals("local", event.properties.getString("Flag evaluation mode"));
+        assertTrue(event.properties.getLong("Variant fetch latency (ms)") >= 0);
     }
 
     @Test
@@ -579,7 +579,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider.startPollingForDefinitions();
         provider.getVariantValue("test-flag", "fallback", context);
 
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     @Test
@@ -596,7 +596,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider.getVariantValue("test-flag", "fallback", context);
 
         // No exposure should be tracked (and it returns fallback anyway)
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
     }
 
     // #endregion
@@ -683,7 +683,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         List<Rollout> rollouts1 = Arrays.asList(new Rollout(1.0f));
         String response1 = buildFlagsResponse("test-flag", "distinct_id", variants1, rollouts1, null);
 
-        provider = new TestableLocalFlagsProvider(config, SDK_VERSION, exposureTracker);
+        provider = new TestableLocalFlagsProvider(config, SDK_VERSION, eventSender);
         provider.setMockResponse("/flags/definitions", response1);
         provider.startPollingForDefinitions();
 
@@ -806,12 +806,12 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
-        exposureTracker.reset();
+        eventSender.reset();
         Map<String, Object> context = buildContext("user-123");
         List<SelectedVariant<Object>> results = provider.getAllVariants(context, true);
 
         // Should track 3 exposure events (one for each successful flag)
-        assertEquals(3, exposureTracker.getEventCount());
+        assertEquals(3, eventSender.getEvents().size());
         assertEquals(3, results.size());
     }
 
@@ -834,12 +834,12 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
-        exposureTracker.reset();
+        eventSender.reset();
         Map<String, Object> context = buildContext("user-123");
         List<SelectedVariant<Object>> results = provider.getAllVariants(context, false);
 
         // Should NOT track any exposure events
-        assertEquals(0, exposureTracker.getEventCount());
+        assertEquals(0, eventSender.getEvents().size());
 
         // But should still return all 3 variants
         assertEquals(3, results.size());
@@ -917,7 +917,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
-        exposureTracker.reset();
+        eventSender.reset();
         Map<String, Object> context = buildContext("test-user-123");
         SelectedVariant<String> result = provider.getVariant("test-flag", new SelectedVariant<>("fallback"), context, true);
 
@@ -927,12 +927,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("treatment", result.getVariantKey());
 
         // Verify exposure event was tracked with isQaTester=true
-        assertEquals(1, exposureTracker.getEventCount());
-        MockExposureTracker.ExposureEvent event = exposureTracker.getLastEvent();
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("test-user-123", event.distinctId);
-        assertEquals("test-flag", event.flagKey);
-        assertEquals("treatment", event.variantKey);
-        assertEquals(Boolean.TRUE, event.isQaTester);
+        assertEquals("$experiment_started", event.eventName);
+        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals("treatment", event.properties.getString("Variant name"));
+        assertEquals(Boolean.TRUE, event.properties.getBoolean("$is_qa_tester"));
     }
 
     @Test
@@ -950,7 +951,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
-        exposureTracker.reset();
+        eventSender.reset();
         Map<String, Object> context = buildContext("normal-user-456");
         SelectedVariant<String> result = provider.getVariant("test-flag", new SelectedVariant<>("fallback"), context, true);
 
@@ -960,12 +961,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("control", result.getVariantKey());
 
         // Verify exposure event was tracked with isQaTester=false
-        assertEquals(1, exposureTracker.getEventCount());
-        MockExposureTracker.ExposureEvent event = exposureTracker.getLastEvent();
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("normal-user-456", event.distinctId);
-        assertEquals("test-flag", event.flagKey);
-        assertEquals("control", event.variantKey);
-        assertEquals(Boolean.FALSE, event.isQaTester);
+        assertEquals("$experiment_started", event.eventName);
+        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals("control", event.properties.getString("Variant name"));
+        assertEquals(Boolean.FALSE, event.properties.getBoolean("$is_qa_tester"));
     }
 
     // #endregion

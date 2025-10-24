@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.*;
 import com.mixpanel.mixpanelapi.featureflags.util.HashUtils;
@@ -32,8 +33,6 @@ import java.util.logging.Logger;
 public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(LocalFlagsProvider.class.getName());
 
-    private final ExposureTracker exposureTracker;
-
     private final AtomicReference<Map<String, ExperimentationFlag>> flagDefinitions;
     private final AtomicBoolean ready;
     private final AtomicBoolean closed;
@@ -41,34 +40,14 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private ScheduledExecutorService pollingExecutor;
 
     /**
-     * Interface for tracking exposure events.
-     */
-    public interface ExposureTracker {
-        /**
-         * Track an exposure event.
-         *
-         * @param distinctId the user's distinct ID
-         * @param flagKey the flag key
-         * @param variantKey the selected variant key
-         * @param evaluationMode the evaluation mode ("local" or "remote")
-         * @param latencyMs evaluation time in milliseconds
-         * @param experimentId the experiment ID (may be null)
-         * @param isExperimentActive whether the experiment is active (may be null)
-         * @param isQaTester whether the user is a QA tester (may be null)
-         */
-        void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
-    }
-
-    /**
      * Creates a new LocalFlagsProvider.
      *
      * @param config the local flags configuration
      * @param sdkVersion the SDK version string
-     * @param exposureTracker callback for tracking exposure events
+     * @param eventSender the EventSender implementation for tracking exposure events
      */
-    public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, ExposureTracker exposureTracker) {
-        super(config.getProjectToken(), config, sdkVersion);
-        this.exposureTracker = exposureTracker;
+    public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender);
 
         this.flagDefinitions = new AtomicReference<>(new HashMap<>());
         this.ready = new AtomicBoolean(false);
@@ -383,7 +362,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                                 isQaTester
                             );
                             if (reportExposure) {
-                                trackExposureIfPossible(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
+                                trackLocalExposure(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
                             }
                             return result;
                         }
@@ -430,7 +409,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                         isQaTester
                     );
                     if (reportExposure) {
-                        trackExposureIfPossible(context, flagKey, selectedVariant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
+                        trackLocalExposure(context, flagKey, selectedVariant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
                     }
                     return result;
                 }
@@ -559,10 +538,10 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     }
 
     /**
-     * Tracks exposure event if possible.
+     * Tracks an exposure event for local evaluation.
      */
-    private void trackExposureIfPossible(Map<String, Object> context, String flagKey, String variantKey, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
-        if (exposureTracker == null) {
+    private void trackLocalExposure(Map<String, Object> context, String flagKey, String variantKey, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        if (eventSender == null) {
             return;
         }
 
@@ -571,11 +550,9 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return;
         }
 
-        try {
-            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, "local", latencyMs, experimentId, isExperimentActive, isQaTester);
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Failed to track exposure event", e);
-        }
+        trackExposure(distinctIdObj.toString(), flagKey, variantKey, "local", properties -> {
+            properties.put("Variant fetch latency (ms)", latencyMs);
+        }, experimentId, isExperimentActive, isQaTester);
     }
 
     // #endregion
