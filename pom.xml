@@ -3,7 +3,7 @@
 
   <groupId>com.mixpanel</groupId>
   <artifactId>mixpanel-java</artifactId>
-  <version>1.5.4</version>
+  <version>1.6.0-flags</version>
   <packaging>jar</packaging>
   <name>mixpanel-java</name>
   <description>
@@ -50,6 +50,16 @@
   </distributionManagement>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>**/*.properties</include>
+        </includes>
+      </resource>
+    </resources>
+
     <plugins>
       <!-- Central Publishing Maven Plugin for Maven Central Portal -->
       <plugin>
