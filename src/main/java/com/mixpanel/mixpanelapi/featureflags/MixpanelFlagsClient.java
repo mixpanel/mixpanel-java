@@ -2,7 +2,6 @@ package com.mixpanel.mixpanelapi.featureflags;
 
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
-import com.mixpanel.mixpanelapi.featureflags.model.EvaluationMode;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.util.VersionUtil;
@@ -145,14 +144,14 @@ public class MixpanelFlagsClient implements AutoCloseable {
      * Common helper method for tracking exposure events.
      */
     private void trackExposure(String distinctId, String flagKey, String variantKey,
-                              EvaluationMode evaluationMode, Consumer<JSONObject> addTimingProperties,
+                              String evaluationMode, Consumer<JSONObject> addTimingProperties,
                               UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
         try {
             JSONObject properties = new JSONObject();
             properties.put("Experiment name", flagKey);
             properties.put("Variant name", variantKey);
             properties.put("$experiment_type", "feature_flag");
-            properties.put("Flag evaluation mode", evaluationMode.toString());
+            properties.put("Flag evaluation mode", evaluationMode);
 
             // Add experiment metadata
             if (experimentId != null) {
@@ -173,14 +172,14 @@ public class MixpanelFlagsClient implements AutoCloseable {
 
             logger.log(Level.FINE, "Tracked exposure event for flag: " + flagKey + ", variant: " + variantKey);
         } catch (Exception e) {
-            logger.log(Level.WARNING, "Error tracking exposure event", e);
+            logger.log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
         }
     }
 
     /**
      * Tracks an exposure event for local evaluation.
      */
-    private void trackLocalExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+    private void trackLocalExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
         trackExposure(distinctId, flagKey, variantKey, evaluationMode, properties -> {
             properties.put("Variant fetch latency (ms)", latencyMs);
         }, experimentId, isExperimentActive, isQaTester);
@@ -189,7 +188,7 @@ public class MixpanelFlagsClient implements AutoCloseable {
     /**
      * Tracks an exposure event for remote evaluation.
      */
-    private void trackRemoteExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode,
+    private void trackRemoteExposure(String distinctId, String flagKey, String variantKey, String evaluationMode,
                                      String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
         trackExposure(distinctId, flagKey, variantKey, evaluationMode, properties -> {
             properties.put("Variant fetch start time", startTime);

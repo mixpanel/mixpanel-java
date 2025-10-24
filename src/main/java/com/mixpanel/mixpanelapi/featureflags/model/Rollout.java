@@ -16,7 +16,7 @@ import java.util.Map;
 public final class Rollout {
     private final float rolloutPercentage;
     private final Map<String, Object> runtimeEvaluationDefinition;
-    private final String variantOverride;
+    private final VariantOverride variantOverride;
     private final Map<String, Float> variantSplits;
 
     /**
@@ -24,10 +24,10 @@ public final class Rollout {
      *
      * @param rolloutPercentage the percentage of users to include (0.0-1.0)
      * @param runtimeEvaluationDefinition optional map of property name to expected value for targeting
-     * @param variantOverride optional variant key to force selection
+     * @param variantOverride optional variant override to force selection
      * @param variantSplits optional map of variant key to split percentage at assignment group level
      */
-    public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationDefinition, String variantOverride, Map<String, Float> variantSplits) {
+    public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
         this.rolloutPercentage = rolloutPercentage;
         this.runtimeEvaluationDefinition = runtimeEvaluationDefinition != null
             ? Collections.unmodifiableMap(runtimeEvaluationDefinition)
@@ -62,9 +62,9 @@ public final class Rollout {
     }
 
     /**
-     * @return optional variant key to force selection, or null if not set
+     * @return optional variant override to force selection, or null if not set
      */
-    public String getVariantOverride() {
+    public VariantOverride getVariantOverride() {
         return variantOverride;
     }
 

@@ -17,6 +17,7 @@ import org.json.JSONObject;
 
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.MixpanelFlagsClient;
+import com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
@@ -69,12 +70,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param localFlagsConfig configuration for local feature flags evaluation
      */
     public MixpanelAPI(LocalFlagsConfig localFlagsConfig) {
-        mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
-        mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
-        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
-        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
-        mUseGzipCompression = false;
-        mFlagsClient = createFlagsClient(localFlagsConfig, this);
+        this(localFlagsConfig, null);
     }
 
     /**
@@ -83,12 +79,28 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation
      */
     public MixpanelAPI(RemoteFlagsConfig remoteFlagsConfig) {
+        this(null, remoteFlagsConfig);
+    }
+
+    /**
+     * Private constructor for feature flags configurations.
+     * Initializes with default endpoints and no gzip compression.
+     *
+     * @param localFlagsConfig configuration for local feature flags evaluation (can be null)
+     * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
+     */
+    private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
         mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
         mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
         mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = false;
-        mFlagsClient = createFlagsClient(remoteFlagsConfig, this);
+
+        if (localFlagsConfig != null) {
+            mFlagsClient = createFlagsClient(localFlagsConfig, this);
+        } else {
+            mFlagsClient = createFlagsClient(remoteFlagsConfig, this);
+        }
     }
 
     /**
@@ -550,17 +562,7 @@ public class MixpanelAPI implements AutoCloseable {
      * The EventSender uses the provided MixpanelAPI instance for sending events.
      */
     private static MixpanelFlagsClient createFlagsClient(LocalFlagsConfig config, MixpanelAPI api) {
-        final MessageBuilder builder = new MessageBuilder(config.getProjectToken());
-
-        EventSender eventSender = (distinctId, eventName, properties) -> {
-            try {
-                JSONObject event = builder.event(distinctId, eventName, properties);
-                api.sendMessage(event);
-            } catch (IOException e) {
-                // Silently fail - exposure tracking should not break flag evaluation
-            }
-        };
-
+        EventSender eventSender = createEventSender(config, api);
         return new MixpanelFlagsClient(config, eventSender);
     }
 
@@ -569,9 +571,18 @@ public class MixpanelAPI implements AutoCloseable {
      * The EventSender uses the provided MixpanelAPI instance for sending events.
      */
     private static MixpanelFlagsClient createFlagsClient(RemoteFlagsConfig config, MixpanelAPI api) {
+        EventSender eventSender = createEventSender(config, api);
+        return new MixpanelFlagsClient(config, eventSender);
+    }
+
+    /**
+     * Creates an EventSender that uses the provided MixpanelAPI instance for sending events.
+     * This is shared by both local and remote flag evaluation modes.
+     */
+    private static EventSender createEventSender(BaseFlagsConfig config, MixpanelAPI api) {
         final MessageBuilder builder = new MessageBuilder(config.getProjectToken());
 
-        EventSender eventSender = (distinctId, eventName, properties) -> {
+        return (distinctId, eventName, properties) -> {
             try {
                 JSONObject event = builder.event(distinctId, eventName, properties);
                 api.sendMessage(event);
@@ -579,8 +590,6 @@ public class MixpanelAPI implements AutoCloseable {
                 // Silently fail - exposure tracking should not break flag evaluation
             }
         };
-
-        return new MixpanelFlagsClient(config, eventSender);
     }
 
     /**

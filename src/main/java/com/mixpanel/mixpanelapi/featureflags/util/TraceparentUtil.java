@@ -1,6 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.util;
 
-import java.security.SecureRandom;
+import java.util.UUID;
 
 /**
  * Utility class for generating W3C Trace Context traceparent headers.
@@ -15,8 +15,6 @@ import java.security.SecureRandom;
  * @see <a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a>
  */
 public final class TraceparentUtil {
-    private static final SecureRandom RANDOM = new SecureRandom();
-    private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
     /**
      * Private constructor to prevent instantiation.
@@ -29,33 +27,15 @@ public final class TraceparentUtil {
      * Generates a W3C traceparent header value.
      * <p>
      * Format: 00-{trace_id}-{span_id}-01
+     * Uses two separate UUIDs with dashes removed - one for trace_id (32 chars)
+     * and one for span_id (16 chars).
      * </p>
      *
      * @return a traceparent header value
      */
     public static String generateTraceparent() {
-        String traceId = generateRandomHex(32);
-        String spanId = generateRandomHex(16);
+        String traceId = UUID.randomUUID().toString().replace("-", "");
+        String spanId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         return "00-" + traceId + "-" + spanId + "-01";
-    }
-
-    /**
-     * Generates a random hexadecimal string of the specified length.
-     *
-     * @param length the number of hex characters to generate
-     * @return a random hex string
-     */
-    private static String generateRandomHex(int length) {
-        byte[] bytes = new byte[length / 2];
-        RANDOM.nextBytes(bytes);
-
-        char[] hexChars = new char[length];
-        for (int i = 0; i < bytes.length; i++) {
-            int v = bytes[i] & 0xFF;
-            hexChars[i * 2] = HEX_CHARS[v >>> 4];
-            hexChars[i * 2 + 1] = HEX_CHARS[v & 0x0F];
-        }
-
-        return new String(hexChars);
     }
 }

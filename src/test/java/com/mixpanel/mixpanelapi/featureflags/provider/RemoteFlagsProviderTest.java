@@ -1,7 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
-import com.mixpanel.mixpanelapi.featureflags.model.EvaluationMode;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 
 import org.json.JSONObject;
@@ -56,14 +55,14 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
             String distinctId;
             String flagKey;
             String variantKey;
-            EvaluationMode evaluationMode;
+            String evaluationMode;
             String startTime;
             String completeTime;
             java.util.UUID experimentId;
             Boolean isExperimentActive;
             Boolean isQaTester;
 
-            ExposureEvent(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+            ExposureEvent(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
                 this.distinctId = distinctId;
                 this.flagKey = flagKey;
                 this.variantKey = variantKey;
@@ -77,7 +76,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         }
 
         @Override
-        public void trackExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        public void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
             events.add(new ExposureEvent(distinctId, flagKey, variantKey, evaluationMode, startTime, completeTime, experimentId, isExperimentActive, isQaTester));
         }
     }
@@ -218,7 +217,7 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("user-123", event.distinctId);
         assertEquals("test-flag", event.flagKey);
         assertEquals("variant-a", event.variantKey);
-        assertEquals(EvaluationMode.REMOTE, event.evaluationMode);
+        assertEquals("remote", event.evaluationMode);
         assertNotNull(event.startTime);
         assertNotNull(event.completeTime);
     }

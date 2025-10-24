@@ -50,13 +50,13 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
          * @param distinctId the user's distinct ID
          * @param flagKey the flag key
          * @param variantKey the selected variant key
-         * @param evaluationMode the evaluation mode (local or remote)
+         * @param evaluationMode the evaluation mode ("local" or "remote")
          * @param latencyMs evaluation time in milliseconds
          * @param experimentId the experiment ID (may be null)
          * @param isExperimentActive whether the experiment is active (may be null)
          * @param isQaTester whether the user is a QA tester (may be null)
          */
-        void trackExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
+        void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
     }
 
     /**
@@ -204,19 +204,10 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      * Parses a single flag from JSON.
      */
     private ExperimentationFlag parseFlag(JSONObject json) {
-        String idString = json.optString("id", "");
-        UUID id;
-        try {
-            id = UUID.fromString(idString);
-        } catch (IllegalArgumentException e) {
-            logger.log(Level.WARNING, "Invalid UUID for flag id: " + idString);
-            id = UUID.randomUUID(); // Fallback to random UUID if parsing fails
-        }
-
+        String id = json.optString("id", "");
         String name = json.optString("name", "");
         String key = json.optString("key", "");
-        String statusString = json.optString("status", "");
-        FlagStatus status = FlagStatus.fromString(statusString);
+        String status = json.optString("status", "");
         int projectId = json.optInt("project_id", 0);
         String context = json.optString("context", "distinct_id");
 
@@ -303,23 +294,15 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      */
     private Rollout parseRollout(JSONObject json) {
         float rolloutPercentage = (float) json.optDouble("rollout_percentage", 0.0);
-        String variantOverride = null;
+        VariantOverride variantOverride = null;
 
         if (json.has("variant_override") && !json.isNull("variant_override")) {
-            Object variantOverrideObj = json.opt("variant_override");
-
-            if (variantOverrideObj instanceof String) {
-                String variantStr = (String) variantOverrideObj;
-                if (!variantStr.isEmpty()) {
-                    variantOverride = variantStr;
-                }
-            } else if (variantOverrideObj instanceof JSONObject) {
-                JSONObject variantObj = (JSONObject) variantOverrideObj;
+            JSONObject variantObj = json.optJSONObject("variant_override");
+            if (variantObj != null) {
                 String key = variantObj.optString("key", "");
                 if (!key.isEmpty()) {
-                    variantOverride = key;
+                    variantOverride = new VariantOverride(key);
                 }
-                // If key is empty, variantOverride remains null
             }
         }
 
@@ -427,7 +410,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 Variant selectedVariant = null;
 
                 if (rollout.hasVariantOverride()) {
-                    selectedVariant = findVariantByKey(ruleset.getVariants(), rollout.getVariantOverride());
+                    selectedVariant = findVariantByKey(ruleset.getVariants(), rollout.getVariantOverride().getKey());
                 } else {
                     // Use variant hash to select from split
                     float variantHash = HashUtils.normalizedHash(contextValue + flagKey, "variant");
@@ -589,7 +572,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
 
         try {
-            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, EvaluationMode.LOCAL, latencyMs, experimentId, isExperimentActive, isQaTester);
+            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, "local", latencyMs, experimentId, isExperimentActive, isQaTester);
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to track exposure event", e);
         }

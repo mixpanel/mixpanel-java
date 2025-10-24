@@ -13,10 +13,10 @@ import java.util.UUID;
  * </p>
  */
 public final class ExperimentationFlag {
-    private final UUID id;
+    private final String id;
     private final String name;
     private final String key;
-    private final FlagStatus status;
+    private final String status;
     private final int projectId;
     private final RuleSet ruleset;
     private final String context;
@@ -36,7 +36,7 @@ public final class ExperimentationFlag {
      * @param experimentId the experiment ID (may be null)
      * @param isExperimentActive whether the experiment is active (may be null)
      */
-    public ExperimentationFlag(UUID id, String name, String key, FlagStatus status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive) {
+    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive) {
         this.id = id;
         this.name = name;
         this.key = key;
@@ -51,7 +51,7 @@ public final class ExperimentationFlag {
     /**
      * @return the unique identifier for this flag
      */
-    public UUID getId() {
+    public String getId() {
         return id;
     }
 
@@ -72,7 +72,7 @@ public final class ExperimentationFlag {
     /**
      * @return the current status
      */
-    public FlagStatus getStatus() {
+    public String getStatus() {
         return status;
     }
 

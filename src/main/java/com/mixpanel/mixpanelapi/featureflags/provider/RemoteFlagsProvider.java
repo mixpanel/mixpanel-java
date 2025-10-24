@@ -1,7 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
-import com.mixpanel.mixpanelapi.featureflags.model.EvaluationMode;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 
 import org.json.JSONObject;
@@ -41,14 +40,14 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
          * @param distinctId the user's distinct ID
          * @param flagKey the flag key
          * @param variantKey the selected variant key
-         * @param evaluationMode the evaluation mode (local or remote)
+         * @param evaluationMode the evaluation mode ("local" or "remote")
          * @param startTime ISO 8601 timestamp of evaluation start
          * @param completeTime ISO 8601 timestamp of evaluation completion
          * @param experimentId the experiment ID (may be null)
          * @param isExperimentActive whether the experiment is active (may be null)
          * @param isQaTester whether the user is a QA tester (may be null)
          */
-        void trackExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
+        void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, String startTime, String completeTime, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester);
     }
 
     /**
@@ -182,7 +181,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
         }
 
         try {
-            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, EvaluationMode.REMOTE, startTime, completeTime, experimentId, isExperimentActive, isQaTester);
+            exposureTracker.trackExposure(distinctIdObj.toString(), flagKey, variantKey, "remote", startTime, completeTime, experimentId, isExperimentActive, isQaTester);
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to track exposure event", e);
         }

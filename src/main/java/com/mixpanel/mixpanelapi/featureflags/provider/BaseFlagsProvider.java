@@ -164,32 +164,19 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     /**
      * Evaluates a flag and returns whether it is enabled.
      * <p>
-     * Treats the variant value as truthy (non-null, non-false, non-zero).
+     * Returns true only if the variant value is exactly Boolean true.
+     * Returns false for all other cases (false, null, numbers, strings, etc.).
      * </p>
      *
      * @param flagKey the flag key to evaluate
      * @param context the evaluation context
-     * @return true if the variant value is truthy, false otherwise
+     * @return true if the variant value is exactly Boolean true, false otherwise
      */
     public boolean isEnabled(String flagKey, Map<String, Object> context) {
         SelectedVariant<Object> result = getVariant(flagKey, new SelectedVariant<>(false), context, true);
         Object value = result.getVariantValue();
 
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).doubleValue() != 0.0;
-        }
-        if (value instanceof String) {
-            String str = (String) value;
-            return !str.isEmpty() && !str.equalsIgnoreCase("false");
-        }
-
-        return true;
+        return value instanceof Boolean && (Boolean) value;
     }
 
     // #endregion

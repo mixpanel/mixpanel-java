@@ -68,13 +68,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             String distinctId;
             String flagKey;
             String variantKey;
-            EvaluationMode evaluationMode;
+            String evaluationMode;
             long latencyMs;
             java.util.UUID experimentId;
             Boolean isExperimentActive;
             Boolean isQaTester;
 
-            ExposureEvent(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+            ExposureEvent(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
                 this.distinctId = distinctId;
                 this.flagKey = flagKey;
                 this.variantKey = variantKey;
@@ -87,7 +87,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         }
 
         @Override
-        public void trackExposure(String distinctId, String flagKey, String variantKey, EvaluationMode evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        public void trackExposure(String distinctId, String flagKey, String variantKey, String evaluationMode, long latencyMs, java.util.UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
             events.add(new ExposureEvent(distinctId, flagKey, variantKey, evaluationMode, latencyMs, experimentId, isExperimentActive, isQaTester));
         }
     }
@@ -207,7 +207,9 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             JSONObject rolloutJson = new JSONObject();
             rolloutJson.put("rollout_percentage", r.getRolloutPercentage());
             if (r.hasVariantOverride()) {
-                rolloutJson.put("variant_override", r.getVariantOverride());
+                JSONObject variantOverrideObj = new JSONObject();
+                variantOverrideObj.put("key", r.getVariantOverride().getKey());
+                rolloutJson.put("variant_override", variantOverrideObj);
             }
             if (r.hasRuntimeEvaluation()) {
                 JSONObject runtimeEval = new JSONObject(r.getRuntimeEvaluationDefinition());
@@ -476,7 +478,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             new Variant("treatment", "red", false, 0.0f)
         );
         // Rollout with variant override - forces "treatment" regardless of split
-        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, "treatment", null));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, new VariantOverride("treatment"), null));
         String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
@@ -563,7 +565,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("user-123", event.distinctId);
         assertEquals("test-flag", event.flagKey);
         assertEquals("variant-a", event.variantKey);
-        assertEquals(EvaluationMode.LOCAL, event.evaluationMode);
+        assertEquals("local", event.evaluationMode);
         assertTrue(event.latencyMs >= 0);
     }
 
@@ -934,7 +936,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
-    public void testIsQaTesterFalseWhenUserGoesthroughNormalRollout() {
+    public void testIsQaTesterFalseWhenUserGoesThroughNormalRollout() {
         List<Variant> variants = Arrays.asList(
             new Variant("control", "blue", true, 1.0f)
         );
