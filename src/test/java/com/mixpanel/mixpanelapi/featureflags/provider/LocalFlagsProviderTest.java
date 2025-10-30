@@ -214,6 +214,10 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 JSONObject runtimeEval = new JSONObject(r.getRuntimeEvaluationDefinition());
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
             }
+            if (r.hasVariantSplits()) {
+                JSONObject variantSplitsObj = new JSONObject(r.getVariantSplits());
+                rolloutJson.put("variant_splits", variantSplitsObj);
+            }
             rolloutsArray.put(rolloutJson);
         }
         ruleset.put("rollout", rolloutsArray);
@@ -968,6 +972,94 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("test-flag", event.properties.getString("Experiment name"));
         assertEquals("control", event.properties.getString("Variant name"));
         assertEquals(Boolean.FALSE, event.properties.getBoolean("$is_qa_tester"));
+    }
+
+    // #endregion
+    // #region Variant Splits Tests
+
+    @Test
+    public void testVariantSplitsOverridesFlagLevelSplits() {
+        // Flag defines three variants with flag-level splits
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "blue", true, 0.34f),    // 34% at flag level
+            new Variant("treatment-a", "red", false, 0.33f), // 33% at flag level
+            new Variant("treatment-b", "green", false, 0.33f) // 33% at flag level
+        );
+
+        // Rollout overrides splits: 100% to treatment-b, 0% to others
+        Map<String, Float> variantSplits = new HashMap<>();
+        variantSplits.put("control", 0.0f);
+        variantSplits.put("treatment-a", 0.0f);
+        variantSplits.put("treatment-b", 1.0f);
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, variantSplits));
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        // Test multiple users - all should get treatment-b due to 100% override
+        for (int i = 0; i < 10; i++) {
+            Map<String, Object> context = buildContext("user-" + i);
+            String result = provider.getVariantValue("test-flag", "fallback", context);
+            assertEquals("All users should get treatment-b due to 100% variant split override",
+                "green", result);
+        }
+    }
+
+    @Test
+    public void testVariantOverrideTakesPrecedenceOverVariantSplits() {
+        // Flag defines variants with flag-level splits
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "blue", true, 0.5f),
+            new Variant("treatment", "red", false, 0.5f)
+        );
+
+        // Rollout has both variant_override AND variant_splits
+        // variant_override should take precedence
+        Map<String, Float> variantSplits = new HashMap<>();
+        variantSplits.put("control", 1.0f); // 100% to control via splits
+        variantSplits.put("treatment", 0.0f);
+
+        VariantOverride variantOverride = new VariantOverride("treatment"); // But override forces treatment
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, variantOverride, variantSplits));
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        // Test multiple users - all should get treatment due to variant_override
+        for (int i = 0; i < 10; i++) {
+            Map<String, Object> context = buildContext("user-" + i);
+            String result = provider.getVariantValue("test-flag", "fallback", context);
+            assertEquals("variant_override should take precedence over variant_splits",
+                "red", result);
+        }
+    }
+
+    @Test
+    public void testNoVariantSplitsUsesDefaultBehavior() {
+        // Flag defines variants with flag-level splits
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "blue", true, 0.0f),
+            new Variant("treatment", "red", false, 1.0f) // 100% at flag level
+        );
+
+        // Rollout without variant_splits (null)
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null));
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        // Test multiple users - all should get treatment based on flag-level splits
+        for (int i = 0; i < 10; i++) {
+            Map<String, Object> context = buildContext("user-" + i);
+            String result = provider.getVariantValue("test-flag", "fallback", context);
+            assertEquals("Should use flag-level splits when no variant_splits in rollout",
+                "red", result);
+        }
     }
 
     // #endregion

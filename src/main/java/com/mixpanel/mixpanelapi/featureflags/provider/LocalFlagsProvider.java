@@ -393,7 +393,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 } else {
                     // Use variant hash to select from split
                     float variantHash = HashUtils.normalizedHash(contextValue + flagKey, "variant");
-                    selectedVariant = selectVariantBySplit(ruleset.getVariants(), variantHash);
+                    selectedVariant = selectVariantBySplit(ruleset.getVariants(), variantHash, rollout);
                 }
 
                 if (selectedVariant != null) {
@@ -493,12 +493,61 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     }
 
     /**
-     * Selects a variant based on hash and split percentages.
+     * Applies variant split overrides from a rollout to the flag's variants.
+     * <p>
+     * Creates a new list of variants with updated split values where overrides are specified.
+     * Variants not in the overrides map retain their original split values.
+     * </p>
+     *
+     * @param variants the original list of variants from the flag definition
+     * @param variantSplits the map of variant key to split percentage overrides
+     * @return a new list with variant split overrides applied
      */
-    private Variant selectVariantBySplit(List<Variant> variants, float hash) {
-        float cumulative = 0.0f;
+    private List<Variant> applyVariantSplitOverrides(List<Variant> variants, Map<String, Float> variantSplits) {
+        List<Variant> result = new ArrayList<>(variants.size());
 
         for (Variant variant : variants) {
+            if (variantSplits.containsKey(variant.getKey())) {
+                // Create new variant with overridden split value
+                float overriddenSplit = variantSplits.get(variant.getKey());
+                Variant updatedVariant = new Variant(
+                    variant.getKey(),
+                    variant.getValue(),
+                    variant.isControl(),
+                    overriddenSplit
+                );
+                result.add(updatedVariant);
+            } else {
+                // Keep original variant with its original split
+                result.add(variant);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Selects a variant based on hash and split percentages.
+     * <p>
+     * If the rollout has variant_splits configured, those override the flag-level splits.
+     * Otherwise, uses the default split values from the variants.
+     * </p>
+     *
+     * @param variants the list of variants to select from
+     * @param hash the normalized hash value (0.0 to 1.0) for selection
+     * @param rollout the rollout being evaluated (may be null or have no variant_splits)
+     * @return the selected variant, or null if variants list is empty
+     */
+    private Variant selectVariantBySplit(List<Variant> variants, float hash, Rollout rollout) {
+        // Apply variant split overrides if the rollout specifies them
+        List<Variant> variantsToUse = variants;
+        if (rollout != null && rollout.hasVariantSplits()) {
+            variantsToUse = applyVariantSplitOverrides(variants, rollout.getVariantSplits());
+        }
+
+        // Select variant using cumulative split percentages
+        float cumulative = 0.0f;
+        for (Variant variant : variantsToUse) {
             cumulative += variant.getSplit();
             if (hash < cumulative) {
                 return variant;
@@ -506,7 +555,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
 
         // If no variant selected (due to rounding), return last variant
-        return variants.isEmpty() ? null : variants.get(variants.size() - 1);
+        return variantsToUse.isEmpty() ? null : variantsToUse.get(variantsToUse.size() - 1);
     }
 
     /**
