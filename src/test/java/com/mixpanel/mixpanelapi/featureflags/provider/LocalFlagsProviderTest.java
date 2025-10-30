@@ -91,6 +91,73 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         }
     }
 
+    /**
+     * Testable subclass that captures hash function calls for verification.
+     */
+    private static class TestableHashingLocalFlagsProvider extends TestableLocalFlagsProvider {
+
+        /**
+         * Represents a single hash function call with all parameters.
+         */
+        public static class HashCall {
+            public final String contextValue;
+            public final String flagKey;
+            public final String hashSalt;
+            public final Integer rolloutIndex;  // null for variant hashes
+            public final String type;  // "rollout" or "variant"
+            public final float result;
+
+            HashCall(String contextValue, String flagKey, String hashSalt,
+                    Integer rolloutIndex, String type, float result) {
+                this.contextValue = contextValue;
+                this.flagKey = flagKey;
+                this.hashSalt = hashSalt;
+                this.rolloutIndex = rolloutIndex;
+                this.type = type;
+                this.result = result;
+            }
+        }
+
+        private final List<HashCall> hashCalls = new ArrayList<>();
+
+        public TestableHashingLocalFlagsProvider(LocalFlagsConfig config,
+                                                String sdkVersion,
+                                                EventSender eventSender) {
+            super(config, sdkVersion, eventSender);
+        }
+
+        @Override
+        protected float calculateRolloutHash(String contextValue, String flagKey,
+                                            String hashSalt, int rolloutIndex) {
+            float result = super.calculateRolloutHash(contextValue, flagKey, hashSalt, rolloutIndex);
+            // Compute the actual salt used (same logic as parent method)
+            String actualSalt = (hashSalt != null && !hashSalt.isEmpty())
+                ? hashSalt + rolloutIndex
+                : "rollout";
+            hashCalls.add(new HashCall(contextValue, flagKey, actualSalt, rolloutIndex, "rollout", result));
+            return result;
+        }
+
+        @Override
+        protected float calculateVariantHash(String contextValue, String flagKey, String hashSalt) {
+            float result = super.calculateVariantHash(contextValue, flagKey, hashSalt);
+            // Compute the actual salt used (same logic as parent method)
+            String actualSalt = (hashSalt != null && !hashSalt.isEmpty())
+                ? hashSalt + "variant"
+                : "variant";
+            hashCalls.add(new HashCall(contextValue, flagKey, actualSalt, null, "variant", result));
+            return result;
+        }
+
+        public List<HashCall> getHashCalls() {
+            return new ArrayList<>(hashCalls);
+        }
+
+        public void clearHashCalls() {
+            hashCalls.clear();
+        }
+    }
+
     @Before
     public void setUp() {
         config = LocalFlagsConfig.builder()
@@ -186,6 +253,11 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             flag.put("is_experiment_active", def.isExperimentActive);
         }
 
+        // Add hash_salt if provided
+        if (def.hashSalt != null) {
+            flag.put("hash_salt", def.hashSalt);
+        }
+
         JSONObject ruleset = new JSONObject();
 
         // Add variants
@@ -245,13 +317,19 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, String> testUsers;
         UUID experimentId;
         Boolean isExperimentActive;
+        String hashSalt;
 
         FlagDefinition(String flagKey, String context, List<Variant> variants, List<Rollout> rollouts) {
-            this(flagKey, context, variants, rollouts, null, null, null);
+            this(flagKey, context, variants, rollouts, null, null, null, null);
         }
 
         FlagDefinition(String flagKey, String context, List<Variant> variants, List<Rollout> rollouts,
                       Map<String, String> testUsers, UUID experimentId, Boolean isExperimentActive) {
+            this(flagKey, context, variants, rollouts, testUsers, experimentId, isExperimentActive, null);
+        }
+
+        FlagDefinition(String flagKey, String context, List<Variant> variants, List<Rollout> rollouts,
+                      Map<String, String> testUsers, UUID experimentId, Boolean isExperimentActive, String hashSalt) {
             this.flagKey = flagKey;
             this.context = context;
             this.variants = variants;
@@ -259,6 +337,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             this.testUsers = testUsers;
             this.experimentId = experimentId;
             this.isExperimentActive = isExperimentActive;
+            this.hashSalt = hashSalt;
         }
     }
 
@@ -1061,6 +1140,249 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 "red", result);
         }
     }
+
+    // #region Hash Salt Tests
+
+    @Test
+    public void testHashSaltIsUsedForRolloutCalculation() {
+        // Create a flag with hash_salt
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", false, true, 0.5f),
+            new Variant("treatment", true, false, 0.5f)
+        );
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
+
+        // Create flag definition with hash_salt
+        String hashSalt = "abc123def456abc123def456abc12345"; // 32-char hex string
+        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+
+        JSONObject root = new JSONObject();
+        JSONArray flagsArray = new JSONArray();
+        flagsArray.put(buildFlagJsonObject(flagDef, "flag-1"));
+        root.put("flags", flagsArray);
+        String response = root.toString();
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        // Evaluate the flag
+        Map<String, Object> context = buildContext("user-123");
+        hashingProvider.getVariantValue("test-flag", "fallback", context);
+
+        // Verify hash calls
+        List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
+        assertFalse("Should have made hash calls", hashCalls.isEmpty());
+
+        // Find the rollout hash call
+        TestableHashingLocalFlagsProvider.HashCall rolloutHashCall = null;
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashCalls) {
+            if ("rollout".equals(call.type)) {
+                rolloutHashCall = call;
+                break;
+            }
+        }
+
+        assertNotNull("Should have called calculateRolloutHash", rolloutHashCall);
+        assertEquals("Context value should be user-123", "user-123", rolloutHashCall.contextValue);
+        assertEquals("Flag key should be test-flag", "test-flag", rolloutHashCall.flagKey);
+        assertEquals("Hash salt should include rollout index 0", hashSalt + "0", rolloutHashCall.hashSalt);
+        assertEquals("Rollout index should be 0", Integer.valueOf(0), rolloutHashCall.rolloutIndex);
+    }
+
+    @Test
+    public void testHashSaltIsUsedForVariantCalculation() {
+        // Create a flag with hash_salt
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "blue", true, 0.5f),
+            new Variant("treatment", "red", false, 0.5f)
+        );
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
+
+        // Create flag definition with hash_salt
+        String hashSalt = "def789abc012def789abc012def78901"; // 32-char hex string
+        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+
+        JSONObject root = new JSONObject();
+        JSONArray flagsArray = new JSONArray();
+        flagsArray.put(buildFlagJsonObject(flagDef, "flag-1"));
+        root.put("flags", flagsArray);
+        String response = root.toString();
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        // Evaluate the flag
+        Map<String, Object> context = buildContext("user-456");
+        hashingProvider.getVariantValue("test-flag", "fallback", context);
+
+        // Verify hash calls
+        List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
+
+        // Find the variant hash call
+        TestableHashingLocalFlagsProvider.HashCall variantHashCall = null;
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashCalls) {
+            if ("variant".equals(call.type)) {
+                variantHashCall = call;
+                break;
+            }
+        }
+
+        assertNotNull("Should have called calculateVariantHash", variantHashCall);
+        assertEquals("Context value should be user-456", "user-456", variantHashCall.contextValue);
+        assertEquals("Flag key should be test-flag", "test-flag", variantHashCall.flagKey);
+        assertEquals("Hash salt should include 'variant'", hashSalt + "variant", variantHashCall.hashSalt);
+        assertNull("Rollout index should be null for variant hash", variantHashCall.rolloutIndex);
+    }
+
+    @Test
+    public void testMultipleRolloutsWithHashSaltUseDifferentHashes() {
+        // Create a flag with hash_salt and multiple rollouts
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", false, true, 0.5f),
+            new Variant("treatment", true, false, 0.5f)
+        );
+
+        // First rollout: 0% (will be evaluated but not match, forcing evaluation of second)
+        // Second rollout: 100% (will be evaluated and match)
+        List<Rollout> rollouts = Arrays.asList(
+            new Rollout(0.0f, null, null, null),  // 0% - evaluated but doesn't match
+            new Rollout(1.0f, null, null, null)   // 100% - evaluated and matches
+        );
+
+        // Create flag definition with hash_salt
+        String hashSalt = "012345678901234567890123456789ab"; // 32-char hex string
+        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+
+        JSONObject root = new JSONObject();
+        JSONArray flagsArray = new JSONArray();
+        flagsArray.put(buildFlagJsonObject(flagDef, "flag-1"));
+        root.put("flags", flagsArray);
+        String response = root.toString();
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        // Evaluate the flag
+        Map<String, Object> context = buildContext("user-789");
+        hashingProvider.getVariantValue("test-flag", "fallback", context);
+
+        // Verify hash calls - should have 2 rollout hash calls with indices 0 and 1
+        List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
+
+        // Find all rollout hash calls
+        List<TestableHashingLocalFlagsProvider.HashCall> rolloutCalls = new ArrayList<>();
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashCalls) {
+            if ("rollout".equals(call.type)) {
+                rolloutCalls.add(call);
+            }
+        }
+
+        // Should have evaluated both rollouts
+        assertEquals("Should have made 2 rollout hash calls", 2, rolloutCalls.size());
+
+        // Verify the first rollout hash call uses index 0
+        TestableHashingLocalFlagsProvider.HashCall firstRolloutCall = rolloutCalls.get(0);
+        assertEquals("First rollout should use index 0", Integer.valueOf(0), firstRolloutCall.rolloutIndex);
+        assertEquals("First rollout hash salt should be hashSalt + 0", hashSalt + "0", firstRolloutCall.hashSalt);
+
+        // Verify the second rollout hash call uses index 1
+        TestableHashingLocalFlagsProvider.HashCall secondRolloutCall = rolloutCalls.get(1);
+        assertEquals("Second rollout should use index 1", Integer.valueOf(1), secondRolloutCall.rolloutIndex);
+        assertEquals("Second rollout hash salt should be hashSalt + 1", hashSalt + "1", secondRolloutCall.hashSalt);
+    }
+
+    @Test
+    public void testLegacyFlagsWithoutHashSaltUseRolloutSalt() {
+        // Create a flag WITHOUT hash_salt (legacy behavior)
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", false, true, 0.5f),
+            new Variant("treatment", true, false, 0.5f)
+        );
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
+
+        // Create flag definition WITHOUT hash_salt (null)
+        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, null);
+
+        JSONObject root = new JSONObject();
+        JSONArray flagsArray = new JSONArray();
+        flagsArray.put(buildFlagJsonObject(flagDef, "flag-1"));
+        root.put("flags", flagsArray);
+        String response = root.toString();
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        // Evaluate the flag
+        Map<String, Object> context = buildContext("user-legacy");
+        hashingProvider.getVariantValue("test-flag", "fallback", context);
+
+        // Verify hash calls use legacy "rollout" salt
+        List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
+
+        // Find rollout hash call
+        TestableHashingLocalFlagsProvider.HashCall rolloutHashCall = null;
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashCalls) {
+            if ("rollout".equals(call.type)) {
+                rolloutHashCall = call;
+                break;
+            }
+        }
+
+        assertNotNull("Should have called calculateRolloutHash", rolloutHashCall);
+        assertEquals("Legacy rollout hash should use 'rollout' salt", "rollout", rolloutHashCall.hashSalt);
+    }
+
+    @Test
+    public void testLegacyFlagsWithoutHashSaltUseVariantSalt() {
+        // Create a flag WITHOUT hash_salt (legacy behavior)
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "blue", true, 0.5f),
+            new Variant("treatment", "red", false, 0.5f)
+        );
+
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
+
+        // Create flag definition WITHOUT hash_salt (null)
+        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, null);
+
+        JSONObject root = new JSONObject();
+        JSONArray flagsArray = new JSONArray();
+        flagsArray.put(buildFlagJsonObject(flagDef, "flag-1"));
+        root.put("flags", flagsArray);
+        String response = root.toString();
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        // Evaluate the flag
+        Map<String, Object> context = buildContext("user-legacy-variant");
+        hashingProvider.getVariantValue("test-flag", "fallback", context);
+
+        // Verify hash calls use legacy "variant" salt
+        List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
+
+        // Find variant hash call
+        TestableHashingLocalFlagsProvider.HashCall variantHashCall = null;
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashCalls) {
+            if ("variant".equals(call.type)) {
+                variantHashCall = call;
+                break;
+            }
+        }
+
+        assertNotNull("Should have called calculateVariantHash", variantHashCall);
+        assertEquals("Legacy variant hash should use 'variant' salt", "variant", variantHashCall.hashSalt);
+    }
+
+    // #endregion
 
     // #endregion
 }

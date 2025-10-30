@@ -206,9 +206,12 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             isExperimentActive = json.optBoolean("is_experiment_active", false);
         }
 
+        // Parse hash_salt (may be null for legacy flags)
+        String hashSalt = json.optString("hash_salt", null);
+
         RuleSet ruleset = parseRuleSet(json.optJSONObject("ruleset"));
 
-        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive);
+        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt);
     }
 
     /**
@@ -371,9 +374,13 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
 
             // Evaluate rollouts
-            float rolloutHash = HashUtils.normalizedHash(contextValue + flagKey, "rollout");
+            List<Rollout> rollouts = ruleset.getRollouts();
+            for (int rolloutIndex = 0; rolloutIndex < rollouts.size(); rolloutIndex++) {
+                Rollout rollout = rollouts.get(rolloutIndex);
 
-            for (Rollout rollout : ruleset.getRollouts()) {
+                // Calculate rollout hash
+                float rolloutHash = calculateRolloutHash(contextValue, flagKey, flag.getHashSalt(), rolloutIndex);
+
                 if (rolloutHash >= rollout.getRolloutPercentage()) {
                     continue;
                 }
@@ -391,8 +398,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 if (rollout.hasVariantOverride()) {
                     selectedVariant = findVariantByKey(ruleset.getVariants(), rollout.getVariantOverride().getKey());
                 } else {
-                    // Use variant hash to select from split
-                    float variantHash = HashUtils.normalizedHash(contextValue + flagKey, "variant");
+                    // Calculate variant hash
+                    float variantHash = calculateVariantHash(contextValue, flagKey, flag.getHashSalt());
                     selectedVariant = selectVariantBySplit(ruleset.getVariants(), variantHash, rollout);
                 }
 
@@ -556,6 +563,46 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         // If no variant selected (due to rounding), return last variant
         return variantsToUse.isEmpty() ? null : variantsToUse.get(variantsToUse.size() - 1);
+    }
+
+    /**
+     * Calculates the rollout hash for a given context and rollout index.
+     * <p>
+     * This method can be overridden in tests to verify hash parameters.
+     * </p>
+     *
+     * @param contextValue the context value (e.g., user ID)
+     * @param flagKey the flag key
+     * @param hashSalt the hash salt (null or empty for legacy behavior)
+     * @param rolloutIndex the index of the rollout being evaluated
+     * @return the normalized hash value (0.0 to 1.0)
+     */
+    protected float calculateRolloutHash(String contextValue, String flagKey,
+                                        String hashSalt, int rolloutIndex) {
+        if (hashSalt != null && !hashSalt.isEmpty()) {
+            return HashUtils.normalizedHash(contextValue + flagKey, hashSalt + rolloutIndex);
+        } else {
+            return HashUtils.normalizedHash(contextValue + flagKey, "rollout");
+        }
+    }
+
+    /**
+     * Calculates the variant hash for a given context.
+     * <p>
+     * This method can be overridden in tests to verify hash parameters.
+     * </p>
+     *
+     * @param contextValue the context value (e.g., user ID)
+     * @param flagKey the flag key
+     * @param hashSalt the hash salt (null or empty for legacy behavior)
+     * @return the normalized hash value (0.0 to 1.0)
+     */
+    protected float calculateVariantHash(String contextValue, String flagKey, String hashSalt) {
+        if (hashSalt != null && !hashSalt.isEmpty()) {
+            return HashUtils.normalizedHash(contextValue + flagKey, hashSalt + "variant");
+        } else {
+            return HashUtils.normalizedHash(contextValue + flagKey, "variant");
+        }
     }
 
     /**

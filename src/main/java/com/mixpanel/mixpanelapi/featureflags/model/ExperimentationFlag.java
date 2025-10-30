@@ -22,6 +22,7 @@ public final class ExperimentationFlag {
     private final String context;
     private final UUID experimentId;
     private final Boolean isExperimentActive;
+    private final String hashSalt;
 
     /**
      * Creates a new ExperimentationFlag.
@@ -35,8 +36,9 @@ public final class ExperimentationFlag {
      * @param context the property name used for rollout hashing (e.g., "distinct_id")
      * @param experimentId the experiment ID (may be null)
      * @param isExperimentActive whether the experiment is active (may be null)
+     * @param hashSalt the hash salt for this flag (may be null for legacy flags)
      */
-    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive) {
+    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt) {
         this.id = id;
         this.name = name;
         this.key = key;
@@ -46,6 +48,7 @@ public final class ExperimentationFlag {
         this.context = context;
         this.experimentId = experimentId;
         this.isExperimentActive = isExperimentActive;
+        this.hashSalt = hashSalt;
     }
 
     /**
@@ -111,6 +114,13 @@ public final class ExperimentationFlag {
         return isExperimentActive;
     }
 
+    /**
+     * @return the hash salt for this flag, or null for legacy flags
+     */
+    public String getHashSalt() {
+        return hashSalt;
+    }
+
     @Override
     public String toString() {
         return "ExperimentationFlag{" +
@@ -123,6 +133,7 @@ public final class ExperimentationFlag {
                 ", context='" + context + '\'' +
                 ", experimentId=" + experimentId +
                 ", isExperimentActive=" + isExperimentActive +
+                ", hashSalt='" + hashSalt + '\'' +
                 '}';
     }
 }
