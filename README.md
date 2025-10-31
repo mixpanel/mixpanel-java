@@ -1,8 +1,9 @@
-This is the official Mixpanel tracking library for Java. 
+This is the official Mixpanel tracking library for Java.
 
-Latest Version 
---------------
+## Latest Version
+
 ##### _May 08, 2024_ - [v1.5.3](https://github.com/mixpanel/mixpanel-java/releases/tag/mixpanel-java-1.5.3)
+
 ```
 <dependency>
     <groupId>com.mixpanel</groupId>
@@ -13,8 +14,8 @@ Latest Version
 
 You can alternatively download the library jar directly from Maven Central [here](https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java).
 
-How To Use
-----------
+## How To Use
+
 The library is designed to produce events and people updates in one process or thread, and
 consume the events and people updates in another thread or process. Specially formatted JSON objects
 are built by `MessageBuilder` objects, and those messages can be consumed by the
@@ -42,16 +43,83 @@ Gzip compression can reduce bandwidth usage and improve performance, especially 
 
 The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
 
-Learn More
-----------
+## Feature Flags
+
+The Mixpanel Java SDK supports feature flags with both local and remote evaluation modes.
+
+### Local Evaluation (Recommended)
+
+Fast, low-latency flag checks with background polling for flag definitions:
+
+```java
+import com.mixpanel.mixpanelapi.*;
+import com.mixpanel.mixpanelapi.featureflags.config.*;
+import java.util.*;
+
+// Initialize with your project token
+LocalFlagsConfig config = LocalFlagsConfig.builder()
+    .projectToken("YOUR_PROJECT_TOKEN")
+    .pollingIntervalSeconds(60)
+    .build();
+
+MixpanelAPI mixpanel = new MixpanelAPI(config);
+
+// Start polling for flag definitions
+mixpanel.getLocalFlags().startPollingForDefinitions();
+
+// Wait for flags to be ready (optional but recommended)
+while (!mixpanel.getLocalFlags().areFlagsReady()) {
+    Thread.sleep(100);
+}
+
+// Evaluate flags
+Map<String, Object> context = new HashMap<>();
+context.put("distinct_id", "user-123");
+
+// Check if a feature is enabled
+boolean isEnabled = mixpanel.getLocalFlags().isEnabled("new-feature", context);
+
+// Get a variant value with fallback
+String theme = mixpanel.getLocalFlags().getVariantValue("ui-theme", "light", context);
+
+// Cleanup
+mixpanel.close();
+```
+
+### Remote Evaluation
+
+Real-time flag evaluation with server-side API calls:
+
+```java
+import com.mixpanel.mixpanelapi.*;
+import com.mixpanel.mixpanelapi.featureflags.config.*;
+import java.util.*;
+
+RemoteFlagsConfig config = RemoteFlagsConfig.builder()
+    .projectToken("YOUR_PROJECT_TOKEN")
+    .build();
+
+try (MixpanelAPI mixpanel = new MixpanelAPI(config)) {
+    Map<String, Object> context = new HashMap<>();
+    context.put("distinct_id", "user-456");
+
+    boolean isEnabled = mixpanel.getRemoteFlags().isEnabled("premium-features", context);
+}
+```
+
+For complete feature flags documentation, configuration options, advanced usage, and best practices, see:
+
+    https://docs.mixpanel.com/docs/tracking-methods/sdks/java/java-flags
+
+## Learn More
+
 This library in particular has more in-depth documentation at
 
     https://mixpanel.com/docs/integration-libraries/java
-    
+
 Mixpanel maintains documentation at
 
     http://www.mixpanel.com/docs
-
 
 The library also contains a simple demo application, that demonstrates
 using this library in an asynchronous environment.
@@ -62,9 +130,9 @@ support for persistent properties, etc. Two interesting ones are at:
 
     https://github.com/eranation/mixpanel-java
     https://github.com/scalascope/mixpanel-java
-    
-Other Mixpanel Libraries
-------------------------
+
+## Other Mixpanel Libraries
+
 Mixpanel also maintains a full-featured library for tracking events from Android apps at https://github.com/mixpanel/mixpanel-android
 
 And a full-featured client side library for web applications, in Javascript, that can be loaded
@@ -73,8 +141,7 @@ directly from Mixpanel servers. To learn more about our Javascript library, see:
 This library is intended for use in back end applications or API services that can't take
 advantage of the Android libraries or the Javascript library.
 
-License
--------
+## License
 
 ```
 See LICENSE File for details. The Base64Coder class used by this software
