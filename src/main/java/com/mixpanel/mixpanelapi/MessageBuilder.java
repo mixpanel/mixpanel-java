@@ -1,12 +1,7 @@
 package com.mixpanel.mixpanelapi;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.Collection;
-import java.util.Date;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.UUID;
 
 import org.json.JSONArray;
@@ -21,8 +16,6 @@ import org.json.JSONObject;
  * and the resulting messages are suitable for enqueuing or sending over a local network.
  */
 public class MessageBuilder {
-
-    private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
 
     private final String mToken;
 
@@ -466,55 +459,6 @@ public class MessageBuilder {
     }
 
     /**
-     * Tracks revenue associated with the given distinctId.
-     *
-     * @param distinctId an identifier associated with a profile
-     * @param amount a double revenue amount. Positive amounts represent income for your business.
-     * @param properties can be null. If provided, a set of properties to associate with
-     *           the individual transaction.
-     * @return user profile trackCharge message for consumption by MixpanelAPI
-     */
-    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties) {
-        return trackCharge(distinctId, amount, properties, null);
-    }
-
-    /**
-     * Tracks revenue associated with the given distinctId.
-     *
-     * @param distinctId an identifier associated with a profile
-     * @param amount a double revenue amount. Positive amounts represent income for your business.
-     * @param properties can be null. If provided, a set of properties to associate with
-     *           the individual transaction.
-     * @param modifiers can be null. If provided, the keys and values in the object will
-     *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
-     * @return user profile trackCharge message for consumption by MixpanelAPI
-     */
-    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties, JSONObject modifiers) {
-        JSONObject transactionValue = new JSONObject();
-        JSONObject appendProperties = new JSONObject();
-        try {
-            transactionValue.put("$amount", amount);
-            DateFormat dateFormat = new SimpleDateFormat(ENGAGE_DATE_FORMAT);
-            dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-            transactionValue.put("$time", dateFormat.format(new Date()));
-
-            if (null != properties) {
-                for (Iterator<?> iter = properties.keys(); iter.hasNext();) {
-                    String key = (String) iter.next();
-                    transactionValue.put(key, properties.get(key));
-                }
-            }
-
-            appendProperties.put("$transactions", transactionValue);
-
-            return this.append(distinctId, appendProperties, modifiers);
-        } catch (JSONException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Cannot create trackCharge message", e);
-        }
-    }
-
-    /**
      * Formats a generic user profile message.
      * Use of this method requires familiarity with the underlying Mixpanel HTTP API,
      * and it may be simpler and clearer to use the pre-built functions for setting,
@@ -858,6 +802,47 @@ public class MessageBuilder {
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
         }
+    }
+
+    /**
+     * @deprecated The trackCharge() method is deprecated. The old version of Mixpanel's Revenue analysis UI 
+     * has been replaced by a newer suite of analysis tools which don't depend on profile properties.
+     * See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.
+     * 
+     * This method now only logs an error and returns null. It no longer sets a profile property or produces any other change.
+     * 
+     * @param distinctId an identifier associated with a profile
+     * @param amount a double revenue amount (deprecated - no longer used)
+     * @param properties properties associated with the transaction (deprecated - no longer used)
+     * @return null
+     */
+    @Deprecated
+    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties) {
+        System.err.println("ERROR: The trackCharge() method is deprecated and no longer functional. " +
+            "The old version of Mixpanel's Revenue analysis UI has been replaced by a newer suite of analysis tools. " +
+            "See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.");
+        return null;
+    }
+
+    /**
+     * @deprecated The trackCharge() method is deprecated. The old version of Mixpanel's Revenue analysis UI 
+     * has been replaced by a newer suite of analysis tools which don't depend on profile properties.
+     * See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.
+     * 
+     * This method now only logs an error and returns null. It no longer sets a profile property or produces any other change.
+     * 
+     * @param distinctId an identifier associated with a profile
+     * @param amount a double revenue amount (deprecated - no longer used)
+     * @param properties properties associated with the transaction (deprecated - no longer used)
+     * @param modifiers modifiers for the message (deprecated - no longer used)
+     * @return null
+     */
+    @Deprecated
+    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties, JSONObject modifiers) {
+        System.err.println("ERROR: The trackCharge() method is deprecated and no longer functional. " +
+            "The old version of Mixpanel's Revenue analysis UI has been replaced by a newer suite of analysis tools. " +
+            "See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.");
+        return null;
     }
 
 }

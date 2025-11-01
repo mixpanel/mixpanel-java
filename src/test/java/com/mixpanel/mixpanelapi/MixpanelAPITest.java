@@ -410,8 +410,9 @@ public class MixpanelAPITest extends TestCase
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         assertTrue(c.isValidMessage(increment));
 
+        // Test deprecated trackCharge method - should return null
         JSONObject charge = mBuilder.trackCharge("a distinct id", 100.00, mSampleProps);
-        assertTrue(c.isValidMessage(charge));
+        assertNull("trackCharge should return null (deprecated)", charge);
     }
 
     public void testModifiers() {
@@ -426,8 +427,9 @@ public class MixpanelAPITest extends TestCase
         JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
         checkModifiers(append);
 
+        // Test deprecated trackCharge method - should return null
         JSONObject trackCharge = mBuilder.trackCharge("a distinct id", 2.2, null, mSampleModifiers);
-        checkModifiers(trackCharge);
+        assertNull("trackCharge should return null (deprecated)", trackCharge);
     }
 
     public void testEmptyMessageFormat() {

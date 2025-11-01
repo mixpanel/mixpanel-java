@@ -126,9 +126,13 @@ public class MixpanelAPIDemo {
         JSONObject nameMessage = messageBuilder.set(distinctId, nameProps);
         messages.add(nameMessage);
 
-        // Charge the user $2.50 for using the program :)
+        // Demonstrate deprecated trackCharge method (now logs error instead of tracking revenue)
+        System.out.println("\n=== Demonstrating deprecated trackCharge method ===");
         JSONObject transactionMessage = messageBuilder.trackCharge(distinctId, 2.50, null);
-        messages.add(transactionMessage);
+        if (transactionMessage != null) {
+            messages.add(transactionMessage);
+        }
+        System.out.println("trackCharge() returns null and logs an error to stderr\n");
 
         // Import a historical event (30 days ago) with explicit time and $insert_id
         long thirtyDaysAgo = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L);
