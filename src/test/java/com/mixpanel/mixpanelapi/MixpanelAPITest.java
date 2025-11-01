@@ -1484,4 +1484,122 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void testDisableStrictImport() {
+        // Test that disableStrictImport() sets strict=0 in the URL
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        // By default, strict mode should be enabled (strict=1)
+        ClientDelivery c1 = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props1 = new JSONObject();
+            props1.put("time", historicalTime);
+            props1.put("$insert_id", "insert-id-1");
+            JSONObject importEvent1 = mBuilder.importEvent("user-1", "test event", props1);
+            c1.addMessage(importEvent1);
+            
+            api.deliver(c1);
+            
+            String url1 = capturedUrls.get("endpoint");
+            assertTrue("Default: strict=1 in URL", url1.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException during first delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        // Now disable strict mode and test again
+        capturedUrls.clear();
+        api.disableStrictImport();
+        
+        ClientDelivery c2 = new ClientDelivery();
+        
+        try {
+            JSONObject props2 = new JSONObject();
+            props2.put("time", historicalTime);
+            props2.put("$insert_id", "insert-id-2");
+            JSONObject importEvent2 = mBuilder.importEvent("user-2", "test event 2", props2);
+            c2.addMessage(importEvent2);
+            
+            api.deliver(c2);
+            
+            String url2 = capturedUrls.get("endpoint");
+            assertTrue("After disableStrictImport(): strict=0 in URL", url2.contains("strict=0"));
+            
+        } catch (IOException e) {
+            fail("IOException during second delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+    }
+
+    public void testMultipleInstancesHaveIndependentStrictMode() {
+        // Test that different MixpanelAPI instances have independent strict mode settings
+        final Map<String, String> api1Urls = new HashMap<String, String>();
+        final Map<String, String> api2Urls = new HashMap<String, String>();
+        
+        MixpanelAPI api1 = new MixpanelAPI("events url", "people url", "groups url", "import url1") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                api1Urls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        MixpanelAPI api2 = new MixpanelAPI("events url", "people url", "groups url", "import url2") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                api2Urls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            // Disable strict mode only on api1
+            api1.disableStrictImport();
+            
+            // Send import message with api1 (strict=0)
+            ClientDelivery c1 = new ClientDelivery();
+            JSONObject props1 = new JSONObject();
+            props1.put("time", historicalTime);
+            props1.put("$insert_id", "insert-id-1");
+            JSONObject importEvent1 = mBuilder.importEvent("user-1", "test event", props1);
+            c1.addMessage(importEvent1);
+            api1.deliver(c1);
+            
+            // Send import message with api2 (strict=1, not disabled)
+            ClientDelivery c2 = new ClientDelivery();
+            JSONObject props2 = new JSONObject();
+            props2.put("time", historicalTime);
+            props2.put("$insert_id", "insert-id-2");
+            JSONObject importEvent2 = mBuilder.importEvent("user-2", "test event", props2);
+            c2.addMessage(importEvent2);
+            api2.deliver(c2);
+            
+            // Verify api1 has strict=0 and api2 has strict=1
+            String url1 = api1Urls.get("endpoint");
+            String url2 = api2Urls.get("endpoint");
+            
+            assertTrue("API1: strict=0 after disableStrictImport()", url1.contains("strict=0"));
+            assertTrue("API2: strict=1 by default", url2.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+    }
+
 }

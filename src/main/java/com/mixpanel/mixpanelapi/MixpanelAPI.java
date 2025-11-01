@@ -45,6 +45,7 @@ public class MixpanelAPI implements AutoCloseable {
     // Instance fields for customizable timeouts (per-instance control)
     private int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
     private int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
+    private boolean mStrictImportMode = true;
 
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
@@ -281,7 +282,8 @@ public class MixpanelAPI implements AutoCloseable {
         // Handle import messages - use strict mode and extract token for auth
         List<JSONObject> importMessages = toSend.getImportMessages();
         if (importMessages.size() > 0) {
-            String importUrl = mImportEndpoint + "?strict=1";
+            String strictParam = mStrictImportMode ? "1" : "0";
+            String importUrl = mImportEndpoint + "?strict=" + strictParam;
             sendImportMessages(importMessages, importUrl);
         }
     }
@@ -804,6 +806,31 @@ public class MixpanelAPI implements AutoCloseable {
             throw new IllegalArgumentException("Read timeout must be > 0");
         }
         this.mReadTimeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Disables strict validation for import operations.
+     * 
+     * By default, the /import endpoint uses strict=1 which validates each event and returns
+     * a 400 error if any event has issues. Correctly formed events are still ingested, and
+     * problematic events are returned in the response with error messages.
+     * 
+     * Calling this method sets strict=0, which bypasses validation and imports all events
+     * regardless of their validity. This can be useful for importing data with known issues
+     * or when validation errors are not a concern.
+     * 
+     * This should be called before calling any deliver() or sendMessage() methods.
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.disableStrictImport();  // Skip validation on import
+     *     api.deliver(delivery);
+     *
+     * For more details on import validation, see:
+     *     https://developer.mixpanel.com/reference/import-events
+     */
+    public void disableStrictImport() {
+        this.mStrictImportMode = false;
     }
 
     /**

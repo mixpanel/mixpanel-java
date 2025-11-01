@@ -53,6 +53,14 @@ When importing large events through the `/import` endpoint, you may need to cont
     // Import with custom batch size (500)
     MixpanelAPI mixpanel = new MixpanelAPI(500);
 
+### Disabling Strict Import Validation
+
+By default, the `/import` endpoint enforces strict validation (strict=1). You can disable strict validation by calling `disableStrictImport()` before delivering import messages. See the [Mixpanel Import API documentation](https://developer.mixpanel.com/reference/import-events) for more details about strict.
+
+    MixpanelAPI mixpanel = new MixpanelAPI();
+    mixpanel.disableStrictImport();  // Set strict=0 to skip validation
+    mixpanel.deliver(delivery);
+
 ## Feature Flags
 
 The Mixpanel Java SDK supports feature flags with both local and remote evaluation modes.
