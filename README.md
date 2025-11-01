@@ -43,6 +43,16 @@ Gzip compression can reduce bandwidth usage and improve performance, especially 
 
 The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
 
+### Custom Import Batch Size
+
+When importing large events through the `/import` endpoint, you may need to control the batch size to prevent exceeding the server's 1MB uncompressed JSON payload limit. The batch size can be configured between 1 and 2000 (default is 2000):
+
+    // Import with default batch size (2000)
+    MixpanelAPI mixpanel = new MixpanelAPI();
+    
+    // Import with custom batch size (500)
+    MixpanelAPI mixpanel = new MixpanelAPI(500);
+
 ## Feature Flags
 
 The Mixpanel Java SDK supports feature flags with both local and remote evaluation modes.

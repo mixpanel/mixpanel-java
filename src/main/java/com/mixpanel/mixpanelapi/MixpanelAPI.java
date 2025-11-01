@@ -48,6 +48,7 @@ public class MixpanelAPI implements AutoCloseable {
     protected final boolean mUseGzipCompression;
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
+    protected final int mImportMaxMessageSize;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -62,7 +63,26 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null, null);
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
+     */
+    public MixpanelAPI(int importMaxMessageSize) {
+        this(false, importMaxMessageSize);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
+     */
+    public MixpanelAPI(boolean useGzipCompression, int importMaxMessageSize) {
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, importMaxMessageSize, null, null);
     }
 
     /**
@@ -96,6 +116,7 @@ public class MixpanelAPI implements AutoCloseable {
         mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = false;
+        mImportMaxMessageSize = Config.IMPORT_MAX_MESSAGE_SIZE;
 
         if (localFlagsConfig != null) {
             EventSender eventSender = createEventSender(localFlagsConfig, this);
@@ -121,7 +142,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -135,7 +156,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -150,7 +171,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -166,7 +187,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -177,15 +198,17 @@ public class MixpanelAPI implements AutoCloseable {
      * @param groupsEndpoint a URL that will accept Mixpanel groups messages
      * @param importEndpoint a URL that will accept Mixpanel import messages
      * @param useGzipCompression whether to use gzip compression for network requests
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
      * @param localFlags optional LocalFlagsProvider for local feature flags (can be null)
      * @param remoteFlags optional RemoteFlagsProvider for remote feature flags (can be null)
      */
-    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
+    /* package */ MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, int importMaxMessageSize, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
         mImportEndpoint = importEndpoint;
         mUseGzipCompression = useGzipCompression;
+        mImportMaxMessageSize = Math.max(1, Math.min(importMaxMessageSize, 2000));
         mLocalFlags = localFlags;
         mRemoteFlags = remoteFlags;
     }
@@ -382,10 +405,10 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Send messages in batches (max 2000 per batch for /import)
+        // Send messages in batches (configurable batch size for /import, default max 2000 per batch)
         // If token is empty, the server will reject with 401 Unauthorized
-        for (int i = 0; i < messages.size(); i += Config.IMPORT_MAX_MESSAGE_SIZE) {
-            int endIndex = i + Config.IMPORT_MAX_MESSAGE_SIZE;
+        for (int i = 0; i < messages.size(); i += mImportMaxMessageSize) {
+            int endIndex = i + mImportMaxMessageSize;
             endIndex = Math.min(endIndex, messages.size());
             List<JSONObject> batch = messages.subList(i, endIndex);
 

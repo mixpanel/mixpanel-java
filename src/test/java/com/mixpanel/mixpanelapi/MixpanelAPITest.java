@@ -1119,4 +1119,71 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void testCustomImportBatchSizeConstructor() {
+        // Test constructor with int parameter only: new MixpanelAPI(500)
+        MixpanelAPI api = new MixpanelAPI(500);
+        assertEquals("Custom batch size should be 500", 500, api.mImportMaxMessageSize);
+    }
+
+    public void testCustomImportBatchSizeWithGzipConstructor() {
+        // Test constructor with both gzip and batch size: new MixpanelAPI(true, 500)
+        MixpanelAPI api = new MixpanelAPI(true, 500);
+        assertEquals("Custom batch size should be 500", 500, api.mImportMaxMessageSize);
+        assertTrue("Gzip compression should be enabled", api.mUseGzipCompression);
+    }
+
+    public void testImportBatchSizeClamping() {
+        // Test that batch size is clamped between 1 and 2000
+        MixpanelAPI apiTooSmall = new MixpanelAPI(0);
+        assertEquals("Batch size below 1 should be clamped to 1", 1, apiTooSmall.mImportMaxMessageSize);
+        
+        MixpanelAPI apiTooLarge = new MixpanelAPI(3000);
+        assertEquals("Batch size above 2000 should be clamped to 2000", 2000, apiTooLarge.mImportMaxMessageSize);
+        
+        MixpanelAPI apiValid = new MixpanelAPI(1000);
+        assertEquals("Batch size within range should not be clamped", 1000, apiValid.mImportMaxMessageSize);
+    }
+
+    public void testImportMessagesWithCustomBatchSize() {
+        // Test that import messages are sent in batches of the custom size
+        final List<Integer> batchSizes = new ArrayList<Integer>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url", false, 5, null, null) {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+                // Parse the JSON array to count messages in this batch
+                JSONArray array = new JSONArray(dataString);
+                batchSizes.add(array.length());
+                return true;
+            }
+        };
+
+        try {
+            ClientDelivery delivery = new ClientDelivery();
+            
+            // Create 13 import messages (should be sent as batches of 5, 5, 3)
+            MessageBuilder builder = new MessageBuilder("a token");
+            for (int i = 0; i < 13; i++) {
+                Map<String, Object> props = new HashMap<String, Object>();
+                props.put("time", System.currentTimeMillis());
+                props.put("$insert_id", "id-" + i);
+                props.put("index", i);
+                JSONObject importEvent = builder.importEvent("user-" + i, "test event", new JSONObject(props));
+                delivery.addMessage(importEvent);
+            }
+            
+            api.deliver(delivery);
+            
+            assertEquals("Should have 3 batches", 3, batchSizes.size());
+            assertEquals("First batch should have 5 messages", 5, batchSizes.get(0).intValue());
+            assertEquals("Second batch should have 5 messages", 5, batchSizes.get(1).intValue());
+            assertEquals("Third batch should have 3 messages", 3, batchSizes.get(2).intValue());
+            
+        } catch (IOException e) {
+            fail("IOException during custom batch size test: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSONException during custom batch size test: " + e.toString());
+        }
+    }
+
 }
