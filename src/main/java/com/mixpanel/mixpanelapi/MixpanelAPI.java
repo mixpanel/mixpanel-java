@@ -50,6 +50,10 @@ public class MixpanelAPI implements AutoCloseable {
     protected final RemoteFlagsProvider mRemoteFlags;
     protected final int mImportMaxMessageSize;
 
+    // Track the last response from import endpoint for error logging
+    protected String mLastResponseBody;
+    protected int mLastStatusCode;
+
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
      */
@@ -417,7 +421,9 @@ public class MixpanelAPI implements AutoCloseable {
                 boolean accepted = sendImportData(messagesString, endpointUrl, token);
 
                 if (! accepted) {
-                    throw new MixpanelServerException("Server refused to accept import messages, they may be malformed.", batch);
+                    String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
+                    int status = mLastStatusCode;
+                    throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch);
                 }
             }
         }
@@ -516,7 +522,9 @@ public class MixpanelAPI implements AutoCloseable {
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
                 try {
-                    slurp(errorStream);
+                    String errorResponse = slurp(errorStream);
+                    mLastResponseBody = errorResponse;
+                    mLastStatusCode = conn.getResponseCode();
                     errorStream.close();
                     // Return false to indicate rejection, which will throw MixpanelServerException
                     return false;
@@ -538,6 +546,8 @@ public class MixpanelAPI implements AutoCloseable {
 
         // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
         if (response == null) {
+            mLastResponseBody = null;
+            mLastStatusCode = 0;
             return false;
         }
 
@@ -549,9 +559,19 @@ public class MixpanelAPI implements AutoCloseable {
             boolean statusOk = jsonResponse.has("status") && "OK".equals(jsonResponse.getString("status"));
             boolean codeOk = jsonResponse.has("code") && jsonResponse.getInt("code") == 200;
 
-            return statusOk && codeOk;
+            if (statusOk && codeOk) {
+                mLastResponseBody = response;
+                mLastStatusCode = 200;
+                return true;
+            } else {
+                mLastResponseBody = response;
+                mLastStatusCode = jsonResponse.has("code") ? jsonResponse.getInt("code") : 0;
+                return false;
+            }
         } catch (JSONException e) {
             // Not valid JSON or missing expected fields
+            mLastResponseBody = response;
+            mLastStatusCode = 0;
             return false;
         }
     }
