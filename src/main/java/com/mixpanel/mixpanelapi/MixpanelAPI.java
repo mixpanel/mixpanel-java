@@ -41,6 +41,10 @@ public class MixpanelAPI implements AutoCloseable {
     private static final int CONNECT_TIMEOUT_MILLIS = 2000;
     private static final int READ_TIMEOUT_MILLIS = 10000;
 
+    // Instance fields for customizable timeouts (per-instance control)
+    private int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
+    private int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
+
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
     protected final String mGroupsEndpoint;
@@ -304,8 +308,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeoutMillis);
+        conn.setConnectTimeout(mConnectTimeoutMillis);
         conn.setDoOutput(true);
 
         byte[] dataToSend;
@@ -454,8 +458,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
         URL endpoint = new URL(endpointUrl);
         HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeoutMillis);
+        conn.setConnectTimeout(mConnectTimeoutMillis);
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
@@ -625,6 +629,49 @@ public class MixpanelAPI implements AutoCloseable {
                 // Silently fail - exposure tracking should not break flag evaluation
             }
         };
+    }
+
+    /**
+     * Sets the connection timeout for HTTP requests.
+     * 
+     * Default is 2000 milliseconds (2 seconds). You may need to increase this for high-latency regions.
+     * This should be called before calling any deliver() or sendMessage().
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
+     *     api.deliver(delivery);
+     *
+     * @param timeoutMillis timeout in milliseconds (must be > 0)
+     * @throws IllegalArgumentException if timeoutMillis <= 0
+     */
+    public void setConnectTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("Connect timeout must be > 0");
+        }
+        this.mConnectTimeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Sets the read timeout for HTTP requests.
+     * 
+     * Default is 10000 milliseconds (10 seconds). You may need to increase this for high-latency regions
+     * or when processing large batches of events.
+     * This should be called before calling any deliver() or sendMessage().
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.setReadTimeout(15000);  // 15 seconds for slow regions
+     *     api.deliver(delivery);
+     *
+     * @param timeoutMillis timeout in milliseconds (must be > 0)
+     * @throws IllegalArgumentException if timeoutMillis <= 0
+     */
+    public void setReadTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("Read timeout must be > 0");
+        }
+        this.mReadTimeoutMillis = timeoutMillis;
     }
 
     /**
