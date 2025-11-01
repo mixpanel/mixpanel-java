@@ -9,6 +9,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 import org.json.JSONArray;
@@ -303,9 +304,29 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Package scope for mocking purposes
+     * Container for HTTP response information including status code.
+     * Used to communicate both success/failure and the specific HTTP status code.
      */
-    /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
+    /* package */ static class HttpStatusResponse {
+        public final boolean success;
+        public final int statusCode;
+
+        public HttpStatusResponse(boolean success, int statusCode) {
+            this.success = success;
+            this.statusCode = statusCode;
+        }
+    }
+
+    /**
+     * Package scope for mocking purposes.
+     * 
+     * Sends data to an endpoint and returns both success status and HTTP status code.
+     * This allows callers to detect specific error conditions like 413 Payload Too Large.
+     * 
+     * When a 413 error is received, the caller should split the payload into smaller chunks
+     * using PayloadChunker and retry each chunk individually.
+     */
+    /* package */ HttpStatusResponse sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
         conn.setReadTimeout(mReadTimeoutMillis);
@@ -360,6 +381,17 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
+        // For HttpURLConnection, we need to handle status codes
+        int statusCode = 0;
+        if (conn instanceof HttpURLConnection) {
+            try {
+                statusCode = ((HttpURLConnection) conn).getResponseCode();
+            } catch (IOException e) {
+                // If we can't get the status code, return failure
+                return new HttpStatusResponse(false, 0);
+            }
+        }
+
         InputStream responseStream = null;
         String response = null;
         try {
@@ -375,7 +407,8 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        return ((response != null) && response.equals("1"));
+        boolean accepted = ((response != null) && response.equals("1"));
+        return new HttpStatusResponse(accepted, statusCode);
     }
 
     private void sendMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
@@ -386,12 +419,59 @@ public class MixpanelAPI implements AutoCloseable {
 
             if (batch.size() > 0) {
                 String messagesString = dataString(batch);
-                boolean accepted = sendData(messagesString, endpointUrl);
+                HttpStatusResponse response = sendData(messagesString, endpointUrl);
 
-                if (! accepted) {
-                    throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
+                if (!response.success) {
+                    // Check if we got a 413 Payload Too Large error
+                    if (response.statusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE) {
+                        // Retry with chunked payloads (only once)
+                        sendMessagesChunked(batch, endpointUrl);
+                    } else {
+                        throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Sends messages by chunking the payload to handle 413 Payload Too Large errors.
+     * This is a retry mechanism that only happens once when the initial send returns 413.
+     * 
+     * The messages are split into smaller chunks using PayloadChunker, with each chunk
+     * sized to be under the track endpoint's limit (1 MB). Each chunk is sent independently,
+     * and we do NOT retry chunked sends that fail - only the initial payload gets one retry.
+     * 
+     * @param batch the batch of messages to send in chunks
+     * @param endpointUrl the endpoint URL
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if any chunk is rejected by the server
+     */
+    private void sendMessagesChunked(List<JSONObject> batch, String endpointUrl) throws IOException {
+        String originalPayload = dataString(batch);
+        
+        try {
+            // Split the payload into chunks under the track endpoint's 1MB limit
+            // Size limits are based on uncompressed data (server limits apply to uncompressed payloads)
+            List<String> chunks = PayloadChunker.chunkJsonArray(originalPayload, Config.TRACK_MAX_PAYLOAD_BYTES);
+            
+            for (String chunk : chunks) {
+                HttpStatusResponse response = sendData(chunk, endpointUrl);
+                
+                if (!response.success) {
+                    // Parse the chunk back into messages for the error response
+                    JSONArray chunkArray = new JSONArray(chunk);
+                    List<JSONObject> chunkMessages = new ArrayList<>();
+                    for (int i = 0; i < chunkArray.length(); i++) {
+                        chunkMessages.add(chunkArray.getJSONObject(i));
+                    }
+                    throw new MixpanelServerException("Server refused to accept chunked messages, they may be malformed. HTTP " + response.statusCode, chunkMessages);
+                }
+            }
+        } catch (JSONException e) {
+            throw new MixpanelServerException("Failed to chunk messages due to JSON error", batch);
+        } catch (UnsupportedEncodingException e) {
+            throw new MixpanelServerException("Failed to chunk messages due to encoding error", batch);
         }
     }
 
@@ -424,12 +504,59 @@ public class MixpanelAPI implements AutoCloseable {
                 String messagesString = dataString(batch);
                 boolean accepted = sendImportData(messagesString, endpointUrl, token);
 
-                if (! accepted) {
+                if (!accepted && mLastStatusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE) {
+                    // Retry with chunked payloads (only once) for 413 errors
+                    sendImportMessagesChunked(batch, endpointUrl, token);
+                } else if (!accepted) {
                     String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
                     int status = mLastStatusCode;
                     throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch);
                 }
             }
+        }
+    }
+
+    /**
+     * Sends import messages by chunking the payload to handle 413 Payload Too Large errors.
+     * This is a retry mechanism that only happens once when the initial send returns 413.
+     * 
+     * The messages are split into smaller chunks using PayloadChunker, with each chunk
+     * sized to be under the import endpoint's limit (10 MB). Each chunk is sent independently,
+     * and we do NOT retry chunked sends that fail - only the initial payload gets one retry.
+     * 
+     * @param batch the batch of messages to send in chunks
+     * @param endpointUrl the endpoint URL
+     * @param token the authentication token
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if any chunk is rejected by the server
+     */
+    private void sendImportMessagesChunked(List<JSONObject> batch, String endpointUrl, String token) throws IOException {
+        String originalPayload = dataString(batch);
+        
+        try {
+            // Split the payload into chunks under the import endpoint's 10MB limit
+            // Size limits are based on uncompressed data (server limits apply to uncompressed payloads)
+            List<String> chunks = PayloadChunker.chunkJsonArray(originalPayload, Config.IMPORT_MAX_PAYLOAD_BYTES);
+            
+            for (String chunk : chunks) {
+                boolean accepted = sendImportData(chunk, endpointUrl, token);
+                
+                if (!accepted) {
+                    // Parse the chunk back into messages for the error response
+                    JSONArray chunkArray = new JSONArray(chunk);
+                    List<JSONObject> chunkMessages = new ArrayList<>();
+                    for (int i = 0; i < chunkArray.length(); i++) {
+                        chunkMessages.add(chunkArray.getJSONObject(i));
+                    }
+                    String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
+                    int status = mLastStatusCode;
+                    throw new MixpanelServerException("Server refused to accept chunked import messages, they may be malformed. HTTP " + status + " Response: " + respBody, chunkMessages);
+                }
+            }
+        } catch (JSONException e) {
+            throw new MixpanelServerException("Failed to chunk import messages due to JSON error", batch);
+        } catch (UnsupportedEncodingException e) {
+            throw new MixpanelServerException("Failed to chunk import messages due to encoding error", batch);
         }
     }
 
@@ -448,6 +575,10 @@ public class MixpanelAPI implements AutoCloseable {
      * - JSON content type (not URL-encoded like /track)
      * - Basic authentication with token as username and empty password
      * - strict=1 parameter for validation
+     * 
+     * When a 413 Payload Too Large error is received, the caller should split the payload
+     * into smaller chunks using PayloadChunker and retry each chunk individually.
+     * This method will store the 413 status code in mLastStatusCode for the caller to detect.
      *
      * @param dataString JSON array of events to import
      * @param endpointUrl The import endpoint URL
@@ -521,16 +652,17 @@ public class MixpanelAPI implements AutoCloseable {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
         } catch (IOException e) {
-            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // HTTP error codes (401, 400, 413, etc.) throw IOException when calling getInputStream()
             // Check if it's an HTTP error and read the error stream for details
+            int statusCode = conn.getResponseCode();
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
                 try {
                     String errorResponse = slurp(errorStream);
                     mLastResponseBody = errorResponse;
-                    mLastStatusCode = conn.getResponseCode();
+                    mLastStatusCode = statusCode;
                     errorStream.close();
-                    // Return false to indicate rejection, which will throw MixpanelServerException
+                    // Return false to indicate rejection, which will allow caller to check status code
                     return false;
                 } catch (IOException ignored) {
                     // If we can't read the error stream, just let the original exception propagate
