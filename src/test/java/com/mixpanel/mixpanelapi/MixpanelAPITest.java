@@ -87,7 +87,7 @@ public class MixpanelAPITest extends TestCase
         JSONObject set = mBuilder.set("a distinct id", mSampleProps);
         c.addMessage(set);
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         c.addMessage(increment);
@@ -148,7 +148,7 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("k1", 10L);
             increments.put("k2", 1L);
             JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
@@ -159,7 +159,7 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("k1", 10L);
             increments.put("k2", 1L);
             JSONObject increment = mBuilder.increment("a distinct id", increments);
@@ -405,7 +405,7 @@ public class MixpanelAPITest extends TestCase
         JSONObject set = mBuilder.set("a distinct id", mSampleProps);
         assertTrue(c.isValidMessage(set));
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         assertTrue(c.isValidMessage(increment));
@@ -419,7 +419,7 @@ public class MixpanelAPITest extends TestCase
         JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
         checkModifiers(set);
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
         checkModifiers(increment);
@@ -430,6 +430,34 @@ public class MixpanelAPITest extends TestCase
         // Test deprecated trackCharge method - should return null
         JSONObject trackCharge = mBuilder.trackCharge("a distinct id", 2.2, null, mSampleModifiers);
         assertNull("trackCharge should return null (deprecated)", trackCharge);
+    }
+
+    public void testIncrementWithDecimals() {
+        // Test that increment() supports decimal values (not just integers)
+        ClientDelivery c = new ClientDelivery();
+        
+        // Test with Double values
+        Map<String, Number> decimals = new HashMap<String, Number>();
+        decimals.put("rating", 4.5);
+        decimals.put("score", 2.7);
+        decimals.put("cost", 10.50);
+        JSONObject incrementDecimals = mBuilder.increment("a distinct id", decimals);
+        assertTrue("increment with decimals should be valid", c.isValidMessage(incrementDecimals));
+        
+        // Test with mixed numeric types (Double, Integer, Long)
+        Map<String, Number> mixed = new HashMap<String, Number>();
+        mixed.put("double_value", 3.14);
+        mixed.put("int_value", 5);
+        mixed.put("long_value", 100L);
+        JSONObject incrementMixed = mBuilder.increment("a distinct id", mixed);
+        assertTrue("increment with mixed numeric types should be valid", c.isValidMessage(incrementMixed));
+        
+        // Test with modifiers
+        Map<String, Number> decimalsWithMods = new HashMap<String, Number>();
+        decimalsWithMods.put("rating", 1.5);
+        JSONObject incrementWithMods = mBuilder.increment("a distinct id", decimalsWithMods, mSampleModifiers);
+        assertTrue("increment with decimals and modifiers should be valid", c.isValidMessage(incrementWithMods));
+        checkModifiers(incrementWithMods);
     }
 
     public void testEmptyMessageFormat() {
@@ -473,7 +501,7 @@ public class MixpanelAPITest extends TestCase
             c.addMessage(groupSet);
 
 
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("a key", 24L);
             JSONObject increment = mBuilder.increment("a distinct id", increments);
             c.addMessage(increment);

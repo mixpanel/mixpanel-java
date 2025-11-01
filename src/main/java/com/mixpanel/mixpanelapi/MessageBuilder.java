@@ -1,6 +1,7 @@
 package com.mixpanel.mixpanelapi;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -291,13 +292,16 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, adds that amount
      * to the associated property in the profile with the given distinct id.
+     * Supports both integer (Long, Integer) and decimal (Double, Float) increments.
+     * 
      * So, to maintain a login count for user 12345, one might run the following code
      * at every login:
      * <pre>
      * {@code
-     *    Map<String, Long> updates = new HashMap<String, Long>();
-     *    updates.put('Logins', 1);
-     *    JSONObject message = messageBuilder.set("12345", updates);
+     *    Map<String, Number> updates = new HashMap<String, Number>();
+     *    updates.put("Logins", 1L);
+     *    updates.put("Rating", 4.5);  // decimal value
+     *    JSONObject message = messageBuilder.increment("12345", updates);
      *    mixpanelApi.sendMessage(message);
      * }
      * </pre>
@@ -305,37 +309,29 @@ public class MessageBuilder {
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
-     *           each associated with a numeric value.
+     *           each associated with a numeric value (Long, Integer, Double, Float, etc.)
      * @return user profile increment message for consumption by MixpanelAPI
      */
-    public JSONObject increment(String distinctId, Map<String, Long> properties) {
+    public JSONObject increment(String distinctId, Map<String, Number> properties) {
         return increment(distinctId, properties, null);
     }
 
     /**
      * For each key and value in the properties argument, adds that amount
      * to the associated property in the profile with the given distinct id.
-     * So, to maintain a login count for user 12345, one might run the following code
-     * at every login:
-     * <pre>
-     * {@code
-     *    Map<String, Long> updates = new HashMap<String, Long>();
-     *    updates.put('Logins', 1);
-     *    JSONObject message = messageBuilder.set("12345", updates);
-     *    mixpanelApi.sendMessage(message);
-     * }
-     * </pre>
+     * Supports both integer (Long, Integer) and decimal (Double, Float) increments.
+     *
      * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
-     *           each associated with a numeric value.
+     *           each associated with a numeric value (Long, Integer, Double, Float, etc.)
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
      * @return user profile increment message for consumption by MixpanelAPI
      */
-    public JSONObject increment(String distinctId, Map<String, Long> properties, JSONObject modifiers) {
+    public JSONObject increment(String distinctId, Map<String, Number> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
         return peopleMessage(distinctId, "$add", jsonProperties, modifiers);
     }
