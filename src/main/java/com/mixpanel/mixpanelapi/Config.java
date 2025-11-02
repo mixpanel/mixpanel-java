@@ -11,5 +11,6 @@ package com.mixpanel.mixpanelapi;
     public static final int TRACK_MAX_PAYLOAD_BYTES = 1 * 1024 * 1024;   // 1 MB
     
     // HTTP status codes
+    public static final int HTTP_400_BAD_REQUEST = 400;
     public static final int HTTP_413_PAYLOAD_TOO_LARGE = 413;
 }

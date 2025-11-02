@@ -1484,6 +1484,91 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void test400RequestBodyTooLargeImportEndpointChunking() {
+        // Test that 400 errors with "request body too large" on import endpoint trigger chunking and retry
+        final List<Integer> attemptCount = new ArrayList<>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                attemptCount.add(1);
+                
+                // First attempt returns 400 with "request body too large" message
+                if (attemptCount.size() == 1) {
+                    mLastStatusCode = 400;
+                    mLastResponseBody = "{\"error\":\"json decode error at element idx: 1784, byte_offset: 10481924: http: request body too large\",\"status\":0}";
+                    return false;
+                }
+                
+                // Retry with chunks succeeds
+                mLastStatusCode = 200;
+                mLastResponseBody = "{\"code\":200,\"status\":\"OK\",\"num_records_imported\":5}";
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            // Create a large payload that would trigger 400 with request body too large
+            for (int i = 0; i < 100; i++) {
+                JSONObject props = new JSONObject();
+                props.put("time", historicalTime);
+                props.put("$insert_id", "insert-id-" + i);
+                props.put("largeData", repeat("x", 5000)); // Add large data to each event
+                JSONObject importEvent = mBuilder.importEvent("user-" + i, "test event", props);
+                c.addMessage(importEvent);
+            }
+            
+            api.deliver(c);
+            
+            // Should have at least 2 attempts: initial (fails with 400) + retry with chunks (succeeds)
+            assertTrue("Should have tried sending at least twice", attemptCount.size() >= 2);
+            
+        } catch (IOException e) {
+            fail("IOException during 400 request body too large test: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSONException during 400 request body too large test: " + e.toString());
+        }
+    }
+
+    public void test400RequestBodyTooLargeWithoutChunking() {
+        // Test that 400 errors WITHOUT "request body too large" are still thrown immediately without chunking
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                // Return 400 (bad request) with a different error message (not "request body too large")
+                mLastStatusCode = 400;
+                mLastResponseBody = "{\"error\":\"invalid json format\",\"status\":0}";
+                return false;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            api.deliver(c);
+            fail("Should have thrown MixpanelServerException for 400 error without 'request body too large'");
+            
+        } catch (MixpanelServerException e) {
+            // Expected behavior - 400 errors without "request body too large" should be thrown immediately
+            assertTrue("Error message indicates server rejection", 
+                      e.getMessage().contains("refused") || e.getMessage().contains("400"));
+        } catch (IOException e) {
+            fail("Should have thrown MixpanelServerException, not IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("Unexpected JSONException: " + e.toString());
+        }
+    }
+
     public void testDisableStrictImport() {
         // Test that disableStrictImport() sets strict=0 in the URL
         final Map<String, String> capturedUrls = new HashMap<String, String>();

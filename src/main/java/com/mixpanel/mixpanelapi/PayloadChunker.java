@@ -32,6 +32,9 @@ public class PayloadChunker {
      * original payload into smaller chunks such that each chunk's uncompressed size stays under
      * the specified limit.
      * 
+     * Performance: O(n) time complexity by tracking cumulative size instead of re-serializing
+     * the entire chunk after each item addition.
+     * 
      * @param jsonArrayString the JSON array string to chunk (e.g., "[{...}, {...}, ...]")
      * @param maxBytesPerChunk the maximum size in bytes per chunk (uncompressed data)
      * @return a list of JSON array strings, each under the size limit
@@ -57,27 +60,33 @@ public class PayloadChunker {
         }
         
         JSONArray currentChunk = new JSONArray();
+        int currentChunkSize = 2; // Account for opening "[" and closing "]"
         
         for (int i = 0; i < originalArray.length(); i++) {
-            currentChunk.put(originalArray.get(i));
+            Object item = originalArray.get(i);
             
-            // Check if the current chunk would exceed the limit
-            // Always use uncompressed size for comparison since server limits apply to uncompressed data
-            int currentSize = getUncompressedPayloadSize(currentChunk.toString());
+            // Calculate the size of this item when serialized
+            String itemString = item.toString();
+            int itemSize = getUncompressedPayloadSize(itemString);
             
-            if (currentSize > maxBytesPerChunk && currentChunk.length() > 1) {
-                // Current item pushed us over the limit, so remove it and save the current chunk
-                currentChunk.remove(currentChunk.length() - 1);
+            // Account for comma separator if this isn't the first item in the chunk
+            int itemWithSeparator = itemSize + (currentChunk.length() > 0 ? 1 : 0);
+            
+            // Check if adding this item would exceed the limit
+            int sizeIfAdded = currentChunkSize + itemWithSeparator;
+            
+            if (sizeIfAdded > maxBytesPerChunk && currentChunk.length() > 0) {
+                // Current item would push us over the limit, so save current chunk
                 chunks.add(currentChunk.toString());
                 
-                // Start a new chunk with the item that caused the overflow
+                // Start a new chunk with this item
                 currentChunk = new JSONArray();
-                currentChunk.put(originalArray.get(i));
-            } else if (currentSize > maxBytesPerChunk && currentChunk.length() == 1) {
-                // Even a single item exceeds the limit - this item is too large to chunk
-                // Add it anyway; the server will reject it and we can't do better
-                chunks.add(currentChunk.toString());
-                currentChunk = new JSONArray();
+                currentChunk.put(item);
+                currentChunkSize = 2 + itemSize; // "[" + item + "]"
+            } else {
+                // Item fits in current chunk
+                currentChunk.put(item);
+                currentChunkSize += itemWithSeparator;
             }
         }
         

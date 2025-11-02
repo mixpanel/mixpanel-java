@@ -506,13 +506,20 @@ public class MixpanelAPI implements AutoCloseable {
                 String messagesString = dataString(batch);
                 boolean accepted = sendImportData(messagesString, endpointUrl, token);
 
-                if (!accepted && mLastStatusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE) {
-                    // Retry with chunked payloads (only once) for 413 errors
-                    sendImportMessagesChunked(batch, endpointUrl, token);
-                } else if (!accepted) {
-                    String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
-                    int status = mLastStatusCode;
-                    throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch);
+                if (!accepted) {
+                    boolean is413 = mLastStatusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE;
+                    boolean is400WithPayloadTooLarge = mLastStatusCode == Config.HTTP_400_BAD_REQUEST 
+                        && mLastResponseBody != null 
+                        && mLastResponseBody.contains("request body too large");
+                    
+                    if (is413 || is400WithPayloadTooLarge) {
+                        // Retry with chunked payloads (only once) for 413 or 400 with "request body too large"
+                        sendImportMessagesChunked(batch, endpointUrl, token);
+                    } else {
+                        String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
+                        int status = mLastStatusCode;
+                        throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch);
+                    }
                 }
             }
         }
@@ -580,7 +587,8 @@ public class MixpanelAPI implements AutoCloseable {
      * 
      * When a 413 Payload Too Large error is received, the caller should split the payload
      * into smaller chunks using PayloadChunker and retry each chunk individually.
-     * This method will store the 413 status code in mLastStatusCode for the caller to detect.
+     * Similarly, a 400 error with "request body too large" in the response will also trigger chunking.
+     * This method will store the 413/400 status code in mLastStatusCode for the caller to detect.
      *
      * @param dataString JSON array of events to import
      * @param endpointUrl The import endpoint URL
