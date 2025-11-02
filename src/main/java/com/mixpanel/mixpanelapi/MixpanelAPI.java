@@ -583,7 +583,17 @@ public class MixpanelAPI implements AutoCloseable {
      * The /import endpoint requires:
      * - JSON content type (not URL-encoded like /track)
      * - Basic authentication with token as username and empty password
-     * - strict=1 parameter for validation
+     * - strict parameter (1 or 0) for validation behavior
+     * 
+     * Response format depends on strict mode:
+     * - strict=1 (default): Returns JSON with code, status, and num_records_imported.
+     *   Example: {"code":200,"status":"OK","num_records_imported":100}
+     *   If there are validation errors, returns HTTP 400 with details, but correctly formed 
+     *   events are still ingested.
+     * 
+     * - strict=0: Returns plain text "1" if events are imported, "0" if they are not.
+     *   The reason for failure is unknown with strict=0 (no error details provided).
+     *   Use strict=1 for better error information.
      * 
      * When a 413 Payload Too Large error is received, the caller should split the payload
      * into smaller chunks using PayloadChunker and retry each chunk individually.
@@ -591,9 +601,9 @@ public class MixpanelAPI implements AutoCloseable {
      * This method will store the 413/400 status code in mLastStatusCode for the caller to detect.
      *
      * @param dataString JSON array of events to import
-     * @param endpointUrl The import endpoint URL
+     * @param endpointUrl The import endpoint URL (should include strict parameter)
      * @param token The project token for Basic Auth
-     * @return true if the server accepted the data
+     * @return true if the server accepted the data (plain text "1" or JSON with code 200)
      * @throws IOException if there's a network error
      */
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
@@ -690,14 +700,30 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // Import endpoint returns different formats depending on strict mode:
+        // - strict=1: JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // - strict=0: Plain text "0" (not imported) or "1" (imported)
         if (response == null) {
             mLastResponseBody = null;
             mLastStatusCode = 0;
             return false;
         }
 
-        // Parse JSON response
+        // First, try to handle strict=0 response format (plain text "0" or "1")
+        String trimmedResponse = response.trim();
+        if ("1".equals(trimmedResponse)) {
+            // strict=0 with successful import
+            mLastResponseBody = response;
+            mLastStatusCode = 200;
+            return true;
+        } else if ("0".equals(trimmedResponse)) {
+            // strict=0 with failed import (events not imported, reason unknown)
+            mLastResponseBody = response;
+            mLastStatusCode = 200; // HTTP 200 but import failed silently
+            return false;
+        }
+
+        // Try to parse as JSON response (strict=1 format)
         try {
             JSONObject jsonResponse = new JSONObject(response);
 
