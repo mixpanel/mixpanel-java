@@ -479,7 +479,7 @@ public class MixpanelAPI implements AutoCloseable {
 
     private void sendImportMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
         // Extract token from first message for authentication
-        // If token is missing, we'll still attempt to send and let the server reject it
+        // Token is required for /import endpoint Basic Auth
         String token = "";
         if (messages.size() > 0) {
             try {
@@ -493,6 +493,11 @@ public class MixpanelAPI implements AutoCloseable {
             } catch (JSONException e) {
                 // Malformed message - continue with empty token and let server reject it
             }
+        }
+        
+        // Validate that we have a non-empty token for /import endpoint
+        if (token == null || token.trim().isEmpty()) {
+            throw new MixpanelServerException("Import endpoint requires a valid token in message properties", messages);
         }
 
         // Send messages in batches (configurable batch size for /import, default max 2000 per batch)

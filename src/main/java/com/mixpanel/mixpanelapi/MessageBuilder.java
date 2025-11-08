@@ -21,7 +21,19 @@ public class MessageBuilder {
     private final String mToken;
 
     public MessageBuilder(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Token cannot be null or empty");
+        }
         mToken = token;
+    }
+
+    /**
+     * Returns the token associated with this MessageBuilder.
+     * 
+     * @return the project token
+     */
+    public String getToken() {
+        return mToken;
     }
 
     /***
