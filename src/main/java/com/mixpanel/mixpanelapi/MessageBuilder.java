@@ -20,6 +20,12 @@ public class MessageBuilder {
 
     private final String mToken;
 
+    /**
+     * Constructs a MessageBuilder with a Mixpanel project token.
+     * 
+     * @param token the Mixpanel project token (cannot be null or empty)
+     * @throws IllegalArgumentException if token is null or empty
+     */
     public MessageBuilder(String token) {
         if (token == null || token.trim().isEmpty()) {
             throw new IllegalArgumentException("Token cannot be null or empty");

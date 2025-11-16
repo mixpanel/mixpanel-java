@@ -42,22 +42,33 @@ public class MixpanelAPI implements AutoCloseable {
     private static final int CONNECT_TIMEOUT_MILLIS = 2000;
     private static final int READ_TIMEOUT_MILLIS = 10000;
 
-    // Instance fields for customizable timeouts (per-instance control)
+    /** Connect timeout in milliseconds for per-instance control */
     private int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
+    /** Read timeout in milliseconds for per-instance control */
     private int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
+    /** Whether strict validation is enabled for import mode */
     private boolean mStrictImportMode = true;
 
+    /** The endpoint URL for events tracking */
     protected final String mEventsEndpoint;
+    /** The endpoint URL for people profiles */
     protected final String mPeopleEndpoint;
+    /** The endpoint URL for group profiles */
     protected final String mGroupsEndpoint;
+    /** The endpoint URL for import operations */
     protected final String mImportEndpoint;
+    /** Whether gzip compression is enabled for requests */
     protected final boolean mUseGzipCompression;
+    /** Local feature flags provider (null if not configured) */
     protected final LocalFlagsProvider mLocalFlags;
+    /** Remote feature flags provider (null if not configured) */
     protected final RemoteFlagsProvider mRemoteFlags;
+    /** Maximum batch size for import endpoint messages */
     protected final int mImportMaxMessageSize;
 
-    // Track the last response from import endpoint for error logging
+    /** The last response body from the import endpoint for error logging */
     protected String mLastResponseBody;
+    /** The HTTP status code from the last import request */
     protected int mLastStatusCode;
 
     /**
@@ -244,8 +255,8 @@ public class MixpanelAPI implements AutoCloseable {
      * Sends a ClientDelivery full of messages to Mixpanel's servers.
      *
      * This call will block, possibly for a long time.
-     * @param toSend
-     * @throws IOException
+     * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @throws IOException if an I/O error occurs while sending
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend) throws IOException {
@@ -258,7 +269,8 @@ public class MixpanelAPI implements AutoCloseable {
      * should be called in a separate thread or in a queue consumer.
      *
      * @param toSend a ClientDelivery containing a number of Mixpanel messages
-     * @throws IOException
+     * @param useIpAddress whether to include the client IP in the tracking requests
+     * @throws IOException if an I/O error occurs while sending
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
@@ -815,8 +827,8 @@ public class MixpanelAPI implements AutoCloseable {
      *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
      *     api.deliver(delivery);
      *
-     * @param timeoutMillis timeout in milliseconds (must be > 0)
-     * @throws IllegalArgumentException if timeoutMillis <= 0
+     * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
+     * @throws IllegalArgumentException if timeoutMillis &lt;= 0
      */
     public void setConnectTimeout(int timeoutMillis) {
         if (timeoutMillis <= 0) {
@@ -837,8 +849,8 @@ public class MixpanelAPI implements AutoCloseable {
      *     api.setReadTimeout(15000);  // 15 seconds for slow regions
      *     api.deliver(delivery);
      *
-     * @param timeoutMillis timeout in milliseconds (must be > 0)
-     * @throws IllegalArgumentException if timeoutMillis <= 0
+     * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
+     * @throws IllegalArgumentException if timeoutMillis &lt;= 0
      */
     public void setReadTimeout(int timeoutMillis) {
         if (timeoutMillis <= 0) {
