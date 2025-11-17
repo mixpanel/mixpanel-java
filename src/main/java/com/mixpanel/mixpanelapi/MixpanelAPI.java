@@ -513,7 +513,7 @@ public class MixpanelAPI implements AutoCloseable {
         }
 
         // Send messages in batches (configurable batch size for /import, default max 2000 per batch)
-        // If token is empty, the server will reject with 401 Unauthorized
+        // Token has been validated and is guaranteed to be non-empty
         for (int i = 0; i < messages.size(); i += mImportMaxMessageSize) {
             int endIndex = i + mImportMaxMessageSize;
             endIndex = Math.min(endIndex, messages.size());
