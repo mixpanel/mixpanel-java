@@ -45,7 +45,7 @@ The library supports importing historical events (events older than 5 days that 
 
 ### Custom Import Batch Size
 
-When importing large events through the `/import` endpoint, you may need to control the batch size to prevent exceeding the server's 1MB uncompressed JSON payload limit. The batch size can be configured between 1 and 2000 (default is 2000):
+When importing large events through the `/import` endpoint, you may need to control the batch size to prevent exceeding the server's 10MB uncompressed JSON payload limit. The batch size can be configured between 1 and 2000 (default is 2000):
 
     // Import with default batch size (2000)
     MixpanelAPI mixpanel = new MixpanelAPI();
