@@ -833,7 +833,7 @@ public class MixpanelAPI implements AutoCloseable {
      *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
      *     api.setReadTimeout(15000);
      *     // Now safe to use from multiple threads
-     *     executorService.submit(() -> api.deliver(delivery));
+     *     executorService.submit({@code () -> api.deliver(delivery)});
      *
      * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
      * @throws IllegalArgumentException if timeoutMillis &lt;= 0
@@ -863,7 +863,7 @@ public class MixpanelAPI implements AutoCloseable {
      *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
      *     api.setReadTimeout(15000);    // 15 seconds for slow reads
      *     // Now safe to use from multiple threads
-     *     executorService.submit(() -> api.deliver(delivery));
+     *     executorService.submit({@code () -> api.deliver(delivery)});
      *
      * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
      * @throws IllegalArgumentException if timeoutMillis &lt;= 0
