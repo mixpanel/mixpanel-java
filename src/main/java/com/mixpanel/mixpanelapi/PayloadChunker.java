@@ -111,6 +111,6 @@ public class PayloadChunker {
      */
     public static int getUncompressedPayloadSize(String payload)
             throws UnsupportedEncodingException {
-        return payload.getBytes("utf-8").length;
+        return payload.getBytes("UTF-8").length;
     }
 }
