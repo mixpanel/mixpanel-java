@@ -43,11 +43,11 @@ public class MixpanelAPI implements AutoCloseable {
     private static final int READ_TIMEOUT_MILLIS = 10000;
 
     /** Connect timeout in milliseconds for per-instance control */
-    private int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
+    private volatile int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
     /** Read timeout in milliseconds for per-instance control */
-    private int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
+    private volatile int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
     /** Whether strict validation is enabled for import mode */
-    private boolean mStrictImportMode = true;
+    private volatile boolean mStrictImportMode = true;
 
     /** The endpoint URL for events tracking */
     protected final String mEventsEndpoint;
@@ -820,12 +820,20 @@ public class MixpanelAPI implements AutoCloseable {
      * Sets the connection timeout for HTTP requests.
      * 
      * Default is 2000 milliseconds (2 seconds). You may need to increase this for high-latency regions.
-     * This should be called before calling any deliver() or sendMessage().
+     * 
+     * This method is thread-safe and can be called at any time, even while other threads are executing
+     * deliver() or sendMessage(). Each HTTP request will use the current timeout value at the moment
+     * it establishes a connection.
+     * 
+     * Best practice: Set all timeout values during initialization before starting worker threads,
+     * though concurrent calls are safe.
      * 
      * Example:
      *     MixpanelAPI api = new MixpanelAPI();
      *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
-     *     api.deliver(delivery);
+     *     api.setReadTimeout(15000);
+     *     // Now safe to use from multiple threads
+     *     executorService.submit(() -> api.deliver(delivery));
      *
      * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
      * @throws IllegalArgumentException if timeoutMillis &lt;= 0
@@ -842,12 +850,20 @@ public class MixpanelAPI implements AutoCloseable {
      * 
      * Default is 10000 milliseconds (10 seconds). You may need to increase this for high-latency regions
      * or when processing large batches of events.
-     * This should be called before calling any deliver() or sendMessage().
+     * 
+     * This method is thread-safe and can be called at any time, even while other threads are executing
+     * deliver() or sendMessage(). Each HTTP request will use the current timeout value at the moment
+     * the response is being read.
+     * 
+     * Best practice: Set all timeout values during initialization before starting worker threads,
+     * though concurrent calls are safe.
      * 
      * Example:
      *     MixpanelAPI api = new MixpanelAPI();
-     *     api.setReadTimeout(15000);  // 15 seconds for slow regions
-     *     api.deliver(delivery);
+     *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
+     *     api.setReadTimeout(15000);    // 15 seconds for slow reads
+     *     // Now safe to use from multiple threads
+     *     executorService.submit(() -> api.deliver(delivery));
      *
      * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
      * @throws IllegalArgumentException if timeoutMillis &lt;= 0
