@@ -67,9 +67,9 @@ public class MixpanelAPI implements AutoCloseable {
     protected final int mImportMaxMessageSize;
 
     /** The last response body from the import endpoint for error logging */
-    protected String mLastResponseBody;
+    protected volatile String mLastResponseBody;
     /** The HTTP status code from the last import request */
-    protected int mLastStatusCode;
+    protected volatile int mLastStatusCode;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
