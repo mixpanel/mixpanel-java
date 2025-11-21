@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
 
@@ -42,7 +43,7 @@ public class JacksonSerializer implements JsonSerializer {
     @Override
     public byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException {
         if (messages == null || messages.isEmpty()) {
-            return "[]".getBytes("UTF-8");
+            return "[]".getBytes(StandardCharsets.UTF_8);
         }
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
