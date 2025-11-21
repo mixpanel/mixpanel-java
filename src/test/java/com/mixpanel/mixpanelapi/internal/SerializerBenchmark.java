@@ -143,7 +143,7 @@ public class SerializerBenchmark {
             JSONObject message = new JSONObject();
             message.put("event", "test_event_" + i);
             message.put("$insert_id", "id_" + timestamp + "_" + i);
-            message.put("time", timestamp - (i * 1000));
+            message.put("time", timestamp - ((long) i * 1000));
 
             JSONObject properties = new JSONObject();
             properties.put("$token", "test_token_12345");
