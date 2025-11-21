@@ -412,7 +412,7 @@ public class MixpanelAPI implements AutoCloseable {
             return serializer.serializeArray(messages);
         } catch (IOException e) {
             // Fallback to original implementation if serialization fails
-            logger.log(Level.WARNING, "Jackson serialization failed, falling back to org.json", e);
+            logger.log(Level.WARNING, "JSON serialization failed unexpectedly; falling back to org.json implementation", e);
             JSONArray array = new JSONArray();
             for (JSONObject message:messages) {
                 array.put(message);
