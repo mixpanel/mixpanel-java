@@ -10,6 +10,8 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -38,6 +40,7 @@ import com.mixpanel.mixpanelapi.internal.SerializerFactory;
  */
 public class MixpanelAPI implements AutoCloseable {
 
+    private static final Logger logger = Logger.getLogger(MixpanelAPI.class.getName());
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
 
     private static final int CONNECT_TIMEOUT_MILLIS = 2000;
@@ -409,6 +412,7 @@ public class MixpanelAPI implements AutoCloseable {
             return serializer.serializeArray(messages);
         } catch (IOException e) {
             // Fallback to original implementation if serialization fails
+            logger.log(Level.WARNING, "Jackson serialization failed, falling back to org.json", e);
             JSONArray array = new JSONArray();
             for (JSONObject message:messages) {
                 array.put(message);
