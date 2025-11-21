@@ -130,7 +130,7 @@ public class SerializerBenchmark {
             System.out.println("  <dependency>");
             System.out.println("    <groupId>com.fasterxml.jackson.core</groupId>");
             System.out.println("    <artifactId>jackson-databind</artifactId>");
-            System.out.println("    <version>2.15.3</version>");
+            System.out.println("    <version>2.20.0</version>");
             System.out.println("  </dependency>");
         }
     }

@@ -53,7 +53,7 @@ To enable high-performance serialization, add the Jackson dependency to your pro
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
     <artifactId>jackson-databind</artifactId>
-    <version>2.15.3</version>
+    <version>2.20.0</version>
 </dependency>
 ```
 
