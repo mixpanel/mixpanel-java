@@ -2,3 +2,4 @@
 .classpath
 .metadata
 target/
+.vscode/
