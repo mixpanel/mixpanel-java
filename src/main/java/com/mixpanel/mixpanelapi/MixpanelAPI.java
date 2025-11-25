@@ -318,16 +318,23 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Container for HTTP response information including status code.
-     * Used to communicate both success/failure and the specific HTTP status code.
+     * Container for HTTP response information including status code and response body.
+     * Used to communicate both success/failure and the specific HTTP status code,
+     * along with any response body for error diagnostics.
      */
     /* package */ static class HttpStatusResponse {
         public final boolean success;
         public final int statusCode;
+        public final String responseBody;
 
         public HttpStatusResponse(boolean success, int statusCode) {
+            this(success, statusCode, null);
+        }
+
+        public HttpStatusResponse(boolean success, int statusCode, String responseBody) {
             this.success = success;
             this.statusCode = statusCode;
+            this.responseBody = responseBody;
         }
     }
 
@@ -397,12 +404,14 @@ public class MixpanelAPI implements AutoCloseable {
 
         // For HttpURLConnection, we need to handle status codes
         int statusCode = 0;
+        HttpURLConnection httpConn = null;
         if (conn instanceof HttpURLConnection) {
+            httpConn = (HttpURLConnection) conn;
             try {
-                statusCode = ((HttpURLConnection) conn).getResponseCode();
+                statusCode = httpConn.getResponseCode();
             } catch (IOException e) {
                 // If we can't get the status code, return failure
-                return new HttpStatusResponse(false, 0);
+                return new HttpStatusResponse(false, 0, null);
             }
         }
 
@@ -411,6 +420,27 @@ public class MixpanelAPI implements AutoCloseable {
         try {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
+        } catch (IOException e) {
+            // HTTP error codes (4xx, 5xx) throw IOException when calling getInputStream()
+            // Read the error stream for diagnostic details
+            if (httpConn != null) {
+                InputStream errorStream = httpConn.getErrorStream();
+                if (errorStream != null) {
+                    try {
+                        String errorResponse = slurp(errorStream);
+                        return new HttpStatusResponse(false, statusCode, errorResponse);
+                    } catch (IOException ignored) {
+                        // If we can't read error stream, continue with null response
+                    } finally {
+                        try {
+                            errorStream.close();
+                        } catch (IOException ignored) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+            return new HttpStatusResponse(false, statusCode, null);
         } finally {
             if (responseStream != null) {
                 try {
@@ -422,7 +452,7 @@ public class MixpanelAPI implements AutoCloseable {
         }
 
         boolean accepted = ((response != null) && response.equals("1"));
-        return new HttpStatusResponse(accepted, statusCode);
+        return new HttpStatusResponse(accepted, statusCode, response);
     }
 
     private void sendMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
@@ -441,7 +471,8 @@ public class MixpanelAPI implements AutoCloseable {
                         // Retry with chunked payloads (only once)
                         sendMessagesChunked(batch, endpointUrl);
                     } else {
-                        throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
+                        String respBody = response.responseBody != null ? response.responseBody : "no response body";
+                        throw new MixpanelServerException("Server refused to accept messages, they may be malformed. HTTP " + response.statusCode + " Response: " + respBody, batch, response.statusCode, response.responseBody);
                     }
                 }
             }
@@ -479,7 +510,8 @@ public class MixpanelAPI implements AutoCloseable {
                     for (int i = 0; i < chunkArray.length(); i++) {
                         chunkMessages.add(chunkArray.getJSONObject(i));
                     }
-                    throw new MixpanelServerException("Server refused to accept chunked messages, they may be malformed. HTTP " + response.statusCode, chunkMessages);
+                    String respBody = response.responseBody != null ? response.responseBody : "no response body";
+                    throw new MixpanelServerException("Server refused to accept chunked messages, they may be malformed. HTTP " + response.statusCode + " Response: " + respBody, chunkMessages, response.statusCode, response.responseBody);
                 }
             }
         } catch (JSONException e) {
@@ -535,7 +567,7 @@ public class MixpanelAPI implements AutoCloseable {
                     } else {
                         String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
                         int status = mLastStatusCode;
-                        throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch);
+                        throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch, status, mLastResponseBody);
                     }
                 }
             }
@@ -576,7 +608,7 @@ public class MixpanelAPI implements AutoCloseable {
                     }
                     String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
                     int status = mLastStatusCode;
-                    throw new MixpanelServerException("Server refused to accept chunked import messages, they may be malformed. HTTP " + status + " Response: " + respBody, chunkMessages);
+                    throw new MixpanelServerException("Server refused to accept chunked import messages, they may be malformed. HTTP " + status + " Response: " + respBody, chunkMessages, status, mLastResponseBody);
                 }
             }
         } catch (JSONException e) {

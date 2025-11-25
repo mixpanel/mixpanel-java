@@ -61,6 +61,34 @@ By default, the `/import` endpoint enforces strict validation (strict=1). You ca
     mixpanel.disableStrictImport();  // Set strict=0 to skip validation
     mixpanel.deliver(delivery);
 
+### Error Handling
+
+When the Mixpanel server rejects messages, a `MixpanelServerException` is thrown. This exception provides detailed information about the error for debugging and logging:
+
+```java
+try {
+    mixpanel.deliver(delivery);
+} catch (MixpanelServerException e) {
+    // Get the HTTP status code (400, 401, 413, 500, etc.)
+    int statusCode = e.getHttpStatusCode();
+    
+    // Get the raw response body from the server
+    String responseBody = e.getResponseBody();
+    
+    // Get the list of messages that were rejected
+    List<JSONObject> failedMessages = e.getBadDeliveryContents();
+    
+    // The exception message includes status code and response body
+    System.err.println("Mixpanel error: " + e.getMessage());
+}
+```
+
+Common HTTP status codes:
+- **400**: Bad Request - malformed messages or validation errors (in strict mode)
+- **401**: Unauthorized - invalid project token
+- **413**: Payload Too Large - request exceeds size limit (automatically retried with chunking)
+- **500**: Internal Server Error
+
 ## Feature Flags
 
 The Mixpanel Java SDK supports feature flags with both local and remote evaluation modes.
