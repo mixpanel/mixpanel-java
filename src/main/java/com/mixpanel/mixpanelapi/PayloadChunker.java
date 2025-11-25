@@ -32,6 +32,13 @@ public class PayloadChunker {
      * original payload into smaller chunks such that each chunk's uncompressed size stays under
      * the specified limit.
      * 
+     * NOTE: To ensure the final serialized chunks (via JSONArray.toString()) remain safely under
+     * the limit, a 90% safety margin is applied. This accounts for potential formatting differences
+     * between individual item serialization and the final array serialization. For example:
+     * - 10 MB import limit becomes an effective 9 MB limit per chunk
+     * - 1 MB track limit becomes an effective 900 KB limit per chunk
+     * This conservative approach guarantees compliance with server limits.
+     * 
      * Performance: O(n) time complexity by tracking cumulative size instead of re-serializing
      * the entire chunk after each item addition.
      * 
@@ -43,6 +50,10 @@ public class PayloadChunker {
      */
     public static List<String> chunkJsonArray(String jsonArrayString, int maxBytesPerChunk)
             throws JSONException, UnsupportedEncodingException {
+        
+        // Apply 90% safety margin to account for potential serialization formatting differences
+        // between individual items (item.toString()) and the final array (JSONArray.toString())
+        int effectiveLimit = (int) (maxBytesPerChunk * 0.9);
         
         JSONArray originalArray = new JSONArray(jsonArrayString);
         List<String> chunks = new ArrayList<>();
@@ -72,10 +83,10 @@ public class PayloadChunker {
             // Account for comma separator if this isn't the first item in the chunk
             int itemWithSeparator = itemSize + (currentChunk.length() > 0 ? 1 : 0);
             
-            // Check if adding this item would exceed the limit
+            // Check if adding this item would exceed the effective limit
             int sizeIfAdded = currentChunkSize + itemWithSeparator;
             
-            if (sizeIfAdded > maxBytesPerChunk && currentChunk.length() > 0) {
+            if (sizeIfAdded > effectiveLimit && currentChunk.length() > 0) {
                 // Current item would push us over the limit, so save current chunk
                 chunks.add(currentChunk.toString());
                 
