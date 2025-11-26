@@ -36,7 +36,6 @@ public class JacksonSerializerTest extends TestCase {
         String jacksonResult = jacksonSerializer.serializeArray(messages);
         String orgResult = orgSerializer.serializeArray(messages);
 
-        jacksonResult = jacksonSerializer.serializeArray(messages);
         JSONArray array = new JSONArray(jacksonResult);
         assertEquals(1, array.length());
         JSONObject parsed = array.getJSONObject(0);
@@ -81,7 +80,7 @@ public class JacksonSerializerTest extends TestCase {
 
         assertEquals("complex_event", parsed.getString("event"));
         assertTrue(parsed.isNull("null_value"));
-        assertEquals(false, parsed.getBoolean("boolean_value"));
+        assertFalse(parsed.getBoolean("boolean_value"));
         assertEquals(42, parsed.getInt("int_value"));
         assertEquals(9999999999L, parsed.getLong("long_value"));
         assertEquals(3.14159, parsed.getDouble("double_value"), 0.00001);
@@ -97,9 +96,9 @@ public class JacksonSerializerTest extends TestCase {
         assertEquals(5, parsedInnerArray.length());
         assertEquals("string", parsedInnerArray.getString(0));
         assertEquals(100, parsedInnerArray.getInt(1));
-        assertEquals(false, parsedInnerArray.getBoolean(2));
+        assertFalse(parsedInnerArray.getBoolean(2));
         assertTrue(parsedInnerArray.isNull(3));
-        assertEquals(true, parsedInnerArray.getJSONObject(4).getBoolean("in_array"));
+        assertTrue(parsedInnerArray.getJSONObject(4).getBoolean("in_array"));
         // Verify both serializers produce equivalent JSON
         JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
     }

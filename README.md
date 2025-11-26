@@ -142,7 +142,7 @@ MixpanelAPI mixpanel = new MixpanelAPI.Builder()
     .flagsConfig(config)
     .build();
 
-try (mixpanel) {
+try (MixpanelAPI mixpanel = new MixpanelAPI.Builder().flagsConfig(config).build()) {
     Map<String, Object> context = new HashMap<>();
     context.put("distinct_id", "user-456");
 

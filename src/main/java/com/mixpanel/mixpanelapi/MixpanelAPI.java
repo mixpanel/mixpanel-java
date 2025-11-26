@@ -205,13 +205,7 @@ public class MixpanelAPI implements AutoCloseable {
         mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
         if (jsonSerializer != null) {
-            String jsonSerializerName;
-            try {
-                jsonSerializerName = jsonSerializer.getClass().getName();
-            } catch (NullPointerException npe) {
-                jsonSerializerName = "unknown";
-            }
-            logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializerName);
+            logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
             mJsonSerializer = jsonSerializer;
         } else {
             mJsonSerializer = new OrgJsonSerializer();

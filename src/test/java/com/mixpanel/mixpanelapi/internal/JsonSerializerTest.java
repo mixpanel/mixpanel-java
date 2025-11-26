@@ -105,11 +105,6 @@ public class JsonSerializerTest extends TestCase {
         assertEquals(true, parsedInnerArray.getBoolean(2));
     }
 
-    public void testOrgJsonSerializerImplementationName() {
-        JsonSerializer serializer = new OrgJsonSerializer();
-        assertEquals("com.mixpanel.mixpanelapi.internal.OrgJsonSerializer", serializer.getClass().getName());
-    }
-
     public void testLargeBatchSerialization() throws IOException {
         // Test with a large batch to verify performance doesn't degrade
         JsonSerializer serializer = new OrgJsonSerializer();
