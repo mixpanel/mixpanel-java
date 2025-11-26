@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -25,7 +26,7 @@ import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.util.VersionUtil;
 import com.mixpanel.mixpanelapi.internal.JsonSerializer;
-import com.mixpanel.mixpanelapi.internal.SerializerFactory;
+import com.mixpanel.mixpanelapi.internal.OrgJsonSerializer;
 
 /**
  * Simple interface to the Mixpanel tracking API, intended for use in
@@ -53,6 +54,7 @@ public class MixpanelAPI implements AutoCloseable {
     protected final boolean mUseGzipCompression;
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
+    protected final JsonSerializer mJsonSerializer;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -67,7 +69,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(null, null, null, null, useGzipCompression, null, null);
+        this(null, null, null, null, useGzipCompression, null, null, null);
     }
 
     /**
@@ -96,7 +98,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig);
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null);
     }
 
     /**
@@ -109,7 +111,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null);
     }
 
     /**
@@ -123,7 +125,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null);
     }
 
     /**
@@ -138,7 +140,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null);
     }
 
     /**
@@ -154,7 +156,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null);
     }
 
     /**
@@ -170,7 +172,8 @@ public class MixpanelAPI implements AutoCloseable {
             builder.importEndpoint, 
             builder.useGzipCompression,
             builder.flagsConfig instanceof LocalFlagsConfig ? (LocalFlagsConfig) builder.flagsConfig : null,
-            builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null
+            builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null,
+            builder.jsonSerializer
         );
     }
 
@@ -184,6 +187,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      * @param localFlagsConfig configuration for local feature flags
      * @param remoteFlagsConfig configuration for remote feature flags
+     * @param jsonSerializer custom JSON serializer (null uses default)
      */
     private MixpanelAPI(
         String eventsEndpoint, 
@@ -192,13 +196,26 @@ public class MixpanelAPI implements AutoCloseable {
         String importEndpoint, 
         boolean useGzipCompression, 
         LocalFlagsConfig localFlagsConfig, 
-        RemoteFlagsConfig remoteFlagsConfig
+        RemoteFlagsConfig remoteFlagsConfig,
+        JsonSerializer jsonSerializer
     ) {
         mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
         mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
         mGroupsEndpoint = groupsEndpoint != null ? groupsEndpoint : Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
+        if (jsonSerializer != null) {
+            String jsonSerializerName;
+            try {
+                jsonSerializerName = jsonSerializer.getClass().getName();
+            } catch (NullPointerException npe) {
+                jsonSerializerName = "unknown";
+            }
+            logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializerName);
+            mJsonSerializer = jsonSerializer;
+        } else {
+            mJsonSerializer = new OrgJsonSerializer();
+        }
 
         if (localFlagsConfig != null) {
             EventSender eventSender = createEventSender(localFlagsConfig, this);
@@ -427,8 +444,7 @@ public class MixpanelAPI implements AutoCloseable {
 
     private String dataString(List<JSONObject> messages) {
         try {
-            JsonSerializer serializer = SerializerFactory.getInstance();
-            return serializer.serializeArray(messages);
+            return mJsonSerializer.serializeArray(messages);
         } catch (IOException e) {
             // Fallback to original implementation if serialization fails
             logger.log(Level.WARNING, "JSON serialization failed unexpectedly; falling back to org.json implementation", e);
@@ -627,8 +643,12 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Builder class for constructing a MixpanelAPI instance with optional configuration options.
+     * Builder class for constructing a MixpanelAPI instance with optional configuration.
      * 
+     * <p>The Builder pattern provides a flexible way to configure MixpanelAPI with various
+     * options including custom endpoints, gzip compression, feature flags, and JSON serializers.</p>
+     *
+     * @since 1.6.0
      */
     public static class Builder {
         private String eventsEndpoint;
@@ -637,6 +657,7 @@ public class MixpanelAPI implements AutoCloseable {
         private String importEndpoint;
         private boolean useGzipCompression;
         private BaseFlagsConfig flagsConfig;
+        private JsonSerializer jsonSerializer;
 
         /**
          * Sets the endpoint URL for Mixpanel events messages.
@@ -702,6 +723,17 @@ public class MixpanelAPI implements AutoCloseable {
          */
         public Builder flagsConfig(BaseFlagsConfig flagsConfig) {
             this.flagsConfig = flagsConfig;
+            return this;
+        }
+
+        /**
+         * Sets a custom JSON serializer for message serialization.
+         *
+         * @param jsonSerializer custom JSON serializer implementation
+         * @return this Builder instance for method chaining
+         */
+        public Builder jsonSerializer(JsonSerializer jsonSerializer) {
+            this.jsonSerializer = jsonSerializer;
             return this;
         }
 

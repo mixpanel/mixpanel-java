@@ -1,14 +1,14 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.mixpanel</groupId>
-    <artifactId>mixpanel-java</artifactId>
+    <artifactId>mixpanel-java-extension-jackson</artifactId>
     <version>1.6.0-flags</version>
     <packaging>jar</packaging>
-    <name>mixpanel-java</name>
+    <name>Mixpanel Java SDK - Jackson Extension</name>
     <description>
-        <![CDATA[A library for tracking Mixpanel events and updating Mixpanel people analytics profiles within Java applications.]]>
+        <![CDATA[High-performance Jackson serializer extension for Mixpanel Java SDK. Provides improved performance for large batch operations.]]>
     </description>
 
     <url>https://github.com/mixpanel/mixpanel-java</url>
@@ -41,6 +41,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <jackson.version>2.20.0</jackson.version>
     </properties>
 
     <distributionManagement>
@@ -51,16 +52,6 @@
     </distributionManagement>
 
     <build>
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-                <includes>
-                    <include>**/*.properties</include>
-                </includes>
-            </resource>
-        </resources>
-
         <plugins>
             <!-- Central Publishing Maven Plugin for Maven Central Portal -->
             <plugin>
@@ -70,7 +61,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
-                    <deploymentName>mixpanel-java-${project.version}</deploymentName>
+                    <deploymentName>mixpanel-java-extension-jackson-${project.version}</deploymentName>
                     <!-- Set autoPublish to true for CI/CD, false for manual review -->
                     <autoPublish>false</autoPublish>
                 </configuration>
@@ -89,6 +80,7 @@
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -127,17 +119,26 @@
     </build>
 
     <dependencies>
+        <!-- Mixpanel Java SDK dependency - must match version -->
+        <dependency>
+            <groupId>com.mixpanel</groupId>
+            <artifactId>mixpanel-java</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Jackson dependencies - transitively pulled in -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- Test dependencies -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
             <version>4.13.2</version>
             <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.json</groupId>
-            <artifactId>json</artifactId>
-            <version>20231013</version>
         </dependency>
     </dependencies>
 </project>

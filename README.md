@@ -2,13 +2,13 @@ This is the official Mixpanel tracking library for Java.
 
 ## Latest Version
 
-##### _May 08, 2024_ - [v1.5.3](https://github.com/mixpanel/mixpanel-java/releases/tag/mixpanel-java-1.5.3)
+See the [releases page](https://github.com/mixpanel/mixpanel-java/releases) for the latest version.
 
-```
+```xml
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java</artifactId>
-    <version>1.5.3</version>
+    <version>1.6.0-flags</version>
 </dependency>
 ```
 
@@ -33,9 +33,13 @@ are built by `MessageBuilder` objects, and those messages can be consumed by the
 
 ### Gzip Compression
 
-The library supports gzip compression for both tracking events (`/track`) and importing historical events (`/import`). To enable gzip compression, pass `true` to the `MixpanelAPI` constructor:
+The library supports gzip compression for both tracking events (`/track`) and importing historical events (`/import`). To enable gzip compression, use the builder:
 
-    MixpanelAPI mixpanel = new MixpanelAPI(true); // Enable gzip compression
+```java
+MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .useGzipCompression(true)
+    .build();
+```
 
 Gzip compression can reduce bandwidth usage and improve performance, especially when sending large batches of events.
 
@@ -45,31 +49,36 @@ The library supports importing historical events (events older than 5 days that 
 
 ### High-Performance JSON Serialization (Optional)
 
-For applications that import large batches of events (e.g., using the `/import` endpoint), the library supports optional high-performance JSON serialization using Jackson. When Jackson is available on the classpath, the library automatically uses it for JSON serialization, providing **up to 5x performance improvement** for large batches.
+For applications that import large batches of events (e.g., using the `/import` endpoint), the library supports optional high-performance JSON serialization using Jackson. The Jackson extension provides **up to 5x performance improvement** for large batches.
 
-To enable high-performance serialization, add the Jackson dependency to your project:
+To enable high-performance serialization, add the Jackson extension to your project:
 
 ```xml
 <dependency>
-    <groupId>com.fasterxml.jackson.core</groupId>
-    <artifactId>jackson-databind</artifactId>
-    <version>2.20.0</version>
+    <groupId>com.mixpanel</groupId>
+    <artifactId>mixpanel-java-extension-jackson</artifactId>
+    <version>1.6.0-flags</version>
 </dependency>
 ```
 
+Then configure the MixpanelAPI to use it:
+
+```java
+import com.mixpanel.mixpanelapi.internal.JacksonSerializer;
+
+MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .jsonSerializer(new JacksonSerializer())
+    .build();
+```
+
 **Key benefits:**
-- **Automatic detection**: The library automatically detects and uses Jackson when available
-- **Backward compatible**: No code changes required - all public APIs remain unchanged
 - **Significant performance gains**: 2-5x faster serialization for batches of 50+ messages
 - **Optimal for `/import`**: Most beneficial when importing large batches (up to 2000 events)
-- **Fallback support**: Gracefully falls back to org.json if Jackson is not available
 
 The performance improvement is most noticeable when:
 - Importing historical data via the `/import` endpoint
 - Sending batches of 50+ events
 - Processing high-volume event streams
-
-No code changes are required to benefit from this optimization - simply add the Jackson dependency to your project.
 
 ## Feature Flags
 
@@ -90,7 +99,9 @@ LocalFlagsConfig config = LocalFlagsConfig.builder()
     .pollingIntervalSeconds(60)
     .build();
 
-MixpanelAPI mixpanel = new MixpanelAPI(config);
+MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .flagsConfig(config)
+    .build();
 
 // Start polling for flag definitions
 mixpanel.getLocalFlags().startPollingForDefinitions();
@@ -127,7 +138,11 @@ RemoteFlagsConfig config = RemoteFlagsConfig.builder()
     .projectToken("YOUR_PROJECT_TOKEN")
     .build();
 
-try (MixpanelAPI mixpanel = new MixpanelAPI(config)) {
+MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .flagsConfig(config)
+    .build();
+
+try (mixpanel) {
     Map<String, Object> context = new HashMap<>();
     context.put("distinct_id", "user-456");
 

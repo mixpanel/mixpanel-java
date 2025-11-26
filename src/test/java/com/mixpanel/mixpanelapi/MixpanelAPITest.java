@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
+import com.mixpanel.mixpanelapi.internal.OrgJsonSerializer;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -1152,6 +1153,7 @@ public class MixpanelAPITest extends TestCase
         boolean expectedGzipCompression = true;
         LocalFlagsConfig expectedLocalFlagsConfig = 
             new LocalFlagsConfig.Builder().build();
+        OrgJsonSerializer expectedJsonSerializer = new OrgJsonSerializer();
         
         // WHEN
         MixpanelAPI api = new MixpanelAPI.Builder()
@@ -1161,6 +1163,7 @@ public class MixpanelAPITest extends TestCase
             .importEndpoint(expectedImportEndpoint)
             .useGzipCompression(expectedGzipCompression)
             .flagsConfig(expectedLocalFlagsConfig)
+            .jsonSerializer(expectedJsonSerializer)
             .build();
         
         // THEN
@@ -1169,6 +1172,7 @@ public class MixpanelAPITest extends TestCase
         assertEquals(expectedGroupsEndpoint, api.mGroupsEndpoint);
         assertEquals(expectedImportEndpoint, api.mImportEndpoint);
         assertEquals(expectedGzipCompression, api.mUseGzipCompression);
+        assertEquals(expectedJsonSerializer, api.mJsonSerializer);
         assertNotNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
         api.close();

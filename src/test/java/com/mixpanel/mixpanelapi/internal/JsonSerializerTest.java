@@ -107,127 +107,12 @@ public class JsonSerializerTest extends TestCase {
 
     public void testOrgJsonSerializerImplementationName() {
         JsonSerializer serializer = new OrgJsonSerializer();
-        assertEquals("org.json", serializer.getImplementationName());
-    }
-
-    public void testJacksonSerializerIfAvailable() throws IOException {
-        // This test will only run if Jackson is on the classpath
-        boolean jacksonAvailable = false;
-        try {
-            Class.forName("com.fasterxml.jackson.core.JsonFactory");
-            jacksonAvailable = true;
-        } catch (ClassNotFoundException e) {
-            // Jackson not available, skip Jackson-specific tests
-        }
-
-        if (jacksonAvailable) {
-            JsonSerializer serializer = new JacksonSerializer();
-
-            // Test empty list
-            List<JSONObject> messages = new ArrayList<>();
-            String result = serializer.serializeArray(messages);
-            assertEquals("[]", result);
-
-            // Test single message
-            JSONObject message = new JSONObject();
-            message.put("event", "jackson_test");
-            message.put("value", 123);
-            messages = Arrays.asList(message);
-
-            result = serializer.serializeArray(messages);
-            JSONArray array = new JSONArray(result);
-            assertEquals(1, array.length());
-            JSONObject parsed = array.getJSONObject(0);
-            assertEquals("jackson_test", parsed.getString("event"));
-            assertEquals(123, parsed.getInt("value"));
-
-            // Test implementation name
-            assertEquals("Jackson", serializer.getImplementationName());
-        }
-    }
-
-    public void testJacksonSerializerComplexObjectIfAvailable() throws IOException {
-        // This test will only run if Jackson is on the classpath
-        boolean jacksonAvailable = false;
-        try {
-            Class.forName("com.fasterxml.jackson.core.JsonFactory");
-            jacksonAvailable = true;
-        } catch (ClassNotFoundException e) {
-            // Jackson not available, skip Jackson-specific tests
-        }
-
-        if (jacksonAvailable) {
-            JsonSerializer serializer = new JacksonSerializer();
-
-            JSONObject message = new JSONObject();
-            message.put("event", "complex_jackson_event");
-            message.put("null_value", JSONObject.NULL);
-            message.put("boolean_value", false);
-            message.put("int_value", 42);
-            message.put("long_value", 9999999999L);
-            message.put("double_value", 3.14159);
-            message.put("float_value", 2.5f);
-            message.put("string_value", "test with \"quotes\" and special chars: \n\t");
-
-            JSONObject nested = new JSONObject();
-            nested.put("level2", new JSONObject().put("level3", "deep value"));
-            message.put("nested", nested);
-
-            JSONArray array = new JSONArray();
-            array.put("string");
-            array.put(100);
-            array.put(false);
-            array.put(JSONObject.NULL);
-            array.put(new JSONObject().put("in_array", true));
-            message.put("array", array);
-
-            List<JSONObject> messages = Arrays.asList(message);
-            String result = serializer.serializeArray(messages);
-
-            // Verify the result can be parsed back correctly
-            JSONArray parsedArray = new JSONArray(result);
-            JSONObject parsed = parsedArray.getJSONObject(0);
-
-            assertEquals("complex_jackson_event", parsed.getString("event"));
-            assertTrue(parsed.isNull("null_value"));
-            assertEquals(false, parsed.getBoolean("boolean_value"));
-            assertEquals(42, parsed.getInt("int_value"));
-            assertEquals(9999999999L, parsed.getLong("long_value"));
-            assertEquals(3.14159, parsed.getDouble("double_value"), 0.00001);
-            assertEquals(2.5f, parsed.getFloat("float_value"), 0.01);
-            assertEquals("test with \"quotes\" and special chars: \n\t", parsed.getString("string_value"));
-
-            assertEquals("deep value",
-                parsed.getJSONObject("nested")
-                    .getJSONObject("level2")
-                    .getString("level3"));
-
-            JSONArray parsedInnerArray = parsed.getJSONArray("array");
-            assertEquals(5, parsedInnerArray.length());
-            assertEquals("string", parsedInnerArray.getString(0));
-            assertEquals(100, parsedInnerArray.getInt(1));
-            assertEquals(false, parsedInnerArray.getBoolean(2));
-            assertTrue(parsedInnerArray.isNull(3));
-            assertEquals(true, parsedInnerArray.getJSONObject(4).getBoolean("in_array"));
-        }
-    }
-
-    public void testSerializerFactoryReturnsCorrectImplementation() {
-        JsonSerializer serializer = SerializerFactory.getInstance();
-        assertNotNull(serializer);
-
-        // Check that we get a valid implementation
-        String implName = serializer.getImplementationName();
-        assertTrue("org.json".equals(implName) || "Jackson".equals(implName));
-
-        // Verify it's the same instance on subsequent calls (singleton)
-        JsonSerializer serializer2 = SerializerFactory.getInstance();
-        assertSame(serializer, serializer2);
+        assertEquals("com.mixpanel.mixpanelapi.internal.OrgJsonSerializer", serializer.getClass().getName());
     }
 
     public void testLargeBatchSerialization() throws IOException {
         // Test with a large batch to verify performance doesn't degrade
-        JsonSerializer serializer = SerializerFactory.getInstance();
+        JsonSerializer serializer = new OrgJsonSerializer();
         List<JSONObject> messages = new ArrayList<>();
 
         // Create 2000 messages (max batch size for /import)
@@ -259,6 +144,6 @@ public class JsonSerializerTest extends TestCase {
 
         // Log serialization time for reference
         System.out.println("Serialized 2000 messages in " + (endTime - startTime) +
-                         "ms using " + serializer.getImplementationName());
+                         "ms using " + serializer.getClass().getName());
     }
 }
