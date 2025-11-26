@@ -3,44 +3,54 @@ package com.mixpanel.mixpanelapi.internal;
 import junit.framework.TestCase;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.skyscreamer.jsonassert.JSONAssert;
+import org.skyscreamer.jsonassert.JSONCompareMode;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 public class JacksonSerializerTest extends TestCase {
 
-    public void testJacksonSerializer() throws IOException {
-        JsonSerializer serializer = new JacksonSerializer();
+    public void testJacksonMatchesOrgJsonEmptyList() throws Exception {
+        JsonSerializer jacksonSerializer = new JacksonSerializer();
+        JsonSerializer orgSerializer = new OrgJsonSerializer();
 
-        // Test empty list
         List<JSONObject> messages = new ArrayList<>();
-        String result = serializer.serializeArray(messages);
-        assertEquals("[]", result);
+        String jacksonResult = jacksonSerializer.serializeArray(messages);
+        String orgResult = orgSerializer.serializeArray(messages);
 
-        // Test single message
-        JSONObject message = new JSONObject();
-        message.put("event", "jackson_test");
-        message.put("value", 123);
-        messages = Arrays.asList(message);
-
-        result = serializer.serializeArray(messages);
-        JSONArray array = new JSONArray(result);
-        assertEquals(1, array.length());
-        JSONObject parsed = array.getJSONObject(0);
-        assertEquals("jackson_test", parsed.getString("event"));
-        assertEquals(123, parsed.getInt("value"));
-
-        // Test implementation name
-        assertEquals("com.mixpanel.mixpanelapi.internal.JacksonSerializer", serializer.getClass().getName());
+        assertEquals("[]", jacksonResult);
+        JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
     }
 
-    public void testJacksonSerializerComplexObject() throws IOException {
-        JsonSerializer serializer = new JacksonSerializer();
+    public void testJacksonMatchesOrgJsonSingleMessage() throws Exception {
+        JsonSerializer jacksonSerializer = new JacksonSerializer();
+        JsonSerializer orgSerializer = new OrgJsonSerializer();
 
         JSONObject message = new JSONObject();
-        message.put("event", "complex_jackson_event");
+        message.put("event", "test_event");
+        message.put("value", 123);
+        List<JSONObject> messages = Arrays.asList(message);
+
+        String jacksonResult = jacksonSerializer.serializeArray(messages);
+        String orgResult = orgSerializer.serializeArray(messages);
+
+        jacksonResult = jacksonSerializer.serializeArray(messages);
+        JSONArray array = new JSONArray(jacksonResult);
+        assertEquals(1, array.length());
+        JSONObject parsed = array.getJSONObject(0);
+        assertEquals("test_event", parsed.getString("event"));
+        assertEquals(123, parsed.getInt("value"));
+        JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
+    }
+
+    public void testJacksonMatchesOrgJsonComplexObject() throws Exception {
+        JsonSerializer jacksonSerializer = new JacksonSerializer();
+        JsonSerializer orgSerializer = new OrgJsonSerializer();
+
+        JSONObject message = new JSONObject();
+        message.put("event", "complex_event");
         message.put("null_value", JSONObject.NULL);
         message.put("boolean_value", false);
         message.put("int_value", 42);
@@ -62,13 +72,14 @@ public class JacksonSerializerTest extends TestCase {
         message.put("array", array);
 
         List<JSONObject> messages = Arrays.asList(message);
-        String result = serializer.serializeArray(messages);
+        
+        String jacksonResult = jacksonSerializer.serializeArray(messages);
+        String orgResult = orgSerializer.serializeArray(messages);
 
-        // Verify the result can be parsed back correctly
-        JSONArray parsedArray = new JSONArray(result);
+        JSONArray parsedArray = new JSONArray(jacksonResult);
         JSONObject parsed = parsedArray.getJSONObject(0);
 
-        assertEquals("complex_jackson_event", parsed.getString("event"));
+        assertEquals("complex_event", parsed.getString("event"));
         assertTrue(parsed.isNull("null_value"));
         assertEquals(false, parsed.getBoolean("boolean_value"));
         assertEquals(42, parsed.getInt("int_value"));
@@ -89,11 +100,38 @@ public class JacksonSerializerTest extends TestCase {
         assertEquals(false, parsedInnerArray.getBoolean(2));
         assertTrue(parsedInnerArray.isNull(3));
         assertEquals(true, parsedInnerArray.getJSONObject(4).getBoolean("in_array"));
+        // Verify both serializers produce equivalent JSON
+        JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
     }
 
-    public void testLargeBatchSerialization() throws IOException {
-        // Test with a large batch to verify performance doesn't degrade
-        JsonSerializer serializer = new JacksonSerializer();
+    public void testJacksonMatchesOrgJsonMultipleMessages() throws Exception {
+        JsonSerializer jacksonSerializer = new JacksonSerializer();
+        JsonSerializer orgSerializer = new OrgJsonSerializer();
+
+        List<JSONObject> messages = new ArrayList<>();
+        
+        for (int i = 0; i < 10; i++) {
+            JSONObject message = new JSONObject();
+            message.put("event", "event_" + i);
+            message.put("index", i);
+            message.put("timestamp", System.currentTimeMillis());
+            message.put("properties", new JSONObject()
+                .put("user_id", "user_" + i)
+                .put("amount", i * 10.5));
+            messages.add(message);
+        }
+
+        String jacksonResult = jacksonSerializer.serializeArray(messages);
+        String orgResult = orgSerializer.serializeArray(messages);
+        
+        // Verify both serializers produce equivalent JSON
+        JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
+    }
+
+    public void testLargeBatchSerialization() throws Exception {
+        // Test with a large batch to verify performance and that output matches OrgJson
+        JsonSerializer jacksonSerializer = new JacksonSerializer();
+        JsonSerializer orgSerializer = new OrgJsonSerializer();
         List<JSONObject> messages = new ArrayList<>();
 
         // Create 2000 messages (max batch size for /import)
@@ -107,24 +145,29 @@ public class JacksonSerializerTest extends TestCase {
             messages.add(message);
         }
 
-        long startTime = System.currentTimeMillis();
-        String result = serializer.serializeArray(messages);
-        long endTime = System.currentTimeMillis();
+        long jacksonStart = System.currentTimeMillis();
+        String jacksonResult = jacksonSerializer.serializeArray(messages);
+        long jacksonEnd = System.currentTimeMillis();
 
-        // Verify the result
-        assertNotNull(result);
-        assertTrue(result.startsWith("["));
-        assertTrue(result.endsWith("]"));
+        long orgStart = System.currentTimeMillis();
+        String orgResult = orgSerializer.serializeArray(messages);
+        long orgEnd = System.currentTimeMillis();
 
-        // Parse to verify correctness (just check a few)
-        JSONArray array = new JSONArray(result);
+        // Verify both produce equivalent JSON
+        JSONAssert.assertEquals(orgResult, jacksonResult, JSONCompareMode.STRICT);
+
+        // Parse to verify correctness
+        JSONArray array = new JSONArray(jacksonResult);
         assertEquals(2000, array.length());
         assertEquals("batch_event", array.getJSONObject(0).getString("event"));
         assertEquals(0, array.getJSONObject(0).getJSONObject("properties").getInt("index"));
         assertEquals(1999, array.getJSONObject(1999).getJSONObject("properties").getInt("index"));
 
-        // Log serialization time for reference
-        System.out.println("Serialized 2000 messages in " + (endTime - startTime) +
-                         "ms using " + serializer.getClass().getName());
+        // Log serialization times for comparison
+        long jacksonTime = jacksonEnd - jacksonStart;
+        long orgTime = orgEnd - orgStart;
+        System.out.println("Jackson serialized 2000 messages in " + jacksonTime + "ms");
+        System.out.println("OrgJson serialized 2000 messages in " + orgTime + "ms");
+        System.out.println("Performance improvement: " + String.format("%.2fx", (double) orgTime / jacksonTime));
     }
 }
