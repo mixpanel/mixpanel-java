@@ -8,7 +8,7 @@ See the [releases page](https://github.com/mixpanel/mixpanel-java/releases) for 
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java</artifactId>
-    <version>1.6.0-flags</version>
+    <version>1.6.0</version>
 </dependency>
 ```
 
@@ -57,7 +57,7 @@ To enable high-performance serialization, add the Jackson extension to your proj
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java-extension-jackson</artifactId>
-    <version>1.6.0-flags</version>
+    <version>1.6.0</version>
 </dependency>
 ```
 

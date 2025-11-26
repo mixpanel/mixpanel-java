@@ -16,16 +16,6 @@ import java.util.List;
  * High-performance JSON serialization implementation using Jackson's streaming API.
  * This implementation provides significant performance improvements for large batches
  * while maintaining compatibility with org.json JSONObjects.
- * 
- * <p>This class is part of the mixpanel-java-extension-jackson module and requires
- * Jackson dependencies to be available on the classpath.</p>
- * 
- * <p>Usage example:</p>
- * <pre>
- * MixpanelAPI api = new MixpanelAPI.Builder()
- *     .jsonSerializer(new JacksonSerializer())
- *     .build();
- * </pre>
  *
  * @since 1.6.0
  */

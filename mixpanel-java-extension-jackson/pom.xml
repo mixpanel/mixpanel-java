@@ -4,7 +4,7 @@
 
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java-extension-jackson</artifactId>
-    <version>1.6.0-flags</version>
+    <version>1.6.0</version>
     <packaging>jar</packaging>
     <name>Mixpanel Java SDK - Jackson Extension</name>
     <description>

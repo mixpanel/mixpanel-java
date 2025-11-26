@@ -11,13 +11,13 @@ Add this dependency to your project:
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java-extension-jackson</artifactId>
-    <version>1.6.0-flags</version>
+    <version>1.6.0</version>
 </dependency>
 ```
 
 ### Gradle
 ```gradle
-implementation 'com.mixpanel:mixpanel-java-extension-jackson:1.6.0-flags'
+implementation 'com.mixpanel:mixpanel-java-extension-jackson:1.6.0'
 ```
 
 This extension includes:

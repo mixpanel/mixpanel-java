@@ -1,143 +1,142 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.mixpanel</groupId>
-    <artifactId>mixpanel-java</artifactId>
-    <version>1.6.0-flags</version>
-    <packaging>jar</packaging>
-    <name>mixpanel-java</name>
-    <description>
-        <![CDATA[A library for tracking Mixpanel events and updating Mixpanel people analytics profiles within Java applications.]]>
-    </description>
+  <groupId>com.mixpanel</groupId>
+  <artifactId>mixpanel-java</artifactId>
+  <version>1.6.0</version>
+  <packaging>jar</packaging>
+  <name>mixpanel-java</name>
+  <description>
+    <![CDATA[A library for tracking Mixpanel events and updating Mixpanel people analytics profiles within Java applications.]]>
+  </description>
 
+  <url>https://github.com/mixpanel/mixpanel-java</url>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>A business-friendly OSS license</comments>
+    </license>
+  </licenses>
+
+  <scm>
+    <connection>scm:git:https://github.com/mixpanel/mixpanel-java.git</connection>
+    <developerConnection>scm:git:git@github.com:mixpanel/mixpanel-java.git</developerConnection>
     <url>https://github.com/mixpanel/mixpanel-java</url>
+  </scm>
 
-    <licenses>
-        <license>
-            <name>The Apache Software License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
-            <distribution>repo</distribution>
-            <comments>A business-friendly OSS license</comments>
-        </license>
-    </licenses>
+  <developers>
+    <developer>
+      <id>mixpanel</id>
+      <name>Mixpanel, Inc</name>
+      <email>dev@mixpanel.com</email>
+      <url>http://www.mixpanel.com</url>
+    </developer>
+  </developers>
 
-    <scm>
-        <connection>scm:git:https://github.com/mixpanel/mixpanel-java.git</connection>
-        <developerConnection>scm:git:git@github.com:mixpanel/mixpanel-java.git</developerConnection>
-        <url>https://github.com/mixpanel/mixpanel-java</url>
-    </scm>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
 
-    <developers>
-        <developer>
-            <id>mixpanel</id>
-            <name>Mixpanel, Inc</name>
-            <email>dev@mixpanel.com</email>
-            <url>http://www.mixpanel.com</url>
-        </developer>
-    </developers>
+  <distributionManagement>
+    <snapshotRepository>
+      <id>central</id>
+      <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+    </snapshotRepository>
+  </distributionManagement>
 
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-    </properties>
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>**/*.properties</include>
+        </includes>
+      </resource>
+    </resources>
 
-    <distributionManagement>
-        <snapshotRepository>
-            <id>central</id>
-            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-        </snapshotRepository>
-    </distributionManagement>
+    <plugins>
+      <!-- Central Publishing Maven Plugin for Maven Central Portal -->
+      <plugin>
+        <groupId>org.sonatype.central</groupId>
+        <artifactId>central-publishing-maven-plugin</artifactId>
+        <version>0.9.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <publishingServerId>central</publishingServerId>
+          <deploymentName>mixpanel-java-${project.version}</deploymentName>
+          <!-- Set autoPublish to true for CI/CD, false for manual review -->
+          <autoPublish>false</autoPublish>
+        </configuration>
+      </plugin>
 
-    <build>
-        <resources>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-                <includes>
-                    <include>**/*.properties</include>
-                </includes>
-            </resource>
-        </resources>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>2.2.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>2.9.1</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
 
-        <plugins>
-            <!-- Central Publishing Maven Plugin for Maven Central Portal -->
-            <plugin>
-                <groupId>org.sonatype.central</groupId>
-                <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.9.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <publishingServerId>central</publishingServerId>
-                    <deploymentName>mixpanel-java-${project.version}</deploymentName>
-                    <!-- Set autoPublish to true for CI/CD, false for manual review -->
-                    <autoPublish>false</autoPublish>
-                </configuration>
-            </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>3.2.4</version>
+        <executions>
+          <execution>
+            <id>sign-artifacts</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>sign</goal>
+            </goals>
+            <configuration>
+              <gpgArguments>
+                <arg>--pinentry-mode</arg>
+                <arg>loopback</arg>
+              </gpgArguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-source-plugin</artifactId>
-                <version>2.2.1</version>
-                <executions>
-                    <execution>
-                        <id>attach-sources</id>
-                        <goals>
-                            <goal>jar-no-fork</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <version>2.9.1</version>
-                <executions>
-                    <execution>
-                        <id>attach-javadocs</id>
-                        <goals>
-                            <goal>jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.13.2</version>
+      <scope>test</scope>
+    </dependency>
 
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-gpg-plugin</artifactId>
-                <version>3.2.4</version>
-                <executions>
-                    <execution>
-                        <id>sign-artifacts</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>sign</goal>
-                        </goals>
-                        <configuration>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                            </gpgArguments>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
-
-    <dependencies>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.json</groupId>
-            <artifactId>json</artifactId>
-            <version>20231013</version>
-        </dependency>
-    </dependencies>
+    <dependency>
+      <groupId>org.json</groupId>
+      <artifactId>json</artifactId>
+      <version>20231013</version>
+    </dependency>
+  </dependencies>
 </project>

@@ -11,13 +11,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
+import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.internal.OrgJsonSerializer;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
-import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
-import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 
 import junit.framework.Test;
 import junit.framework.TestCase;
