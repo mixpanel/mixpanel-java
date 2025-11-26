@@ -67,7 +67,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null, null);
+        this(null, null, null, null, useGzipCompression, null, null);
     }
 
     /**
@@ -96,24 +96,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
-        mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
-        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
-        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
-        mUseGzipCompression = false;
-
-        if (localFlagsConfig != null) {
-            EventSender eventSender = createEventSender(localFlagsConfig, this);
-            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
-            mRemoteFlags = null;
-        } else if (remoteFlagsConfig != null) {
-            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
-            mLocalFlags = null;
-            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
-        } else {
-            mLocalFlags = null;
-            mRemoteFlags = null;
-        }
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig);
     }
 
     /**
@@ -126,7 +109,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null);
     }
 
     /**
@@ -140,7 +123,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null);
     }
 
     /**
@@ -175,24 +158,60 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Main constructor used by all other constructors.
+     * Constructs a MixpanelAPI object using a builder.
      *
-     * @param eventsEndpoint a URL that will accept Mixpanel events messages
-     * @param peopleEndpoint a URL that will accept Mixpanel people messages
-     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
-     * @param importEndpoint a URL that will accept Mixpanel import messages
-     * @param useGzipCompression whether to use gzip compression for network requests
-     * @param localFlags optional LocalFlagsProvider for local feature flags (can be null)
-     * @param remoteFlags optional RemoteFlagsProvider for remote feature flags (can be null)
+     * @param builder the Builder instance containing configuration
      */
-    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
-        mEventsEndpoint = eventsEndpoint;
-        mPeopleEndpoint = peopleEndpoint;
-        mGroupsEndpoint = groupsEndpoint;
-        mImportEndpoint = importEndpoint;
+    private MixpanelAPI(Builder builder) {
+        this(
+            builder.eventsEndpoint, 
+            builder.peopleEndpoint, 
+            builder.groupsEndpoint, 
+            builder.importEndpoint, 
+            builder.useGzipCompression,
+            builder.flagsConfig instanceof LocalFlagsConfig ? (LocalFlagsConfig) builder.flagsConfig : null,
+            builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null
+        );
+    }
+
+    /**
+     * Main private constructor used by all other constructors.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages (null uses default)
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages (null uses default)
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages (null uses default)
+     * @param importEndpoint a URL that will accept Mixpanel import messages (null uses default)
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @param localFlagsConfig configuration for local feature flags
+     * @param remoteFlagsConfig configuration for remote feature flags
+     */
+    private MixpanelAPI(
+        String eventsEndpoint, 
+        String peopleEndpoint, 
+        String groupsEndpoint, 
+        String importEndpoint, 
+        boolean useGzipCompression, 
+        LocalFlagsConfig localFlagsConfig, 
+        RemoteFlagsConfig remoteFlagsConfig
+    ) {
+        mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
+        mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
+        mGroupsEndpoint = groupsEndpoint != null ? groupsEndpoint : Config.BASE_ENDPOINT + "/groups";
+        mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
-        mLocalFlags = localFlags;
-        mRemoteFlags = remoteFlags;
+
+        if (localFlagsConfig != null) {
+            EventSender eventSender = createEventSender(localFlagsConfig, this);
+            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
+            mRemoteFlags = null;
+        } else if (remoteFlagsConfig != null) {
+            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
+            mLocalFlags = null;
+            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
+        } else {
+            mLocalFlags = null;
+            mRemoteFlags = null;
+        }
     }
 
     /**
@@ -604,6 +623,95 @@ public class MixpanelAPI implements AutoCloseable {
     public void close() {
         if (mLocalFlags != null) {
             mLocalFlags.close();
+        }
+    }
+
+    /**
+     * Builder class for constructing a MixpanelAPI instance with optional configuration options.
+     * 
+     */
+    public static class Builder {
+        private String eventsEndpoint;
+        private String peopleEndpoint;
+        private String groupsEndpoint;
+        private String importEndpoint;
+        private boolean useGzipCompression;
+        private BaseFlagsConfig flagsConfig;
+
+        /**
+         * Sets the endpoint URL for Mixpanel events messages.
+         *
+         * @param eventsEndpoint the URL that will accept Mixpanel events messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder eventsEndpoint(String eventsEndpoint) {
+            this.eventsEndpoint = eventsEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel people messages.
+         *
+         * @param peopleEndpoint the URL that will accept Mixpanel people messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder peopleEndpoint(String peopleEndpoint) {
+            this.peopleEndpoint = peopleEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel groups messages.
+         *
+         * @param groupsEndpoint the URL that will accept Mixpanel groups messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder groupsEndpoint(String groupsEndpoint) {
+            this.groupsEndpoint = groupsEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel import messages.
+         *
+         * @param importEndpoint the URL that will accept Mixpanel import messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder importEndpoint(String importEndpoint) {
+            this.importEndpoint = importEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets whether to use gzip compression for network requests.
+         *
+         * @param useGzipCompression true to enable gzip compression, false otherwise
+         * @return this Builder instance for method chaining
+         */
+        public Builder useGzipCompression(boolean useGzipCompression) {
+            this.useGzipCompression = useGzipCompression;
+            return this;
+        }
+
+        /**
+         * Sets the configuration for feature flags evaluation.
+         * Accepts either LocalFlagsConfig or RemoteFlagsConfig.
+         *
+         * @param flagsConfig configuration for feature flags evaluation
+         * @return this Builder instance for method chaining
+         */
+        public Builder flagsConfig(BaseFlagsConfig flagsConfig) {
+            this.flagsConfig = flagsConfig;
+            return this;
+        }
+
+        /**
+         * Builds and returns a new MixpanelAPI instance with the configured settings.
+         *
+         * @return a new MixpanelAPI instance
+         */
+        public MixpanelAPI build() {
+            return new MixpanelAPI(this);
         }
     }
 

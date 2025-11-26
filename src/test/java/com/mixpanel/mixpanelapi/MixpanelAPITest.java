@@ -15,6 +15,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
+
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
@@ -1119,4 +1122,278 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    /**
+     * Test builder with no options set uses default values
+     */
+    public void testBuilderWithDefaults() {
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI.Builder().build();
+        
+        // THEN
+        assertEquals(Config.BASE_ENDPOINT + "/track", api.mEventsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test builder with all options set
+     */
+    public void testBuilderWithAllOptions() {
+        // GIVEN
+        String expectedEventsEndpoint = "https://custom.example.com/events";
+        String expectedPeopleEndpoint = "https://custom.example.com/people";
+        String expectedGroupsEndpoint = "https://custom.example.com/groups";
+        String expectedImportEndpoint = "https://custom.example.com/import";
+        boolean expectedGzipCompression = true;
+        LocalFlagsConfig expectedLocalFlagsConfig = 
+            new LocalFlagsConfig.Builder().build();
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .eventsEndpoint(expectedEventsEndpoint)
+            .peopleEndpoint(expectedPeopleEndpoint)
+            .groupsEndpoint(expectedGroupsEndpoint)
+            .importEndpoint(expectedImportEndpoint)
+            .useGzipCompression(expectedGzipCompression)
+            .flagsConfig(expectedLocalFlagsConfig)
+            .build();
+        
+        // THEN
+        assertEquals(expectedEventsEndpoint, api.mEventsEndpoint);
+        assertEquals(expectedPeopleEndpoint, api.mPeopleEndpoint);
+        assertEquals(expectedGroupsEndpoint, api.mGroupsEndpoint);
+        assertEquals(expectedImportEndpoint, api.mImportEndpoint);
+        assertEquals(expectedGzipCompression, api.mUseGzipCompression);
+        assertNotNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test builder with LocalFlagsConfig
+     */
+    public void testBuilderWithLocalFlagsConfig() {
+        LocalFlagsConfig localConfig = 
+            new LocalFlagsConfig.Builder().build();
+        
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .flagsConfig(localConfig)
+            .build();
+        
+        assertNotNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test builder with RemoteFlagsConfig
+     */
+    public void testBuilderWithRemoteFlagsConfig() {
+        RemoteFlagsConfig remoteConfig = 
+            new RemoteFlagsConfig.Builder().build();
+        
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .flagsConfig(remoteConfig)
+            .build();
+        
+        assertNull(api.mLocalFlags);
+        assertNotNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test default constructor with no arguments
+     */
+    public void testConstructorNoArgs() {
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI();
+        
+        // THEN
+        assertEquals(Config.BASE_ENDPOINT + "/track", api.mEventsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with gzip compression parameter
+     */
+    public void testConstructorWithGzipCompression() {
+        // GIVEN
+        boolean expectedGzipCompression = true;
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(expectedGzipCompression);
+        
+        // THEN
+        assertEquals(Config.BASE_ENDPOINT + "/track", api.mEventsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertEquals(expectedGzipCompression, api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with LocalFlagsConfig
+     */
+    public void testConstructorWithLocalFlagsConfig() {
+        // GIVEN
+        LocalFlagsConfig expectedLocalFlagsConfig = 
+            new LocalFlagsConfig.Builder().build();
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(expectedLocalFlagsConfig);
+        
+        // THEN
+        assertEquals(Config.BASE_ENDPOINT + "/track", api.mEventsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNotNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with RemoteFlagsConfig
+     */
+    public void testConstructorWithRemoteFlagsConfig() {
+        // GIVEN
+        RemoteFlagsConfig expectedRemoteFlagsConfig = RemoteFlagsConfig.builder().build();
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(expectedRemoteFlagsConfig);
+        
+        // THEN
+        assertEquals(Config.BASE_ENDPOINT + "/track", api.mEventsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNotNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with custom events and people endpoints
+     */
+    public void testConstructorWithTwoEndpoints() {
+        // GIVEN
+        String expectedEventsEndpoint = "https://custom.example.com/events";
+        String expectedPeopleEndpoint = "https://custom.example.com/people";
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(expectedEventsEndpoint, expectedPeopleEndpoint);
+        
+        // THEN
+        assertEquals(expectedEventsEndpoint, api.mEventsEndpoint);
+        assertEquals(expectedPeopleEndpoint, api.mPeopleEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with custom events, people, and groups endpoints
+     */
+    public void testConstructorWithThreeEndpoints() {
+        // GIVEN
+        String expectedEventsEndpoint = "https://custom.example.com/events";
+        String expectedPeopleEndpoint = "https://custom.example.com/people";
+        String expectedGroupsEndpoint = "https://custom.example.com/groups";
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(
+            expectedEventsEndpoint, 
+            expectedPeopleEndpoint, 
+            expectedGroupsEndpoint
+        );
+        
+        // THEN
+        assertEquals(expectedEventsEndpoint, api.mEventsEndpoint);
+        assertEquals(expectedPeopleEndpoint, api.mPeopleEndpoint);
+        assertEquals(expectedGroupsEndpoint, api.mGroupsEndpoint);
+        assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with custom events, people, groups, and import endpoints
+     */
+    public void testConstructorWithFourEndpoints() {
+        // GIVEN
+        String expectedEventsEndpoint = "https://custom.example.com/events";
+        String expectedPeopleEndpoint = "https://custom.example.com/people";
+        String expectedGroupsEndpoint = "https://custom.example.com/groups";
+        String expectedImportEndpoint = "https://custom.example.com/import";
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(
+            expectedEventsEndpoint, 
+            expectedPeopleEndpoint, 
+            expectedGroupsEndpoint, 
+            expectedImportEndpoint
+        );
+        
+        // THEN
+        assertEquals(expectedEventsEndpoint, api.mEventsEndpoint);
+        assertEquals(expectedPeopleEndpoint, api.mPeopleEndpoint);
+        assertEquals(expectedGroupsEndpoint, api.mGroupsEndpoint);
+        assertEquals(expectedImportEndpoint, api.mImportEndpoint);
+        assertFalse(api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    /**
+     * Test constructor with all four endpoints and gzip compression
+     */
+    public void testConstructorWithFourEndpointsAndGzip() {
+        // GIVEN
+        String expectedEventsEndpoint = "https://custom.example.com/events";
+        String expectedPeopleEndpoint = "https://custom.example.com/people";
+        String expectedGroupsEndpoint = "https://custom.example.com/groups";
+        String expectedImportEndpoint = "https://custom.example.com/import";
+        boolean expectedGzipCompression = true;
+        
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI(
+            expectedEventsEndpoint, 
+            expectedPeopleEndpoint, 
+            expectedGroupsEndpoint, 
+            expectedImportEndpoint, 
+            expectedGzipCompression
+        );
+        
+        // THEN
+        assertEquals(expectedEventsEndpoint, api.mEventsEndpoint);
+        assertEquals(expectedPeopleEndpoint, api.mPeopleEndpoint);
+        assertEquals(expectedGroupsEndpoint, api.mGroupsEndpoint);
+        assertEquals(expectedImportEndpoint, api.mImportEndpoint);
+        assertEquals(expectedGzipCompression, api.mUseGzipCompression);
+        assertNull(api.mLocalFlags);
+        assertNull(api.mRemoteFlags);
+        api.close();
+    }
 }
