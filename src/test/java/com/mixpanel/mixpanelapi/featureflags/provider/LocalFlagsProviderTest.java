@@ -283,7 +283,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 rolloutJson.put("variant_override", variantOverrideObj);
             }
             if (r.hasRuntimeEvaluation()) {
-                JSONObject runtimeEval = new JSONObject(r.getRuntimeEvaluationDefinition());
+                JSONObject runtimeEval = new JSONObject(r.getLegacyRuntimeEvaluationDefinition());
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
             }
             if (r.hasVariantSplits()) {
@@ -577,8 +577,31 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     // #endregion
     // #region Runtime Evaluation Tests
 
-    @Test
     public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
+        List<Variant> variants = Arrays.asList(new Variant("premium-variant", "gold", false, 1.0f));
+
+        Map<String, Object> runtimeEval = new HashMap<>();
+        runtimeEval.put("plan", "premium");
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeEval, null, null));
+
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+
+        // Context with matching custom properties
+        provider.startPollingForDefinitions();
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("plan", "premium");
+        Map<String, Object> context = buildContextWithProperties("user-123", customProps);
+
+        String result = provider.getVariantValue("test-flag", "fallback", context);
+
+        assertEquals("gold", result);
+        assertEquals(1, eventSender.getEvents().size());
+    }
+
+    @Test
+    public void testReturnVariantWhenLegacyRuntimeEvaluationConditionsSatisfied() {
         List<Variant> variants = Arrays.asList(new Variant("premium-variant", "gold", false, 1.0f));
 
         // Runtime evaluation: requires plan=premium
@@ -603,7 +626,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
-    public void testReturnFallbackWhenRuntimeEvaluationConditionsNotSatisfied() {
+    public void testReturnFallbackWhenLegacyRuntimeEvaluationConditionsNotSatisfied() {
         List<Variant> variants = Arrays.asList(new Variant("premium-variant", "gold", false, 1.0f));
 
         // Runtime evaluation: requires plan=premium

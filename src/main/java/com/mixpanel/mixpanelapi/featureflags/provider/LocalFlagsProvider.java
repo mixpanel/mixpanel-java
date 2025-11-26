@@ -444,7 +444,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return false;
         }
 
-        Map<String, Object> runtimeEval = rollout.getRuntimeEvaluationDefinition();
+        Map<String, Object> runtimeEval = rollout.getLegacyRuntimeEvaluationDefinition();
         for (Map.Entry<String, Object> entry : runtimeEval.entrySet()) {
             String key = entry.getKey();
             Object expectedValue = entry.getValue();

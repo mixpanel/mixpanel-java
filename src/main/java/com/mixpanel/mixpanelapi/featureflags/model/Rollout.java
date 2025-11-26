@@ -15,7 +15,8 @@ import java.util.Map;
  */
 public final class Rollout {
     private final float rolloutPercentage;
-    private final Map<String, Object> runtimeEvaluationDefinition;
+    private Map<String, Object> runtimeEvaluationRule;
+    private final Map<String, Object> legacyRuntimeEvaluationDefinition;
     private final VariantOverride variantOverride;
     private final Map<String, Float> variantSplits;
 
@@ -29,7 +30,7 @@ public final class Rollout {
      */
     public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
         this.rolloutPercentage = rolloutPercentage;
-        this.runtimeEvaluationDefinition = runtimeEvaluationDefinition != null
+        this.legacyRuntimeEvaluationDefinition = runtimeEvaluationDefinition != null
             ? Collections.unmodifiableMap(runtimeEvaluationDefinition)
             : null;
         this.variantOverride = variantOverride;
@@ -57,8 +58,8 @@ public final class Rollout {
     /**
      * @return optional map of property name to expected value for runtime evaluation, or null if not set
      */
-    public Map<String, Object> getRuntimeEvaluationDefinition() {
-        return runtimeEvaluationDefinition;
+    public Map<String, Object> getLegacyRuntimeEvaluationDefinition() {
+        return legacyRuntimeEvaluationDefinition;
     }
 
     /**
@@ -79,7 +80,7 @@ public final class Rollout {
      * @return true if this rollout has runtime evaluation criteria
      */
     public boolean hasRuntimeEvaluation() {
-        return runtimeEvaluationDefinition != null && !runtimeEvaluationDefinition.isEmpty();
+        return legacyRuntimeEvaluationDefinition != null && !legacyRuntimeEvaluationDefinition.isEmpty();
     }
 
     /**
@@ -100,7 +101,7 @@ public final class Rollout {
     public String toString() {
         return "Rollout{" +
                 "rolloutPercentage=" + rolloutPercentage +
-                ", runtimeEvaluationDefinition=" + runtimeEvaluationDefinition +
+                ", runtimeEvaluationDefinition=" + legacyRuntimeEvaluationDefinition +
                 ", variantOverride='" + variantOverride + '\'' +
                 ", variantSplits=" + variantSplits +
                 '}';
