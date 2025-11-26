@@ -23,6 +23,9 @@ public class JacksonSerializer implements JsonSerializer {
 
     private final JsonFactory jsonFactory;
 
+    /**
+     * Constructs a new JacksonSerializer with default settings.
+     */
     public JacksonSerializer() {
         this.jsonFactory = new JsonFactory();
     }
@@ -51,11 +54,6 @@ public class JacksonSerializer implements JsonSerializer {
             writeJsonArray(generator, messages);
         }
         return outputStream.toByteArray();
-    }
-
-    @Override
-    public String getImplementationName() {
-        return "Jackson";
     }
 
     /**

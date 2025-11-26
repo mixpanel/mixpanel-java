@@ -33,12 +33,4 @@ public interface JsonSerializer {
      * @throws IOException if serialization fails
      */
     byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException;
-
-    /**
-     * Returns the name of this serializer implementation.
-     * Useful for logging and debugging purposes.
-     *
-     * @return The implementation name (e.g., "org.json", "Jackson")
-     */
-    String getImplementationName();
 }

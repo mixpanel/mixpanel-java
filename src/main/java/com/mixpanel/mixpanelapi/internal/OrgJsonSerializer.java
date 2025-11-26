@@ -31,9 +31,4 @@ public class OrgJsonSerializer implements JsonSerializer {
     public byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException {
         return serializeArray(messages).getBytes(StandardCharsets.UTF_8);
     }
-
-    @Override
-    public String getImplementationName() {
-        return "org.json";
-    }
 }
