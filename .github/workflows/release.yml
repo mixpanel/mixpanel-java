@@ -96,16 +96,11 @@ jobs:
         mvn clean test
         cd ..
 
-    - name: Deploy Main SDK to Maven Central
+    - name: Deploy to Maven Central
       env:
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         mvn clean deploy -Dgpg.passphrase=$GPG_PASSPHRASE
-
-    - name: Deploy Jackson Extension to Maven Central
-      env:
-        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      run: |
         cd mixpanel-java-extension-jackson
         mvn clean deploy -Dgpg.passphrase=$GPG_PASSPHRASE
         cd ..
