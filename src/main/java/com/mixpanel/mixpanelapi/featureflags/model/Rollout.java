@@ -24,14 +24,36 @@ public final class Rollout {
      * Creates a new Rollout with all parameters.
      *
      * @param rolloutPercentage the percentage of users to include (0.0-1.0)
-     * @param runtimeEvaluationDefinition optional map of property name to expected value for targeting
+     * @param legacyRuntimeEvaluationDefinition optional map of property name to expected value for targeting
      * @param variantOverride optional variant override to force selection
      * @param variantSplits optional map of variant key to split percentage at assignment group level
      */
-    public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
+    public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationRule, Map<String, Object> legacyRuntimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
         this.rolloutPercentage = rolloutPercentage;
-        this.legacyRuntimeEvaluationDefinition = runtimeEvaluationDefinition != null
-            ? Collections.unmodifiableMap(runtimeEvaluationDefinition)
+        this.legacyRuntimeEvaluationDefinition = legacyRuntimeEvaluationDefinition != null
+            ? Collections.unmodifiableMap(legacyRuntimeEvaluationDefinition)
+            : null;
+        this.runtimeEvaluationRule = runtimeEvaluationRule != null
+            ? Collections.unmodifiableMap(runtimeEvaluationRule)
+            : null;
+        this.variantOverride = variantOverride;
+        this.variantSplits = variantSplits != null
+            ? Collections.unmodifiableMap(variantSplits)
+            : null;
+    }
+
+    /**
+     * Creates a new Rollout with all legacy parameters.
+     *
+     * @param rolloutPercentage the percentage of users to include (0.0-1.0)
+     * @param legacyRuntimeEvaluationDefinition optional map of property name to expected value for targeting
+     * @param variantOverride optional variant override to force selection
+     * @param variantSplits optional map of variant key to split percentage at assignment group level
+     */
+    public Rollout(float rolloutPercentage, Map<String, Object> legacyRuntimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
+        this.rolloutPercentage = rolloutPercentage;
+        this.legacyRuntimeEvaluationDefinition = legacyRuntimeEvaluationDefinition != null
+            ? Collections.unmodifiableMap(legacyRuntimeEvaluationDefinition)
             : null;
         this.variantOverride = variantOverride;
         this.variantSplits = variantSplits != null
