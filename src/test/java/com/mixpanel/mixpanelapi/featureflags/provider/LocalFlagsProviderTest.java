@@ -592,8 +592,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     Map<String, Object> emailContainsGmailCaseInsensitive = Map.of(
             "in", 
             List.of(
-                Map.of("var", "emAil"), // Key
-                "gmaIl"              // Value
+                "gmaIl",              // Value
+                Map.of("var", "emAil") // Key
             )
         );
     Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = Map.of(
