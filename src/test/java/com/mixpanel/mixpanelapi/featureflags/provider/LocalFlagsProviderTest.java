@@ -589,6 +589,20 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 "Premium"              // Value
             )
         );
+    Map<String, Object> emailContainsGmailCaseInsensitive = Map.of(
+            "in", 
+            List.of(
+                Map.of("var", "emAil"), // Key
+                "gmaIl"              // Value
+            )
+        );
+    Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = Map.of(
+            "and", 
+            List.of(
+                planEqualsPremiumCaseInsensitive,
+                emailContainsGmailCaseInsensitive
+            )
+        );
 
     @Test
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfied() {
@@ -622,6 +636,15 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         createFlag(toRuntimeRule(planEqualsPremiumCaseInsensitive));
 
         String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenComplexRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
+        createFlag(toRuntimeRule(planEqualsPremiumAndEmailContainsGmailCaseInsensitive));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium", "email", "user@gmail.com"));
 
         assertEquals(variantValue, result);
     }
