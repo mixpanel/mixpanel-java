@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import io.github.jamsesso.jsonlogic.JsonLogic;
 
 /**
  * Local feature flags evaluation provider.
