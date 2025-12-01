@@ -286,6 +286,10 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 JSONObject runtimeEval = new JSONObject(r.getLegacyRuntimeEvaluationDefinition());
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
             }
+            if (r.hasRuntimeEvaluation()) {
+                JSONObject runtimeRule = new JSONObject(r.getRuntimeEvaluationRuleMap());
+                rolloutJson.put("runtime_evaluation_rule", runtimeRule);
+            }
             if (r.hasVariantSplits()) {
                 JSONObject variantSplitsObj = new JSONObject(r.getVariantSplits());
                 rolloutJson.put("variant_splits", variantSplitsObj);

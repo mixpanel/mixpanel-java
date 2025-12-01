@@ -290,12 +290,23 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        Map<String, Object> runtimeEval = null;
-        JSONObject runtimeEvalJson = json.optJSONObject("runtime_evaluation_definition");
-        if (runtimeEvalJson != null) {
-            runtimeEval = new HashMap<>();
-            for (String key : runtimeEvalJson.keySet()) {
-                runtimeEval.put(key, runtimeEvalJson.get(key));
+        // Parse legacy runtime evaluation (simple key-value format)
+        Map<String, Object> legacyRuntimeEval = null;
+        JSONObject legacyRuntimeEvalJson = json.optJSONObject("runtime_evaluation_definition");
+        if (legacyRuntimeEvalJson != null) {
+            legacyRuntimeEval = new HashMap<>();
+            for (String key : legacyRuntimeEvalJson.keySet()) {
+                legacyRuntimeEval.put(key, legacyRuntimeEvalJson.get(key));
+            }
+        }
+
+        // Parse new declarative runtime evaluation rule (jsonLogic format)
+        Map<String, Object> runtimeEvaluationRule = null;
+        JSONObject runtimeRuleJson = json.optJSONObject("runtime_evaluation_rule");
+        if (runtimeRuleJson != null) {
+            runtimeEvaluationRule = new HashMap<>();
+            for (String key : runtimeRuleJson.keySet()) {
+                runtimeEvaluationRule.put(key, runtimeRuleJson.get(key));
             }
         }
 
@@ -308,7 +319,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        return new Rollout(rolloutPercentage, runtimeEval, variantOverride, variantSplits);
+        return new Rollout(rolloutPercentage, runtimeEvaluationRule, legacyRuntimeEval, variantOverride, variantSplits);
     }
 
     // #endregion
@@ -448,7 +459,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return false;
         }
         try {
-            Object result = jsonLogic.apply(rollout.getRuntimeEvaluationRule(), customProperties);
+            String ruleJson = rollout.getRuntimeEvaluationRule();
+            Object result = jsonLogic.apply(ruleJson, customProperties);
             return JsonLogic.truthy(result);
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating runtime conditions", e);
