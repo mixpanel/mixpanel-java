@@ -9,6 +9,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -46,13 +47,34 @@ public class MixpanelAPI implements AutoCloseable {
     private static final int CONNECT_TIMEOUT_MILLIS = 2000;
     private static final int READ_TIMEOUT_MILLIS = 10000;
 
+    /** Connect timeout in milliseconds for per-instance control */
+    private volatile int mConnectTimeoutMillis = CONNECT_TIMEOUT_MILLIS;
+    /** Read timeout in milliseconds for per-instance control */
+    private volatile int mReadTimeoutMillis = READ_TIMEOUT_MILLIS;
+    /** Whether strict validation is enabled for import mode */
+    private volatile boolean mStrictImportMode = true;
+
+    /** The endpoint URL for events tracking */
     protected final String mEventsEndpoint;
+    /** The endpoint URL for people profiles */
     protected final String mPeopleEndpoint;
+    /** The endpoint URL for group profiles */
     protected final String mGroupsEndpoint;
+    /** The endpoint URL for import operations */
     protected final String mImportEndpoint;
+    /** Whether gzip compression is enabled for requests */
     protected final boolean mUseGzipCompression;
+    /** Local feature flags provider (null if not configured) */
     protected final LocalFlagsProvider mLocalFlags;
+    /** Remote feature flags provider (null if not configured) */
     protected final RemoteFlagsProvider mRemoteFlags;
+    /** Maximum batch size for import endpoint messages */
+    protected final int mImportMaxMessageSize;
+
+    /** The last response body from the import endpoint for error logging */
+    protected volatile String mLastResponseBody;
+    /** The HTTP status code from the last import request */
+    protected volatile int mLastStatusCode;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -67,7 +89,26 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null, null);
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
+     */
+    public MixpanelAPI(int importMaxMessageSize) {
+        this(false, importMaxMessageSize);
+    }
+
+    /**
+     * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
+     *
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
+     */
+    public MixpanelAPI(boolean useGzipCompression, int importMaxMessageSize) {
+        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, importMaxMessageSize, null, null);
     }
 
     /**
@@ -101,6 +142,7 @@ public class MixpanelAPI implements AutoCloseable {
         mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = false;
+        mImportMaxMessageSize = Config.IMPORT_MAX_MESSAGE_SIZE;
 
         if (localFlagsConfig != null) {
             EventSender eventSender = createEventSender(localFlagsConfig, this);
@@ -126,7 +168,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -140,7 +182,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -155,7 +197,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -171,7 +213,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, Config.IMPORT_MAX_MESSAGE_SIZE, null, null);
     }
 
     /**
@@ -182,15 +224,17 @@ public class MixpanelAPI implements AutoCloseable {
      * @param groupsEndpoint a URL that will accept Mixpanel groups messages
      * @param importEndpoint a URL that will accept Mixpanel import messages
      * @param useGzipCompression whether to use gzip compression for network requests
+     * @param importMaxMessageSize custom batch size for /import endpoint (must be between 1 and 2000)
      * @param localFlags optional LocalFlagsProvider for local feature flags (can be null)
      * @param remoteFlags optional RemoteFlagsProvider for remote feature flags (can be null)
      */
-    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
+    /* package */ MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, int importMaxMessageSize, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
         mEventsEndpoint = eventsEndpoint;
         mPeopleEndpoint = peopleEndpoint;
         mGroupsEndpoint = groupsEndpoint;
         mImportEndpoint = importEndpoint;
         mUseGzipCompression = useGzipCompression;
+        mImportMaxMessageSize = Math.max(1, Math.min(importMaxMessageSize, 2000));
         mLocalFlags = localFlags;
         mRemoteFlags = remoteFlags;
     }
@@ -216,8 +260,8 @@ public class MixpanelAPI implements AutoCloseable {
      * Sends a ClientDelivery full of messages to Mixpanel's servers.
      *
      * This call will block, possibly for a long time.
-     * @param toSend
-     * @throws IOException
+     * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @throws IOException if an I/O error occurs while sending
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend) throws IOException {
@@ -230,7 +274,8 @@ public class MixpanelAPI implements AutoCloseable {
      * should be called in a separate thread or in a queue consumer.
      *
      * @param toSend a ClientDelivery containing a number of Mixpanel messages
-     * @throws IOException
+     * @param useIpAddress whether to include the client IP in the tracking requests
+     * @throws IOException if an I/O error occurs while sending
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
@@ -254,7 +299,8 @@ public class MixpanelAPI implements AutoCloseable {
         // Handle import messages - use strict mode and extract token for auth
         List<JSONObject> importMessages = toSend.getImportMessages();
         if (importMessages.size() > 0) {
-            String importUrl = mImportEndpoint + "?strict=1";
+            String strictParam = mStrictImportMode ? "1" : "0";
+            String importUrl = mImportEndpoint + "?strict=" + strictParam;
             sendImportMessages(importMessages, importUrl);
         }
     }
@@ -277,13 +323,40 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Package scope for mocking purposes
+     * Container for HTTP response information including status code and response body.
+     * Used to communicate both success/failure and the specific HTTP status code,
+     * along with any response body for error diagnostics.
      */
-    /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
+    /* package */ static class HttpStatusResponse {
+        public final boolean success;
+        public final int statusCode;
+        public final String responseBody;
+
+        public HttpStatusResponse(boolean success, int statusCode) {
+            this(success, statusCode, null);
+        }
+
+        public HttpStatusResponse(boolean success, int statusCode, String responseBody) {
+            this.success = success;
+            this.statusCode = statusCode;
+            this.responseBody = responseBody;
+        }
+    }
+
+    /**
+     * Package scope for mocking purposes.
+     * 
+     * Sends data to an endpoint and returns both success status and HTTP status code.
+     * This allows callers to detect specific error conditions like 413 Payload Too Large.
+     * 
+     * When a 413 error is received, the caller should split the payload into smaller chunks
+     * using PayloadChunker and retry each chunk individually.
+     */
+    /* package */ HttpStatusResponse sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeoutMillis);
+        conn.setConnectTimeout(mConnectTimeoutMillis);
         conn.setDoOutput(true);
 
         byte[] dataToSend;
@@ -334,11 +407,45 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
+        // For HttpURLConnection, we need to handle status codes
+        int statusCode = 0;
+        HttpURLConnection httpConn = null;
+        if (conn instanceof HttpURLConnection) {
+            httpConn = (HttpURLConnection) conn;
+            try {
+                statusCode = httpConn.getResponseCode();
+            } catch (IOException e) {
+                // If we can't get the status code, return failure
+                return new HttpStatusResponse(false, 0, null);
+            }
+        }
+
         InputStream responseStream = null;
         String response = null;
         try {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
+        } catch (IOException e) {
+            // HTTP error codes (4xx, 5xx) throw IOException when calling getInputStream()
+            // Read the error stream for diagnostic details
+            if (httpConn != null) {
+                InputStream errorStream = httpConn.getErrorStream();
+                if (errorStream != null) {
+                    try {
+                        String errorResponse = slurp(errorStream);
+                        return new HttpStatusResponse(false, statusCode, errorResponse);
+                    } catch (IOException ignored) {
+                        // If we can't read error stream, continue with null response
+                    } finally {
+                        try {
+                            errorStream.close();
+                        } catch (IOException ignored) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+            return new HttpStatusResponse(false, statusCode, null);
         } finally {
             if (responseStream != null) {
                 try {
@@ -349,7 +456,8 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        return ((response != null) && response.equals("1"));
+        boolean accepted = ((response != null) && response.equals("1"));
+        return new HttpStatusResponse(accepted, statusCode, response);
     }
 
     private void sendMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
@@ -360,18 +468,67 @@ public class MixpanelAPI implements AutoCloseable {
 
             if (batch.size() > 0) {
                 String messagesString = dataString(batch);
-                boolean accepted = sendData(messagesString, endpointUrl);
+                HttpStatusResponse response = sendData(messagesString, endpointUrl);
 
-                if (! accepted) {
-                    throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
+                if (!response.success) {
+                    // Check if we got a 413 Payload Too Large error
+                    if (response.statusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE) {
+                        // Retry with chunked payloads (only once)
+                        sendMessagesChunked(batch, endpointUrl);
+                    } else {
+                        String respBody = response.responseBody != null ? response.responseBody : "no response body";
+                        throw new MixpanelServerException("Server refused to accept messages, they may be malformed. HTTP " + response.statusCode + " Response: " + respBody, batch, response.statusCode, response.responseBody);
+                    }
                 }
             }
         }
     }
 
+    /**
+     * Sends messages by chunking the payload to handle 413 Payload Too Large errors.
+     * This is a retry mechanism that only happens once when the initial send returns 413.
+     * 
+     * The messages are split into smaller chunks using PayloadChunker, with each chunk
+     * sized to be under the track endpoint's limit (1 MB). Each chunk is sent independently,
+     * and we do NOT retry chunked sends that fail - only the initial payload gets one retry.
+     * 
+     * @param batch the batch of messages to send in chunks
+     * @param endpointUrl the endpoint URL
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if any chunk is rejected by the server
+     */
+    private void sendMessagesChunked(List<JSONObject> batch, String endpointUrl) throws IOException {
+        String originalPayload = dataString(batch);
+        
+        try {
+            // Split the payload into chunks under the track endpoint's 1MB limit
+            // Size limits are based on uncompressed data (server limits apply to uncompressed payloads)
+            List<String> chunks = PayloadChunker.chunkJsonArray(originalPayload, Config.TRACK_MAX_PAYLOAD_BYTES);
+            
+            for (String chunk : chunks) {
+                HttpStatusResponse response = sendData(chunk, endpointUrl);
+                
+                if (!response.success) {
+                    // Parse the chunk back into messages for the error response
+                    JSONArray chunkArray = new JSONArray(chunk);
+                    List<JSONObject> chunkMessages = new ArrayList<>();
+                    for (int i = 0; i < chunkArray.length(); i++) {
+                        chunkMessages.add(chunkArray.getJSONObject(i));
+                    }
+                    String respBody = response.responseBody != null ? response.responseBody : "no response body";
+                    throw new MixpanelServerException("Server refused to accept chunked messages, they may be malformed. HTTP " + response.statusCode + " Response: " + respBody, chunkMessages, response.statusCode, response.responseBody);
+                }
+            }
+        } catch (JSONException e) {
+            throw new MixpanelServerException("Failed to chunk messages due to JSON error", batch);
+        } catch (UnsupportedEncodingException e) {
+            throw new MixpanelServerException("Failed to chunk messages due to encoding error", batch);
+        }
+    }
+
     private void sendImportMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
         // Extract token from first message for authentication
-        // If token is missing, we'll still attempt to send and let the server reject it
+        // Token is required for /import endpoint Basic Auth
         String token = "";
         if (messages.size() > 0) {
             try {
@@ -386,11 +543,16 @@ public class MixpanelAPI implements AutoCloseable {
                 // Malformed message - continue with empty token and let server reject it
             }
         }
+        
+        // Validate that we have a non-empty token for /import endpoint
+        if (token == null || token.trim().isEmpty()) {
+            throw new MixpanelServerException("Import endpoint requires a valid token in message properties", messages);
+        }
 
-        // Send messages in batches (max 2000 per batch for /import)
-        // If token is empty, the server will reject with 401 Unauthorized
-        for (int i = 0; i < messages.size(); i += Config.IMPORT_MAX_MESSAGE_SIZE) {
-            int endIndex = i + Config.IMPORT_MAX_MESSAGE_SIZE;
+        // Send messages in batches (configurable batch size for /import, default max 2000 per batch)
+        // Token has been validated and is guaranteed to be non-empty
+        for (int i = 0; i < messages.size(); i += mImportMaxMessageSize) {
+            int endIndex = i + mImportMaxMessageSize;
             endIndex = Math.min(endIndex, messages.size());
             List<JSONObject> batch = messages.subList(i, endIndex);
 
@@ -399,10 +561,66 @@ public class MixpanelAPI implements AutoCloseable {
                 String messagesString = dataString(batch);
                 boolean accepted = sendImportData(messagesString, endpointUrl, token);
 
-                if (! accepted) {
-                    throw new MixpanelServerException("Server refused to accept import messages, they may be malformed.", batch);
+                if (!accepted) {
+                    boolean is413 = mLastStatusCode == Config.HTTP_413_PAYLOAD_TOO_LARGE;
+                    boolean is400WithPayloadTooLarge = mLastStatusCode == Config.HTTP_400_BAD_REQUEST 
+                        && mLastResponseBody != null 
+                        && mLastResponseBody.contains("request body too large");
+                    
+                    if (is413 || is400WithPayloadTooLarge) {
+                        // Retry with chunked payloads (only once) for 413 or 400 with "request body too large"
+                        sendImportMessagesChunked(batch, endpointUrl, token);
+                    } else {
+                        String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
+                        int status = mLastStatusCode;
+                        throw new MixpanelServerException("Server refused to accept import messages, they may be malformed. HTTP " + status + " Response: " + respBody, batch, status, mLastResponseBody);
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Sends import messages by chunking the payload to handle 413 Payload Too Large errors.
+     * This is a retry mechanism that only happens once when the initial send returns 413.
+     * 
+     * The messages are split into smaller chunks using PayloadChunker, with each chunk
+     * sized to be under the import endpoint's limit (10 MB). Each chunk is sent independently,
+     * and we do NOT retry chunked sends that fail - only the initial payload gets one retry.
+     * 
+     * @param batch the batch of messages to send in chunks
+     * @param endpointUrl the endpoint URL
+     * @param token the authentication token
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if any chunk is rejected by the server
+     */
+    private void sendImportMessagesChunked(List<JSONObject> batch, String endpointUrl, String token) throws IOException {
+        String originalPayload = dataString(batch);
+        
+        try {
+            // Split the payload into chunks under the import endpoint's 10MB limit
+            // Size limits are based on uncompressed data (server limits apply to uncompressed payloads)
+            List<String> chunks = PayloadChunker.chunkJsonArray(originalPayload, Config.IMPORT_MAX_PAYLOAD_BYTES);
+            
+            for (String chunk : chunks) {
+                boolean accepted = sendImportData(chunk, endpointUrl, token);
+                
+                if (!accepted) {
+                    // Parse the chunk back into messages for the error response
+                    JSONArray chunkArray = new JSONArray(chunk);
+                    List<JSONObject> chunkMessages = new ArrayList<>();
+                    for (int i = 0; i < chunkArray.length(); i++) {
+                        chunkMessages.add(chunkArray.getJSONObject(i));
+                    }
+                    String respBody = mLastResponseBody != null ? mLastResponseBody : "no response body";
+                    int status = mLastStatusCode;
+                    throw new MixpanelServerException("Server refused to accept chunked import messages, they may be malformed. HTTP " + status + " Response: " + respBody, chunkMessages, status, mLastResponseBody);
+                }
+            }
+        } catch (JSONException e) {
+            throw new MixpanelServerException("Failed to chunk import messages due to JSON error", batch);
+        } catch (UnsupportedEncodingException e) {
+            throw new MixpanelServerException("Failed to chunk import messages due to encoding error", batch);
         }
     }
 
@@ -426,19 +644,34 @@ public class MixpanelAPI implements AutoCloseable {
      * The /import endpoint requires:
      * - JSON content type (not URL-encoded like /track)
      * - Basic authentication with token as username and empty password
-     * - strict=1 parameter for validation
+     * - strict parameter (1 or 0) for validation behavior
+     * 
+     * Response format depends on strict mode:
+     * - strict=1 (default): Returns JSON with code, status, and num_records_imported.
+     *   Example: {"code":200,"status":"OK","num_records_imported":100}
+     *   If there are validation errors, returns HTTP 400 with details, but correctly formed 
+     *   events are still ingested.
+     * 
+     * - strict=0: Returns plain text "1" if events are imported, "0" if they are not.
+     *   The reason for failure is unknown with strict=0 (no error details provided).
+     *   Use strict=1 for better error information.
+     * 
+     * When a 413 Payload Too Large error is received, the caller should split the payload
+     * into smaller chunks using PayloadChunker and retry each chunk individually.
+     * Similarly, a 400 error with "request body too large" in the response will also trigger chunking.
+     * This method will store the 413/400 status code in mLastStatusCode for the caller to detect.
      *
      * @param dataString JSON array of events to import
-     * @param endpointUrl The import endpoint URL
+     * @param endpointUrl The import endpoint URL (should include strict parameter)
      * @param token The project token for Basic Auth
-     * @return true if the server accepted the data
+     * @return true if the server accepted the data (plain text "1" or JSON with code 200)
      * @throws IOException if there's a network error
      */
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
         URL endpoint = new URL(endpointUrl);
         HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeoutMillis);
+        conn.setConnectTimeout(mConnectTimeoutMillis);
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
@@ -500,14 +733,17 @@ public class MixpanelAPI implements AutoCloseable {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
         } catch (IOException e) {
-            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // HTTP error codes (401, 400, 413, etc.) throw IOException when calling getInputStream()
             // Check if it's an HTTP error and read the error stream for details
+            int statusCode = conn.getResponseCode();
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
                 try {
-                    slurp(errorStream);
+                    String errorResponse = slurp(errorStream);
+                    mLastResponseBody = errorResponse;
+                    mLastStatusCode = statusCode;
                     errorStream.close();
-                    // Return false to indicate rejection, which will throw MixpanelServerException
+                    // Return false to indicate rejection, which will allow caller to check status code
                     return false;
                 } catch (IOException ignored) {
                     // If we can't read the error stream, just let the original exception propagate
@@ -525,12 +761,30 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // Import endpoint returns different formats depending on strict mode:
+        // - strict=1: JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // - strict=0: Plain text "0" (not imported) or "1" (imported)
         if (response == null) {
+            mLastResponseBody = null;
+            mLastStatusCode = 0;
             return false;
         }
 
-        // Parse JSON response
+        // First, try to handle strict=0 response format (plain text "0" or "1")
+        String trimmedResponse = response.trim();
+        if ("1".equals(trimmedResponse)) {
+            // strict=0 with successful import
+            mLastResponseBody = response;
+            mLastStatusCode = 200;
+            return true;
+        } else if ("0".equals(trimmedResponse)) {
+            // strict=0 with failed import (events not imported, reason unknown)
+            mLastResponseBody = response;
+            mLastStatusCode = 200; // HTTP 200 but import failed silently
+            return false;
+        }
+
+        // Try to parse as JSON response (strict=1 format)
         try {
             JSONObject jsonResponse = new JSONObject(response);
 
@@ -538,9 +792,19 @@ public class MixpanelAPI implements AutoCloseable {
             boolean statusOk = jsonResponse.has("status") && "OK".equals(jsonResponse.getString("status"));
             boolean codeOk = jsonResponse.has("code") && jsonResponse.getInt("code") == 200;
 
-            return statusOk && codeOk;
+            if (statusOk && codeOk) {
+                mLastResponseBody = response;
+                mLastStatusCode = 200;
+                return true;
+            } else {
+                mLastResponseBody = response;
+                mLastStatusCode = jsonResponse.has("code") ? jsonResponse.getInt("code") : 0;
+                return false;
+            }
         } catch (JSONException e) {
             // Not valid JSON or missing expected fields
+            mLastResponseBody = response;
+            mLastStatusCode = 0;
             return false;
         }
     }
@@ -594,6 +858,90 @@ public class MixpanelAPI implements AutoCloseable {
                 // Silently fail - exposure tracking should not break flag evaluation
             }
         };
+    }
+
+    /**
+     * Sets the connection timeout for HTTP requests.
+     * 
+     * Default is 2000 milliseconds (2 seconds). You may need to increase this for high-latency regions.
+     * 
+     * This method is thread-safe and can be called at any time, even while other threads are executing
+     * deliver() or sendMessage(). Each HTTP request will use the current timeout value at the moment
+     * it establishes a connection.
+     * 
+     * Best practice: Set all timeout values during initialization before starting worker threads,
+     * though concurrent calls are safe.
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
+     *     api.setReadTimeout(15000);
+     *     // Now safe to use from multiple threads
+     *     executorService.submit({@code () -> api.deliver(delivery)});
+     *
+     * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
+     * @throws IllegalArgumentException if timeoutMillis &lt;= 0
+     */
+    public void setConnectTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("Connect timeout must be > 0");
+        }
+        this.mConnectTimeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Sets the read timeout for HTTP requests.
+     * 
+     * Default is 10000 milliseconds (10 seconds). You may need to increase this for high-latency regions
+     * or when processing large batches of events.
+     * 
+     * This method is thread-safe and can be called at any time, even while other threads are executing
+     * deliver() or sendMessage(). Each HTTP request will use the current timeout value at the moment
+     * the response is being read.
+     * 
+     * Best practice: Set all timeout values during initialization before starting worker threads,
+     * though concurrent calls are safe.
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.setConnectTimeout(5000);  // 5 seconds for slow regions
+     *     api.setReadTimeout(15000);    // 15 seconds for slow reads
+     *     // Now safe to use from multiple threads
+     *     executorService.submit({@code () -> api.deliver(delivery)});
+     *
+     * @param timeoutMillis timeout in milliseconds (must be &gt; 0)
+     * @throws IllegalArgumentException if timeoutMillis &lt;= 0
+     */
+    public void setReadTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("Read timeout must be > 0");
+        }
+        this.mReadTimeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Disables strict validation for import operations.
+     * 
+     * By default, the /import endpoint uses strict=1 which validates each event and returns
+     * a 400 error if any event has issues. Correctly formed events are still ingested, and
+     * problematic events are returned in the response with error messages.
+     * 
+     * Calling this method sets strict=0, which bypasses validation and imports all events
+     * regardless of their validity. This can be useful for importing data with known issues
+     * or when validation errors are not a concern.
+     * 
+     * This should be called before calling any deliver() or sendMessage() methods.
+     * 
+     * Example:
+     *     MixpanelAPI api = new MixpanelAPI();
+     *     api.disableStrictImport();  // Skip validation on import
+     *     api.deliver(delivery);
+     *
+     * For more details on import validation, see:
+     *     https://developer.mixpanel.com/reference/import-events
+     */
+    public void disableStrictImport() {
+        this.mStrictImportMode = false;
     }
 
     /**

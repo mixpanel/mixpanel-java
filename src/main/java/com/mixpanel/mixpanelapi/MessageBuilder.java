@@ -1,12 +1,8 @@
 package com.mixpanel.mixpanelapi;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.Collection;
-import java.util.Date;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.UUID;
 
 import org.json.JSONArray;
@@ -22,12 +18,28 @@ import org.json.JSONObject;
  */
 public class MessageBuilder {
 
-    private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
-
     private final String mToken;
 
+    /**
+     * Constructs a MessageBuilder with a Mixpanel project token.
+     * 
+     * @param token the Mixpanel project token (cannot be null or empty)
+     * @throws IllegalArgumentException if token is null or empty
+     */
     public MessageBuilder(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Token cannot be null or empty");
+        }
         mToken = token;
+    }
+
+    /**
+     * Returns the token associated with this MessageBuilder.
+     * 
+     * @return the project token
+     */
+    public String getToken() {
+        return mToken;
     }
 
     /***
@@ -298,13 +310,16 @@ public class MessageBuilder {
     /**
      * For each key and value in the properties argument, adds that amount
      * to the associated property in the profile with the given distinct id.
+     * Supports both integer (Long, Integer) and decimal (Double, Float) increments.
+     * 
      * So, to maintain a login count for user 12345, one might run the following code
      * at every login:
      * <pre>
      * {@code
-     *    Map<String, Long> updates = new HashMap<String, Long>();
-     *    updates.put('Logins', 1);
-     *    JSONObject message = messageBuilder.set("12345", updates);
+     *    Map<String, Number> updates = new HashMap<String, Number>();
+     *    updates.put("Logins", 1L);
+     *    updates.put("Rating", 4.5);  // decimal value
+     *    JSONObject message = messageBuilder.increment("12345", updates);
      *    mixpanelApi.sendMessage(message);
      * }
      * </pre>
@@ -312,37 +327,29 @@ public class MessageBuilder {
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
-     *           each associated with a numeric value.
+     *           each associated with a numeric value (Long, Integer, Double, Float, etc.)
      * @return user profile increment message for consumption by MixpanelAPI
      */
-    public JSONObject increment(String distinctId, Map<String, Long> properties) {
+    public JSONObject increment(String distinctId, Map<String, Number> properties) {
         return increment(distinctId, properties, null);
     }
 
     /**
      * For each key and value in the properties argument, adds that amount
      * to the associated property in the profile with the given distinct id.
-     * So, to maintain a login count for user 12345, one might run the following code
-     * at every login:
-     * <pre>
-     * {@code
-     *    Map<String, Long> updates = new HashMap<String, Long>();
-     *    updates.put('Logins', 1);
-     *    JSONObject message = messageBuilder.set("12345", updates);
-     *    mixpanelApi.sendMessage(message);
-     * }
-     * </pre>
+     * Supports both integer (Long, Integer) and decimal (Double, Float) increments.
+     *
      * @param distinctId a string uniquely identifying the profile to change,
      *           for example, a user id of an app, or the hostname of a server. If no profile
      *           exists for the given id, a new one will be created.
      * @param properties a collection of properties to change on the associated profile,
-     *           each associated with a numeric value.
+     *           each associated with a numeric value (Long, Integer, Double, Float, etc.)
      * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
      *            this can be null- if non-null, the keys and values in the modifiers
      *            object will be associated directly with the update.
      * @return user profile increment message for consumption by MixpanelAPI
      */
-    public JSONObject increment(String distinctId, Map<String, Long> properties, JSONObject modifiers) {
+    public JSONObject increment(String distinctId, Map<String, Number> properties, JSONObject modifiers) {
         JSONObject jsonProperties = new JSONObject(properties);
         return peopleMessage(distinctId, "$add", jsonProperties, modifiers);
     }
@@ -463,55 +470,6 @@ public class MessageBuilder {
     public JSONObject unset(String distinctId, Collection<String> propertyNames, JSONObject modifiers) {
         JSONArray propNamesArray = new JSONArray(propertyNames);
         return peopleMessage(distinctId, "$unset", propNamesArray, modifiers);
-    }
-
-    /**
-     * Tracks revenue associated with the given distinctId.
-     *
-     * @param distinctId an identifier associated with a profile
-     * @param amount a double revenue amount. Positive amounts represent income for your business.
-     * @param properties can be null. If provided, a set of properties to associate with
-     *           the individual transaction.
-     * @return user profile trackCharge message for consumption by MixpanelAPI
-     */
-    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties) {
-        return trackCharge(distinctId, amount, properties, null);
-    }
-
-    /**
-     * Tracks revenue associated with the given distinctId.
-     *
-     * @param distinctId an identifier associated with a profile
-     * @param amount a double revenue amount. Positive amounts represent income for your business.
-     * @param properties can be null. If provided, a set of properties to associate with
-     *           the individual transaction.
-     * @param modifiers can be null. If provided, the keys and values in the object will
-     *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
-     * @return user profile trackCharge message for consumption by MixpanelAPI
-     */
-    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties, JSONObject modifiers) {
-        JSONObject transactionValue = new JSONObject();
-        JSONObject appendProperties = new JSONObject();
-        try {
-            transactionValue.put("$amount", amount);
-            DateFormat dateFormat = new SimpleDateFormat(ENGAGE_DATE_FORMAT);
-            dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-            transactionValue.put("$time", dateFormat.format(new Date()));
-
-            if (null != properties) {
-                for (Iterator<?> iter = properties.keys(); iter.hasNext();) {
-                    String key = (String) iter.next();
-                    transactionValue.put(key, properties.get(key));
-                }
-            }
-
-            appendProperties.put("$transactions", transactionValue);
-
-            return this.append(distinctId, appendProperties, modifiers);
-        } catch (JSONException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Cannot create trackCharge message", e);
-        }
     }
 
     /**
@@ -858,6 +816,47 @@ public class MessageBuilder {
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
         }
+    }
+
+    /**
+     * @deprecated The trackCharge() method is deprecated. The old version of Mixpanel's Revenue analysis UI 
+     * has been replaced by a newer suite of analysis tools which don't depend on profile properties.
+     * See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.
+     * 
+     * This method now only logs an error and returns null. It no longer sets a profile property or produces any other change.
+     * 
+     * @param distinctId an identifier associated with a profile
+     * @param amount a double revenue amount (deprecated - no longer used)
+     * @param properties properties associated with the transaction (deprecated - no longer used)
+     * @return null
+     */
+    @Deprecated
+    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties) {
+        System.err.println("ERROR: The trackCharge() method is deprecated and no longer functional. " +
+            "The old version of Mixpanel's Revenue analysis UI has been replaced by a newer suite of analysis tools. " +
+            "See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.");
+        return null;
+    }
+
+    /**
+     * @deprecated The trackCharge() method is deprecated. The old version of Mixpanel's Revenue analysis UI 
+     * has been replaced by a newer suite of analysis tools which don't depend on profile properties.
+     * See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.
+     * 
+     * This method now only logs an error and returns null. It no longer sets a profile property or produces any other change.
+     * 
+     * @param distinctId an identifier associated with a profile
+     * @param amount a double revenue amount (deprecated - no longer used)
+     * @param properties properties associated with the transaction (deprecated - no longer used)
+     * @param modifiers modifiers for the message (deprecated - no longer used)
+     * @return null
+     */
+    @Deprecated
+    public JSONObject trackCharge(String distinctId, double amount, JSONObject properties, JSONObject modifiers) {
+        System.err.println("ERROR: The trackCharge() method is deprecated and no longer functional. " +
+            "The old version of Mixpanel's Revenue analysis UI has been replaced by a newer suite of analysis tools. " +
+            "See https://docs.mixpanel.com/docs/features/revenue_analytics for more information.");
+        return null;
     }
 
 }

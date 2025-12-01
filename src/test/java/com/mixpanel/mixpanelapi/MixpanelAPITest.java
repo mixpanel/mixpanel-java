@@ -52,6 +52,17 @@ public class MixpanelAPITest extends TestCase
         return new TestSuite( MixpanelAPITest.class );
     }
 
+    /**
+     * Helper method to repeat a string (Java 8 compatibility - String.repeat not available)
+     */
+    private String repeat(String str, int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append(str);
+        }
+        return sb.toString();
+    }
+
     @Override
     public void setUp() {
         mTimeZero = System.currentTimeMillis() / 1000;
@@ -73,9 +84,9 @@ public class MixpanelAPITest extends TestCase
 
         MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
                 sawData.put(endpointUrl, dataString);
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
 
@@ -87,7 +98,7 @@ public class MixpanelAPITest extends TestCase
         JSONObject set = mBuilder.set("a distinct id", mSampleProps);
         c.addMessage(set);
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         c.addMessage(increment);
@@ -148,7 +159,7 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("k1", 10L);
             increments.put("k2", 1L);
             JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
@@ -159,7 +170,7 @@ public class MixpanelAPITest extends TestCase
         }
 
         {
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("k1", 10L);
             increments.put("k2", 1L);
             JSONObject increment = mBuilder.increment("a distinct id", increments);
@@ -405,20 +416,21 @@ public class MixpanelAPITest extends TestCase
         JSONObject set = mBuilder.set("a distinct id", mSampleProps);
         assertTrue(c.isValidMessage(set));
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments);
         assertTrue(c.isValidMessage(increment));
 
+        // Test deprecated trackCharge method - should return null
         JSONObject charge = mBuilder.trackCharge("a distinct id", 100.00, mSampleProps);
-        assertTrue(c.isValidMessage(charge));
+        assertNull("trackCharge should return null (deprecated)", charge);
     }
 
     public void testModifiers() {
         JSONObject set = mBuilder.set("a distinct id", mSampleProps, mSampleModifiers);
         checkModifiers(set);
 
-        Map<String, Long> increments = new HashMap<String, Long>();
+        Map<String, Number> increments = new HashMap<String, Number>();
         increments.put("a key", 24L);
         JSONObject increment = mBuilder.increment("a distinct id", increments, mSampleModifiers);
         checkModifiers(increment);
@@ -426,8 +438,37 @@ public class MixpanelAPITest extends TestCase
         JSONObject append = mBuilder.append("a distinct id", mSampleProps, mSampleModifiers);
         checkModifiers(append);
 
+        // Test deprecated trackCharge method - should return null
         JSONObject trackCharge = mBuilder.trackCharge("a distinct id", 2.2, null, mSampleModifiers);
-        checkModifiers(trackCharge);
+        assertNull("trackCharge should return null (deprecated)", trackCharge);
+    }
+
+    public void testIncrementWithDecimals() {
+        // Test that increment() supports decimal values (not just integers)
+        ClientDelivery c = new ClientDelivery();
+        
+        // Test with Double values
+        Map<String, Number> decimals = new HashMap<String, Number>();
+        decimals.put("rating", 4.5);
+        decimals.put("score", 2.7);
+        decimals.put("cost", 10.50);
+        JSONObject incrementDecimals = mBuilder.increment("a distinct id", decimals);
+        assertTrue("increment with decimals should be valid", c.isValidMessage(incrementDecimals));
+        
+        // Test with mixed numeric types (Double, Integer, Long)
+        Map<String, Number> mixed = new HashMap<String, Number>();
+        mixed.put("double_value", 3.14);
+        mixed.put("int_value", 5);
+        mixed.put("long_value", 100L);
+        JSONObject incrementMixed = mBuilder.increment("a distinct id", mixed);
+        assertTrue("increment with mixed numeric types should be valid", c.isValidMessage(incrementMixed));
+        
+        // Test with modifiers
+        Map<String, Number> decimalsWithMods = new HashMap<String, Number>();
+        decimalsWithMods.put("rating", 1.5);
+        JSONObject incrementWithMods = mBuilder.increment("a distinct id", decimalsWithMods, mSampleModifiers);
+        assertTrue("increment with decimals and modifiers should be valid", c.isValidMessage(incrementWithMods));
+        checkModifiers(incrementWithMods);
     }
 
     public void testEmptyMessageFormat() {
@@ -471,7 +512,7 @@ public class MixpanelAPITest extends TestCase
             c.addMessage(groupSet);
 
 
-            Map<String, Long> increments = new HashMap<String, Long>();
+            Map<String, Number> increments = new HashMap<String, Number>();
             increments.put("a key", 24L);
             JSONObject increment = mBuilder.increment("a distinct id", increments);
             c.addMessage(increment);
@@ -585,9 +626,9 @@ public class MixpanelAPITest extends TestCase
     public void testEmptyDelivery() {
         MixpanelAPI api = new MixpanelAPI("events url", "people url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
                 fail("Data sent when no data should be sent");
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
 
@@ -604,9 +645,9 @@ public class MixpanelAPITest extends TestCase
 
         MixpanelAPI api = new MixpanelAPI("events url", "people url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
                 sends.add(dataString);
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
 
@@ -646,9 +687,9 @@ public class MixpanelAPITest extends TestCase
     public void testEncodeDataString(){
         MixpanelAPI api = new MixpanelAPI("events url", "people url") {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
                 fail("Data sent when no data should be sent");
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
 
@@ -949,10 +990,10 @@ public class MixpanelAPITest extends TestCase
         // Test that gzip compression is properly enabled and data is compressed
         MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url", true) {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) throws IOException {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) throws IOException {
                 // This method should be called with gzip compression enabled
                 fail("sendData should not be called directly when testing at this level");
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
         
@@ -979,7 +1020,7 @@ public class MixpanelAPITest extends TestCase
         
         MixpanelAPI apiWithGzip = new MixpanelAPI("events url", "people url", "groups url", "import url", true) {
             @Override
-            public boolean sendData(String dataString, String endpointUrl) throws IOException {
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) throws IOException {
                 capturedOriginalData.put(endpointUrl, dataString);
                 
                 // Simulate what the real sendData does with gzip
@@ -996,11 +1037,10 @@ public class MixpanelAPITest extends TestCase
                         
                         capturedCompressedData.put(endpointUrl, byteStream.toByteArray());
                     } catch (Exception e) {
-                        throw new IOException("Compression failed", e);
+                        fail("Error in gzip compression simulation: " + e.toString());
                     }
                 }
-                
-                return true;
+                return new HttpStatusResponse(true, 200);
             }
         };
         
@@ -1116,6 +1156,534 @@ public class MixpanelAPITest extends TestCase
             fail("IOException during gzip import test: " + e.toString());
         } catch (JSONException e) {
             fail("JSONException during gzip import test: " + e.toString());
+        }
+    }
+
+    public void testCustomImportBatchSizeConstructor() {
+        // Test constructor with int parameter only: new MixpanelAPI(500)
+        MixpanelAPI api = new MixpanelAPI(500);
+        assertEquals("Custom batch size should be 500", 500, api.mImportMaxMessageSize);
+    }
+
+    public void testCustomImportBatchSizeWithGzipConstructor() {
+        // Test constructor with both gzip and batch size: new MixpanelAPI(true, 500)
+        MixpanelAPI api = new MixpanelAPI(true, 500);
+        assertEquals("Custom batch size should be 500", 500, api.mImportMaxMessageSize);
+        assertTrue("Gzip compression should be enabled", api.mUseGzipCompression);
+    }
+
+    public void testImportBatchSizeClamping() {
+        // Test that batch size is clamped between 1 and 2000
+        MixpanelAPI apiTooSmall = new MixpanelAPI(0);
+        assertEquals("Batch size below 1 should be clamped to 1", 1, apiTooSmall.mImportMaxMessageSize);
+        
+        MixpanelAPI apiTooLarge = new MixpanelAPI(3000);
+        assertEquals("Batch size above 2000 should be clamped to 2000", 2000, apiTooLarge.mImportMaxMessageSize);
+        
+        MixpanelAPI apiValid = new MixpanelAPI(1000);
+        assertEquals("Batch size within range should not be clamped", 1000, apiValid.mImportMaxMessageSize);
+    }
+
+    public void testImportMessagesWithCustomBatchSize() {
+        // Test that import messages are sent in batches of the custom size
+        final List<Integer> batchSizes = new ArrayList<Integer>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url", false, 5, null, null) {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+                // Parse the JSON array to count messages in this batch
+                JSONArray array = new JSONArray(dataString);
+                batchSizes.add(array.length());
+                return true;
+            }
+        };
+
+        try {
+            ClientDelivery delivery = new ClientDelivery();
+            
+            // Create 13 import messages (should be sent as batches of 5, 5, 3)
+            MessageBuilder builder = new MessageBuilder("a token");
+            for (int i = 0; i < 13; i++) {
+                Map<String, Object> props = new HashMap<String, Object>();
+                props.put("time", System.currentTimeMillis());
+                props.put("$insert_id", "id-" + i);
+                props.put("index", i);
+                JSONObject importEvent = builder.importEvent("user-" + i, "test event", new JSONObject(props));
+                delivery.addMessage(importEvent);
+            }
+            
+            api.deliver(delivery);
+            
+            assertEquals("Should have 3 batches", 3, batchSizes.size());
+            assertEquals("First batch should have 5 messages", 5, batchSizes.get(0).intValue());
+            assertEquals("Second batch should have 5 messages", 5, batchSizes.get(1).intValue());
+            assertEquals("Third batch should have 3 messages", 3, batchSizes.get(2).intValue());
+            
+        } catch (IOException e) {
+            fail("IOException during custom batch size test: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSONException during custom batch size test: " + e.toString());
+        }
+    }
+
+    public void test413TrackEndpointChunking() {
+        // Test that 413 errors on track endpoint trigger payload chunking and retry
+        final List<String> sendAttempts = new ArrayList<String>();
+        final List<Integer> statusCodes = new ArrayList<Integer>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url") {
+            private int attemptCount = 0;
+            
+            @Override
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
+                sendAttempts.add(dataString);
+                attemptCount++;
+                
+                // First attempt returns 413 (payload too large)
+                // Subsequent attempts succeed
+                if (attemptCount == 1) {
+                    statusCodes.add(413);
+                    return new HttpStatusResponse(false, 413);
+                } else {
+                    statusCodes.add(200);
+                    return new HttpStatusResponse(true, 200);
+                }
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        
+        try {
+            // Create a large payload that would trigger 413
+            // Using many moderately-sized messages
+            for (int i = 0; i < 100; i++) {
+                JSONObject props = new JSONObject();
+                props.put("large_property_" + i, repeat("x", 1000)); // Large property to increase payload size
+                JSONObject event = mBuilder.event("user-" + i, "test event", props);
+                c.addMessage(event);
+            }
+            
+            api.deliver(c);
+            
+            // Should have at least 2 attempts: initial (fails with 413) + retry with chunks (succeeds)
+            assertTrue("Multiple send attempts made", sendAttempts.size() >= 2);
+            assertEquals("First attempt got 413", 413, statusCodes.get(0).intValue());
+            assertTrue("Retry attempts succeeded", statusCodes.size() > 1);
+            
+        } catch (IOException e) {
+            fail("IOException during 413 track test: " + e.toString());
+        }
+    }
+
+    public void test413ImportEndpointChunking() {
+        // Test that 413 errors on import endpoint trigger payload chunking and retry
+        final List<String> sendAttempts = new ArrayList<String>();
+        final List<Integer> statusCodes = new ArrayList<Integer>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            private int attemptCount = 0;
+            
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                sendAttempts.add(dataString);
+                attemptCount++;
+                
+                // First attempt returns 413 (payload too large)
+                // Subsequent attempts succeed
+                if (attemptCount == 1) {
+                    statusCodes.add(413);
+                    mLastStatusCode = 413;
+                    mLastResponseBody = "{\"code\": 413}";
+                    return false;
+                } else {
+                    statusCodes.add(200);
+                    mLastStatusCode = 200;
+                    mLastResponseBody = "{\"code\": 200, \"status\": \"OK\"}";
+                    return true;
+                }
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        
+        try {
+            // Create a large payload for import
+            long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+            
+            for (int i = 0; i < 50; i++) {
+                JSONObject props = new JSONObject();
+                props.put("time", historicalTime + i);
+                props.put("$insert_id", "insert-id-" + i);
+                props.put("large_property_" + i, repeat("x", 5000)); // Large property
+                JSONObject importEvent = mBuilder.importEvent("user-" + i, "test event", props);
+                c.addMessage(importEvent);
+            }
+            
+            api.deliver(c);
+            
+            // Should have at least 2 attempts: initial (fails with 413) + retry with chunks (succeeds)
+            assertTrue("Multiple send attempts made", sendAttempts.size() >= 2);
+            assertEquals("First attempt got 413", 413, statusCodes.get(0).intValue());
+            assertTrue("Retry attempts succeeded", statusCodes.size() > 1);
+            
+        } catch (IOException e) {
+            fail("IOException during 413 import test: " + e.toString());
+        }
+    }
+
+    public void testPayloadChunkerBasic() {
+        // Test basic chunking functionality
+        try {
+            JSONArray array = new JSONArray();
+            for (int i = 0; i < 10; i++) {
+                JSONObject obj = new JSONObject();
+                obj.put("id", i);
+                obj.put("data", "item " + i);
+                array.put(obj);
+            }
+            
+            String jsonString = array.toString();
+            List<String> chunks = PayloadChunker.chunkJsonArray(jsonString, 200);
+            
+            // Should be split into multiple chunks given the 200 byte limit
+            assertTrue("Payload chunked into multiple pieces", chunks.size() > 1);
+            
+            // Each chunk should be valid JSON
+            for (String chunk : chunks) {
+                JSONArray chunkArray = new JSONArray(chunk);
+                assertTrue("Chunk is valid JSONArray", chunkArray.length() > 0);
+            }
+            
+            // Total number of items should be preserved
+            int totalItems = 0;
+            for (String chunk : chunks) {
+                totalItems += new JSONArray(chunk).length();
+            }
+            assertEquals("All items preserved after chunking", 10, totalItems);
+            
+        } catch (Exception e) {
+            fail("Unexpected error in chunker test: " + e.toString());
+        }
+    }
+
+    public void testPayloadChunkerWithGzip() {
+        // Test that chunking is based on uncompressed size
+        // (gzip compression is applied later during transmission, but limits apply to uncompressed data)
+        try {
+            JSONArray array = new JSONArray();
+            for (int i = 0; i < 20; i++) {
+                JSONObject obj = new JSONObject();
+                obj.put("id", i);
+                obj.put("content", repeat("x", 100)); // Larger content
+                array.put(obj);
+            }
+            
+            String jsonString = array.toString();
+            
+            // All chunking is now based on uncompressed size
+            List<String> chunks = PayloadChunker.chunkJsonArray(jsonString, 500);
+            
+            // Each chunk should be valid
+            int totalItems = 0;
+            for (String chunk : chunks) {
+                JSONArray chunkArray = new JSONArray(chunk);
+                assertTrue("Chunk is valid JSONArray", chunkArray.length() > 0);
+                totalItems += chunkArray.length();
+            }
+            
+            assertEquals("All items preserved", 20, totalItems);
+            
+        } catch (Exception e) {
+            fail("Unexpected error in gzip chunker test: " + e.toString());
+        }
+    }
+
+    public void testPayloadChunkerEdgeCases() {
+        // Test edge cases: empty array, single item, very small limit
+        try {
+            // Empty array
+            List<String> emptyChunks = PayloadChunker.chunkJsonArray("[]", 100);
+            assertEquals("Empty array results in one chunk", 1, emptyChunks.size());
+            assertEquals("Empty chunk is valid", "[]", emptyChunks.get(0));
+            
+            // Single item that's larger than limit (can't be split further)
+            JSONArray singleArray = new JSONArray();
+            JSONObject large = new JSONObject();
+            large.put("data", repeat("x", 500));
+            singleArray.put(large);
+            
+            List<String> singleChunks = PayloadChunker.chunkJsonArray(singleArray.toString(), 100);
+            assertEquals("Single oversized item still returned", 1, singleChunks.size());
+            
+        } catch (Exception e) {
+            fail("Unexpected error in edge case test: " + e.toString());
+        }
+    }
+
+    public void testTrackEndpoint413WithoutChunking() {
+        // Test that non-413 errors are still thrown immediately without chunking
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url") {
+            @Override
+            public HttpStatusResponse sendData(String dataString, String endpointUrl) {
+                // Return 400 (bad request) instead of 413
+                return new HttpStatusResponse(false, 400);
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        
+        try {
+            JSONObject event = mBuilder.event("user-1", "test event", mSampleProps);
+            c.addMessage(event);
+            
+            api.deliver(c);
+            fail("Should have thrown MixpanelServerException for 400 error");
+            
+        } catch (MixpanelServerException e) {
+            // Expected behavior - non-413 errors should be thrown immediately
+            assertTrue("Error message indicates server rejection", 
+                      e.getMessage().contains("refused"));
+        } catch (IOException e) {
+            fail("Should have thrown MixpanelServerException, not IOException: " + e.toString());
+        }
+    }
+
+    public void testImportEndpoint413WithoutChunking() {
+        // Test that non-413 import errors are still thrown immediately without chunking
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                // Return 401 (unauthorized) instead of 413
+                mLastStatusCode = 401;
+                mLastResponseBody = "{\"code\": 401, \"status\": \"Unauthorized\"}";
+                return false;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            api.deliver(c);
+            fail("Should have thrown MixpanelServerException for 401 error");
+            
+        } catch (MixpanelServerException e) {
+            // Expected behavior - non-413 errors should be thrown immediately
+            assertTrue("Error message indicates server rejection", 
+                      e.getMessage().contains("refused") || e.getMessage().contains("401"));
+        } catch (IOException e) {
+            fail("Should have thrown MixpanelServerException, not IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("Unexpected JSONException: " + e.toString());
+        }
+    }
+
+    public void test400RequestBodyTooLargeImportEndpointChunking() {
+        // Test that 400 errors with "request body too large" on import endpoint trigger chunking and retry
+        final List<Integer> attemptCount = new ArrayList<>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                attemptCount.add(1);
+                
+                // First attempt returns 400 with "request body too large" message
+                if (attemptCount.size() == 1) {
+                    mLastStatusCode = 400;
+                    mLastResponseBody = "{\"error\":\"json decode error at element idx: 1784, byte_offset: 10481924: http: request body too large\",\"status\":0}";
+                    return false;
+                }
+                
+                // Retry with chunks succeeds
+                mLastStatusCode = 200;
+                mLastResponseBody = "{\"code\":200,\"status\":\"OK\",\"num_records_imported\":5}";
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            // Create a large payload that would trigger 400 with request body too large
+            for (int i = 0; i < 100; i++) {
+                JSONObject props = new JSONObject();
+                props.put("time", historicalTime);
+                props.put("$insert_id", "insert-id-" + i);
+                props.put("largeData", repeat("x", 5000)); // Add large data to each event
+                JSONObject importEvent = mBuilder.importEvent("user-" + i, "test event", props);
+                c.addMessage(importEvent);
+            }
+            
+            api.deliver(c);
+            
+            // Should have at least 2 attempts: initial (fails with 400) + retry with chunks (succeeds)
+            assertTrue("Should have tried sending at least twice", attemptCount.size() >= 2);
+            
+        } catch (IOException e) {
+            fail("IOException during 400 request body too large test: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSONException during 400 request body too large test: " + e.toString());
+        }
+    }
+
+    public void test400RequestBodyTooLargeWithoutChunking() {
+        // Test that 400 errors WITHOUT "request body too large" are still thrown immediately without chunking
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                // Return 400 (bad request) with a different error message (not "request body too large")
+                mLastStatusCode = 400;
+                mLastResponseBody = "{\"error\":\"invalid json format\",\"status\":0}";
+                return false;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            api.deliver(c);
+            fail("Should have thrown MixpanelServerException for 400 error without 'request body too large'");
+            
+        } catch (MixpanelServerException e) {
+            // Expected behavior - 400 errors without "request body too large" should be thrown immediately
+            assertTrue("Error message indicates server rejection", 
+                      e.getMessage().contains("refused") || e.getMessage().contains("400"));
+        } catch (IOException e) {
+            fail("Should have thrown MixpanelServerException, not IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("Unexpected JSONException: " + e.toString());
+        }
+    }
+
+    public void testDisableStrictImport() {
+        // Test that disableStrictImport() sets strict=0 in the URL
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        // By default, strict mode should be enabled (strict=1)
+        ClientDelivery c1 = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props1 = new JSONObject();
+            props1.put("time", historicalTime);
+            props1.put("$insert_id", "insert-id-1");
+            JSONObject importEvent1 = mBuilder.importEvent("user-1", "test event", props1);
+            c1.addMessage(importEvent1);
+            
+            api.deliver(c1);
+            
+            String url1 = capturedUrls.get("endpoint");
+            assertTrue("Default: strict=1 in URL", url1.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException during first delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        // Now disable strict mode and test again
+        capturedUrls.clear();
+        api.disableStrictImport();
+        
+        ClientDelivery c2 = new ClientDelivery();
+        
+        try {
+            JSONObject props2 = new JSONObject();
+            props2.put("time", historicalTime);
+            props2.put("$insert_id", "insert-id-2");
+            JSONObject importEvent2 = mBuilder.importEvent("user-2", "test event 2", props2);
+            c2.addMessage(importEvent2);
+            
+            api.deliver(c2);
+            
+            String url2 = capturedUrls.get("endpoint");
+            assertTrue("After disableStrictImport(): strict=0 in URL", url2.contains("strict=0"));
+            
+        } catch (IOException e) {
+            fail("IOException during second delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+    }
+
+    public void testMultipleInstancesHaveIndependentStrictMode() {
+        // Test that different MixpanelAPI instances have independent strict mode settings
+        final Map<String, String> api1Urls = new HashMap<String, String>();
+        final Map<String, String> api2Urls = new HashMap<String, String>();
+        
+        MixpanelAPI api1 = new MixpanelAPI("events url", "people url", "groups url", "import url1") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                api1Urls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        MixpanelAPI api2 = new MixpanelAPI("events url", "people url", "groups url", "import url2") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                api2Urls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            // Disable strict mode only on api1
+            api1.disableStrictImport();
+            
+            // Send import message with api1 (strict=0)
+            ClientDelivery c1 = new ClientDelivery();
+            JSONObject props1 = new JSONObject();
+            props1.put("time", historicalTime);
+            props1.put("$insert_id", "insert-id-1");
+            JSONObject importEvent1 = mBuilder.importEvent("user-1", "test event", props1);
+            c1.addMessage(importEvent1);
+            api1.deliver(c1);
+            
+            // Send import message with api2 (strict=1, not disabled)
+            ClientDelivery c2 = new ClientDelivery();
+            JSONObject props2 = new JSONObject();
+            props2.put("time", historicalTime);
+            props2.put("$insert_id", "insert-id-2");
+            JSONObject importEvent2 = mBuilder.importEvent("user-2", "test event", props2);
+            c2.addMessage(importEvent2);
+            api2.deliver(c2);
+            
+            // Verify api1 has strict=0 and api2 has strict=1
+            String url1 = api1Urls.get("endpoint");
+            String url2 = api2Urls.get("endpoint");
+            
+            assertTrue("API1: strict=0 after disableStrictImport()", url1.contains("strict=0"));
+            assertTrue("API2: strict=1 by default", url2.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
         }
     }
 

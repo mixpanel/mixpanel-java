@@ -32,6 +32,12 @@ public class MixpanelAPIDemo {
             mUseGzipCompression = useGzipCompression;
         }
 
+        public DeliveryThread(Queue<JSONObject> messages, int importBatchSize) {
+            mMixpanel = new MixpanelAPI(importBatchSize);
+            mMessageQueue = messages;
+            mUseGzipCompression = false;
+        }
+
         @Override
         public void run() {
             try {
@@ -88,10 +94,15 @@ public class MixpanelAPIDemo {
         throws IOException, InterruptedException {
         Queue<JSONObject> messages = new ConcurrentLinkedQueue<JSONObject>();
         Queue<JSONObject> messagesWithGzip = new ConcurrentLinkedQueue<JSONObject>();
+        Queue<JSONObject> messagesWithCustomBatch = new ConcurrentLinkedQueue<JSONObject>();
         
-        // Create two delivery threads - one without gzip and one with gzip compression
+        // Create three delivery threads:
+        // 1. Default batching (50 for events, 2000 for imports)
+        // 2. With gzip compression (50 for events, 2000 for imports)
+        // 3. With custom import batch size of 500
         DeliveryThread worker = new DeliveryThread(messages, false);
         DeliveryThread workerWithGzip = new DeliveryThread(messagesWithGzip, true);
+        DeliveryThread workerWithCustomBatch = new DeliveryThread(messagesWithCustomBatch, 500);
         
         MessageBuilder messageBuilder = new MessageBuilder(PROJECT_TOKEN);
 
@@ -102,6 +113,7 @@ public class MixpanelAPIDemo {
 
         worker.start();
         workerWithGzip.start();
+        workerWithCustomBatch.start();
         
         String distinctId = args[0];
         BufferedReader inputLines = new BufferedReader(new InputStreamReader(System.in));
@@ -114,9 +126,13 @@ public class MixpanelAPIDemo {
         JSONObject nameMessage = messageBuilder.set(distinctId, nameProps);
         messages.add(nameMessage);
 
-        // Charge the user $2.50 for using the program :)
+        // Demonstrate deprecated trackCharge method (now logs error instead of tracking revenue)
+        System.out.println("\n=== Demonstrating deprecated trackCharge method ===");
         JSONObject transactionMessage = messageBuilder.trackCharge(distinctId, 2.50, null);
-        messages.add(transactionMessage);
+        if (transactionMessage != null) {
+            messages.add(transactionMessage);
+        }
+        System.out.println("trackCharge() returns null and logs an error to stderr\n");
 
         // Import a historical event (30 days ago) with explicit time and $insert_id
         long thirtyDaysAgo = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L);
@@ -161,6 +177,21 @@ public class MixpanelAPIDemo {
         
         System.out.println("Added events to gzip compression queue\n");
 
+        // Demonstrate custom import batch size
+        System.out.println("\n=== Demonstrating custom import batch size (500) ===");
+        
+        // Send import events with custom batch size
+        long customBatchTime = System.currentTimeMillis() - (45L * 24L * 60L * 60L * 1000L);
+        Map<String, Object> customBatchProps = new HashMap<String, Object>();
+        customBatchProps.put("time", customBatchTime);
+        customBatchProps.put("$insert_id", "custom-batch-" + System.currentTimeMillis());
+        customBatchProps.put("Batch Size", 500);
+        customBatchProps.put("Event Type", "Custom Batch Size Import");
+        JSONObject customBatchEvent = messageBuilder.importEvent(distinctId, "Custom Batch Size Import", new JSONObject(customBatchProps));
+        messagesWithCustomBatch.add(customBatchEvent);
+        
+        System.out.println("Added import event to custom batch size queue (batch size: 500)\n");
+
         while((line != null) && (line.length() > 0)) {
             System.out.println("SENDING LINE: " + line);
             Map<String, String> propMap = new HashMap<String, String>();
@@ -177,11 +208,12 @@ public class MixpanelAPIDemo {
             line = inputLines.readLine();
         }
 
-        while(! messages.isEmpty() || ! messagesWithGzip.isEmpty()) {
+        while(! messages.isEmpty() || ! messagesWithGzip.isEmpty() || ! messagesWithCustomBatch.isEmpty()) {
             Thread.sleep(1000);
         }
 
         worker.interrupt();
         workerWithGzip.interrupt();
+        workerWithCustomBatch.interrupt();
     }
 }

@@ -43,6 +43,23 @@ Gzip compression can reduce bandwidth usage and improve performance, especially 
 
 The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
 
+### Custom Import Batch Size
+
+When importing large events through the `/import` endpoint, you may need to control the batch size to prevent exceeding the server's 10MB uncompressed JSON payload limit. The batch size can be configured between 1 and 2000 (default is 2000):
+
+    // Import with default batch size (2000)
+    MixpanelAPI mixpanel = new MixpanelAPI();
+    
+    // Import with custom batch size (500)
+    MixpanelAPI mixpanel = new MixpanelAPI(500);
+
+### Disabling Strict Import Validation
+
+By default, the `/import` endpoint enforces strict validation (strict=1). You can disable strict validation by calling `disableStrictImport()` before delivering import messages. See the [Mixpanel Import API documentation](https://developer.mixpanel.com/reference/import-events) for more details about strict.
+
+    MixpanelAPI mixpanel = new MixpanelAPI();
+    mixpanel.disableStrictImport();  // Set strict=0 to skip validation
+    mixpanel.deliver(delivery);
 ### High-Performance JSON Serialization (Optional)
 
 For applications that import large batches of events (e.g., using the `/import` endpoint), the library supports optional high-performance JSON serialization using Jackson. When Jackson is available on the classpath, the library automatically uses it for JSON serialization, providing **up to 5x performance improvement** for large batches.
@@ -70,6 +87,34 @@ The performance improvement is most noticeable when:
 - Processing high-volume event streams
 
 No code changes are required to benefit from this optimization - simply add the Jackson dependency to your project.
+
+### Error Handling
+
+When the Mixpanel server rejects messages, a `MixpanelServerException` is thrown. This exception provides detailed information about the error for debugging and logging:
+
+```java
+try {
+    mixpanel.deliver(delivery);
+} catch (MixpanelServerException e) {
+    // Get the HTTP status code (400, 401, 413, 500, etc.)
+    int statusCode = e.getHttpStatusCode();
+    
+    // Get the raw response body from the server
+    String responseBody = e.getResponseBody();
+    
+    // Get the list of messages that were rejected
+    List<JSONObject> failedMessages = e.getBadDeliveryContents();
+    
+    // The exception message includes status code and response body
+    System.err.println("Mixpanel error: " + e.getMessage());
+}
+```
+
+Common HTTP status codes:
+- **400**: Bad Request - malformed messages or validation errors (in strict mode)
+- **401**: Unauthorized - invalid project token
+- **413**: Payload Too Large - request exceeds size limit (automatically retried with chunking)
+- **500**: Internal Server Error
 
 ## Feature Flags
 
