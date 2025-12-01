@@ -2,8 +2,6 @@ package com.mixpanel.mixpanelapi.internal;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -15,7 +13,7 @@ import java.util.List;
 public class OrgJsonSerializer implements JsonSerializer {
 
     @Override
-    public String serializeArray(List<JSONObject> messages) throws IOException {
+    public String serializeArray(List<JSONObject> messages) {
         if (messages == null || messages.isEmpty()) {
             return "[]";
         }
@@ -25,10 +23,5 @@ public class OrgJsonSerializer implements JsonSerializer {
             array.put(message);
         }
         return array.toString();
-    }
-
-    @Override
-    public byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException {
-        return serializeArray(messages).getBytes(StandardCharsets.UTF_8);
     }
 }

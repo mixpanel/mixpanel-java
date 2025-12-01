@@ -5,10 +5,8 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
 
@@ -41,19 +39,6 @@ public class JacksonSerializer implements JsonSerializer {
             writeJsonArray(generator, messages);
         }
         return writer.toString();
-    }
-
-    @Override
-    public byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException {
-        if (messages == null || messages.isEmpty()) {
-            return "[]".getBytes(StandardCharsets.UTF_8);
-        }
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (JsonGenerator generator = jsonFactory.createGenerator(outputStream)) {
-            writeJsonArray(generator, messages);
-        }
-        return outputStream.toByteArray();
     }
 
     /**

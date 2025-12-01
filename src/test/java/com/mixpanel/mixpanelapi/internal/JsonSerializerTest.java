@@ -20,9 +20,6 @@ public class JsonSerializerTest extends TestCase {
 
         String result = serializer.serializeArray(messages);
         assertEquals("[]", result);
-
-        byte[] bytes = serializer.serializeArrayToBytes(messages);
-        assertEquals("[]", new String(bytes, "UTF-8"));
     }
 
     public void testOrgJsonSerializerSingleMessage() throws IOException {

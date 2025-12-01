@@ -14,7 +14,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -55,6 +54,7 @@ public class MixpanelAPI implements AutoCloseable {
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
     protected final JsonSerializer mJsonSerializer;
+    protected final OrgJsonSerializer mDefaultJsonSerializer;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -204,11 +204,12 @@ public class MixpanelAPI implements AutoCloseable {
         mGroupsEndpoint = groupsEndpoint != null ? groupsEndpoint : Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
+        mDefaultJsonSerializer = new OrgJsonSerializer();
         if (jsonSerializer != null) {
             logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
             mJsonSerializer = jsonSerializer;
         } else {
-            mJsonSerializer = new OrgJsonSerializer();
+            mJsonSerializer = mDefaultJsonSerializer;
         }
 
         if (localFlagsConfig != null) {
@@ -442,11 +443,7 @@ public class MixpanelAPI implements AutoCloseable {
         } catch (IOException e) {
             // Fallback to original implementation if serialization fails
             logger.log(Level.WARNING, "JSON serialization failed unexpectedly; falling back to org.json implementation", e);
-            JSONArray array = new JSONArray();
-            for (JSONObject message:messages) {
-                array.put(message);
-            }
-            return array.toString();
+            return mDefaultJsonSerializer.serializeArray(messages);
         }
     }
 

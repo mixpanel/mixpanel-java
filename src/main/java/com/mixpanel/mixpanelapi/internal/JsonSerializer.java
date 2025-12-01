@@ -22,15 +22,4 @@ public interface JsonSerializer {
      * @throws IOException if serialization fails
      */
     String serializeArray(List<JSONObject> messages) throws IOException;
-
-    /**
-     * Serializes a list of JSONObjects directly to UTF-8 encoded bytes.
-     * This method can be more efficient for large payloads as it avoids
-     * the intermediate String creation.
-     *
-     * @param messages The list of JSONObjects to serialize
-     * @return UTF-8 encoded bytes of the JSON array
-     * @throws IOException if serialization fails
-     */
-    byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException;
 }
