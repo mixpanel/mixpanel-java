@@ -282,7 +282,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 variantOverrideObj.put("key", r.getVariantOverride().getKey());
                 rolloutJson.put("variant_override", variantOverrideObj);
             }
-            if (r.hasRuntimeEvaluation()) {
+            if (r.hasLegacyRuntimeEvaluation()) {
                 JSONObject runtimeEval = new JSONObject(r.getLegacyRuntimeEvaluationDefinition());
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
             }
@@ -591,7 +591,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         );
 
     @Test
-    public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
         String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
@@ -600,7 +600,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
-    public void testReturnVariantWhenRuntimeEvaluationConditionsNotSatisfied() {
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsNotSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
         String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));

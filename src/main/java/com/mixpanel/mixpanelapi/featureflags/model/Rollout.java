@@ -101,8 +101,15 @@ public final class Rollout {
     /**
      * @return true if this rollout has runtime evaluation criteria
      */
-    public boolean hasRuntimeEvaluation() {
+    public boolean hasLegacyRuntimeEvaluation() {
         return legacyRuntimeEvaluationDefinition != null && !legacyRuntimeEvaluationDefinition.isEmpty();
+    }
+
+    /**
+     * @return true if this rollout has runtime evaluation criteria
+     */
+    public boolean hasRuntimeEvaluation() {
+        return runtimeEvaluationRule != null && !runtimeEvaluationRule.isEmpty();
     }
 
     /**

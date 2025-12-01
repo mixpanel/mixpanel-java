@@ -386,6 +386,12 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 }
 
                 // Check runtime evaluation, continue if this rollout has runtime conditions and it doesn't match
+                if (rollout.hasLegacyRuntimeEvaluation()) {
+                    if (!matchesLegacyRuntimeConditions(rollout, context)) {
+                        continue;
+                    }
+                }
+
                 if (rollout.hasRuntimeEvaluation()) {
                     if (!matchesRuntimeConditions(rollout, context)) {
                         continue;
@@ -433,12 +439,16 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
     }
 
+    private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
+        return false; // TODO Joshua
+    }
+
     /**
      * Evaluates runtime conditions for a rollout.
      * 
      * @return true if all runtime conditions match, false otherwise (or if custom_properties is missing)
      */
-    private boolean matchesRuntimeConditions(Rollout rollout, Map<String, Object> context) {
+    private boolean matchesLegacyRuntimeConditions(Rollout rollout, Map<String, Object> context) {
         Map<String, Object> customProperties = getCustomProperties(context);
         if (customProperties == null) {
             return false;
