@@ -12,6 +12,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.*;
 
+import static com.mixpanel.mixpanelapi.featureflags.provider.TestUtils.*;
 import static org.junit.Assert.*;
 
 /**
@@ -575,66 +576,66 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     String flagKey = "test-flag";
     String distinctIdContextKey = "distinct_id";
     String fallbackVariantValue = "fallback";
-    Map<String, Object> planEqualsPremium = Map.of(
+    Map<String, Object> planEqualsPremium = mapOf(
             "==", 
-            List.of(
-                Map.of("var", "plan"), // Key
+            listOf(
+                mapOf("var", "plan"), // Key
                 "premium"              // Value
             )
         );
-    Map<String, Object> planEqualsPremiumCaseInsensitive = Map.of(
+    Map<String, Object> planEqualsPremiumCaseInsensitive = mapOf(
             "==", 
-            List.of(
-                Map.of("var", "pLan"), // Key
+            listOf(
+                mapOf("var", "pLan"), // Key
                 "Premium"              // Value
             )
         );
-    Map<String, Object> emailContainsGmailCaseInsensitive = Map.of(
+    Map<String, Object> emailContainsGmailCaseInsensitive = mapOf(
             "in", 
-            List.of(
+            listOf(
                 "gmaIl",              // Value
-                Map.of("var", "emAil") // Key
+                mapOf("var", "emAil") // Key
             )
         );
-    Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = Map.of(
+    Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = mapOf(
             "and",
-            List.of(
+            listOf(
                 planEqualsPremiumCaseInsensitive,
                 emailContainsGmailCaseInsensitive
             )
         );
-    Map<String, Object> springfieldInUrl = Map.of(
+    Map<String, Object> springfieldInUrl = mapOf(
             "in",
-            List.of(
+            listOf(
                 "Springfield",
-                Map.of("var", "url")
+                mapOf("var", "url")
             )
         );
-    Map<String, Object> nameInArray = Map.of(
+    Map<String, Object> nameInArray = mapOf(
             "in",
-            List.of(
-                Map.of("var", "name"),
-                List.of("a", "b", "c", "all-from-the-ui")
+            listOf(
+                mapOf("var", "name"),
+                listOf("a", "b", "c", "all-from-the-ui")
             )
         );
-    Map<String, Object> nameAndCountry = Map.of(
+    Map<String, Object> nameAndCountry = mapOf(
             "and",
-            List.of(
-                Map.of("==", List.of(Map.of("var", "name"), "Johannes")),
-                Map.of("==", List.of(Map.of("var", "country"), "Deutschland"))
+            listOf(
+                mapOf("==", listOf(mapOf("var", "name"), "Johannes")),
+                mapOf("==", listOf(mapOf("var", "country"), "Deutschland"))
             )
         );
-    Map<String, Object> queriesGreaterThan25 = Map.of(
+    Map<String, Object> queriesGreaterThan25 = mapOf(
             ">",
-            List.of(
-                Map.of("var", "queries_ran"),
+            listOf(
+                mapOf("var", "queries_ran"),
                 25
             )
         );
-    Map<String, Object> invalidRuntimeRule = Map.of(
+    Map<String, Object> invalidRuntimeRule = mapOf(
             "=oops=",
-            List.of(
-                Map.of("var", "plan"),
+            listOf(
+                mapOf("var", "plan"),
                 "Premium"
             )
         );
@@ -643,7 +644,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
 
         assertEquals(variantValue, result);
     }
@@ -652,7 +653,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsNotSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free"));
 
         assertEquals(fallbackVariantValue, result);
     }
@@ -661,7 +662,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveParams() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("Plan", "prEmiUm"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("Plan", "prEmiUm"));
 
         assertEquals(variantValue, result);
     }
@@ -670,7 +671,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
         createFlag(toRuntimeRule(planEqualsPremiumCaseInsensitive));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
 
         assertEquals(variantValue, result);
     }
@@ -679,7 +680,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenComplexRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
         createFlag(toRuntimeRule(planEqualsPremiumAndEmailContainsGmailCaseInsensitive));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium", "email", "user@gmail.com"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium", "email", "user@gmail.com"));
 
         assertEquals(variantValue, result);
     }
@@ -699,10 +700,10 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
     @Test
     public void testReturnVariantWhenLegacyRuntimeEvaluationConditionsSatisfied() {
-        Map<String, Object> runtimeEval = Map.of("plan", "premium");
+        Map<String, Object> runtimeEval = mapOf("plan", "premium");
         createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
 
         assertEquals(variantValue, result);
         assertEquals(1, eventSender.getEvents().size());
@@ -720,11 +721,11 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
     @Test
     public void testReturnFallbackWhenLegacyRuntimeEvaluationConditionsNotSatisfied() {
-        Map<String, Object> runtimeEval = Map.of("plan", "premium");
+        Map<String, Object> runtimeEval = mapOf("plan", "premium");
 
         createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free"));
 
         assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
@@ -743,7 +744,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenRuntimeRuleIsInvalid() {
         createFlag(toRuntimeRule(invalidRuntimeRule));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "Premium"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "Premium"));
 
         assertEquals(fallbackVariantValue, result);
     }
@@ -752,7 +753,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenRuntimeEvaluationWithInOperatorSatisfied() {
         createFlag(toRuntimeRule(springfieldInUrl));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("url", "https://helloworld.com/Springfield/all-about-it"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("url", "https://helloworld.com/Springfield/all-about-it"));
 
         assertEquals(variantValue, result);
     }
@@ -761,7 +762,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorNotSatisfied() {
         createFlag(toRuntimeRule(springfieldInUrl));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("url", "https://helloworld.com/Boston/all-about-it"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("url", "https://helloworld.com/Boston/all-about-it"));
 
         assertEquals(fallbackVariantValue, result);
     }
@@ -770,7 +771,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenRuntimeEvaluationWithInOperatorForArraySatisfied() {
         createFlag(toRuntimeRule(nameInArray));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "b"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "b"));
 
         assertEquals(variantValue, result);
     }
@@ -779,7 +780,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorForArrayNotSatisfied() {
         createFlag(toRuntimeRule(nameInArray));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "d"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "d"));
 
         assertEquals(fallbackVariantValue, result);
     }
@@ -788,7 +789,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenRuntimeEvaluationWithAndOperatorSatisfied() {
         createFlag(toRuntimeRule(nameAndCountry));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "Johannes", "country", "Deutschland"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "Johannes", "country", "Deutschland"));
 
         assertEquals(variantValue, result);
     }
@@ -797,7 +798,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenRuntimeEvaluationWithAndOperatorNotSatisfied() {
         createFlag(toRuntimeRule(nameAndCountry));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "Johannes", "country", "USA"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "Johannes", "country", "USA"));
 
         assertEquals(fallbackVariantValue, result);
     }
@@ -806,7 +807,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnVariantWhenRuntimeEvaluationWithGreaterThanOperatorSatisfied() {
         createFlag(toRuntimeRule(queriesGreaterThan25));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("queries_ran", 27));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("queries_ran", 27));
 
         assertEquals(variantValue, result);
     }
@@ -815,18 +816,18 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenRuntimeEvaluationWithGreaterThanOperatorNotSatisfied() {
         createFlag(toRuntimeRule(queriesGreaterThan25));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("queries_ran", 20));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("queries_ran", 20));
 
         assertEquals(fallbackVariantValue, result);
     }
 
     @Test
     public void testReturnFallbackWhenLegacyRuntimeEvaluationMultipleConditionsNotSatisfied() {
-        Map<String, Object> runtimeEval = Map.of("plan", "premium", "region", "US");
+        Map<String, Object> runtimeEval = mapOf("plan", "premium", "region", "US");
 
         createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free", "region", "US"));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free", "region", "US"));
 
         assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
