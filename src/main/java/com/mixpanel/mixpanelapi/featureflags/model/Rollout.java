@@ -3,6 +3,8 @@ package com.mixpanel.mixpanelapi.featureflags.model;
 import java.util.Collections;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 /**
  * Represents a rollout rule within a feature flag experiment.
  * <p>
@@ -134,5 +136,16 @@ public final class Rollout {
                 ", variantOverride='" + variantOverride + '\'' +
                 ", variantSplits=" + variantSplits +
                 '}';
+    }
+
+    public String getRuntimeEvaluationRule() {
+        ObjectMapper mapper = new ObjectMapper();
+        String runtimeEvaluationRule;;
+        try {
+            runtimeEvaluationRule = mapper.writeValueAsString(this.runtimeEvaluationRule);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize runtime evaluation rule", e);
+        }
+        return runtimeEvaluationRule;
     }
 }

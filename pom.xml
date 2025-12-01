@@ -139,6 +139,12 @@
       <version>20231013</version>
     </dependency>
 
+    <dependency>
+      <groupId>io.github.jamsesso</groupId>
+      <artifactId>json-logic-java</artifactId>
+      <version>1.1.0</version>
+    </dependency>
+
     <!-- Jackson for high-performance JSON serialization (optional) -->
     <!-- Users can include this dependency for improved performance with large batches -->
     <dependency>

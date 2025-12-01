@@ -19,6 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import io.github.jamsesso.jsonlogic.JsonLogic;
+
 /**
  * Local feature flags evaluation provider.
  * <p>
@@ -440,7 +442,18 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     }
 
     private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
-        return false; // TODO Joshua
+        JsonLogic jsonLogic = new JsonLogic();
+        Map<String, Object> customProperties = getCustomProperties(context);
+        if (customProperties == null) {
+            return false;
+        }
+        try {
+            Object result = jsonLogic.apply(rollout.getRuntimeEvaluationRule(), customProperties);
+            return JsonLogic.truthy(result);
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Error evaluating runtime conditions", e);
+            return false;
+        }
     }
 
     /**
