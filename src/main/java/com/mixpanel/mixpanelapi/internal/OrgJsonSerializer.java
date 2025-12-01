@@ -8,7 +8,7 @@ import java.util.List;
  * JSON serialization implementation using org.json library.
  * This is the default implementation that maintains backward compatibility.
  *
- * @since 1.6.0
+ * @since 1.6.1
  */
 public class OrgJsonSerializer implements JsonSerializer {
 

@@ -639,7 +639,7 @@ public class MixpanelAPI implements AutoCloseable {
      * <p>The Builder pattern provides a flexible way to configure MixpanelAPI with various
      * options including custom endpoints, gzip compression, feature flags, and JSON serializers.</p>
      *
-     * @since 1.6.0
+     * @since 1.6.1
      */
     public static class Builder {
         private String eventsEndpoint;

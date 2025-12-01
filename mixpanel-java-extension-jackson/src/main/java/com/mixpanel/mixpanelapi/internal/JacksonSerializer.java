@@ -15,7 +15,7 @@ import java.util.List;
  * This implementation provides significant performance improvements for large batches
  * while maintaining compatibility with org.json JSONObjects.
  *
- * @since 1.6.0
+ * @since 1.6.1
  */
 public class JacksonSerializer implements JsonSerializer {
 

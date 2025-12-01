@@ -10,7 +10,7 @@ import java.util.List;
  * This allows for different implementations (org.json, Jackson) to be used
  * based on performance requirements and available dependencies.
  *
- * @since 1.6.0
+ * @since 1.6.1
  */
 public interface JsonSerializer {
 
