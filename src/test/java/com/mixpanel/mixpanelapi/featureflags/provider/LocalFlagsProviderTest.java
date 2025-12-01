@@ -581,23 +581,29 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     String variantValue = "gold";
     String flagKey = "test-flag";
     String distinctIdContextKey = "distinct_id";
-
-    public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
-
-        Map<String, Object> runtimeEval = Map.of(
+    String fallbackVariantValue = "fallback";
+    Map<String, Object> planEqualsPremium = Map.of(
             "==", 
             List.of(
                 Map.of("var", "plan"), // Key
                 "premium"              // Value
             )
         );
-        List<Rollout> rollouts = toRuntimeRule(runtimeEval);
-        createFlag(rollouts);
 
-        Map<String, Object> customProps = Map.of("plan", "premium");
-        String result = evaluateFlagsWithRuntimeParameters(customProps);
+    public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
 
         assertEquals(variantValue, result);
+    }
+
+    public void testReturnVariantWhenRuntimeEvaluationConditionsNotSatisfied() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));
+
+        assertEquals(fallbackVariantValue, result);
     }
 
     private void createFlag(List<Rollout> rollouts) {
@@ -609,7 +615,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     private String evaluateFlagsWithRuntimeParameters(Map<String, Object> customProps) {
         provider.startPollingForDefinitions();
         Map<String, Object> context = buildContextWithProperties("user-123", customProps);
-        String result = provider.getVariantValue(flagKey, "fallback", context);
+        String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
         return result;
     }
 
@@ -645,7 +651,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, Object> customProps = Map.of("plan", "free");
         String result = evaluateFlagsWithRuntimeParameters(customProps);
 
-        assertEquals("fallback", result);
+        assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
     }
 
@@ -662,7 +668,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         Map<String, Object> context = buildContext("user-123");
         provider.startPollingForDefinitions();
-        provider.getVariantValue(flagKey, "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         assertEquals(1, eventSender.getEvents().size());
         MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
@@ -682,7 +688,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         Map<String, Object> context = buildContext("user-123");
         provider.startPollingForDefinitions();
-        provider.getVariantValue(flagKey, "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         assertEquals(0, eventSender.getEvents().size());
     }
@@ -698,7 +704,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Context without distinct_id
         provider.startPollingForDefinitions();
         Map<String, Object> context = new HashMap<>();
-        provider.getVariantValue(flagKey, "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // No exposure should be tracked (and it returns fallback anyway)
         assertEquals(0, eventSender.getEvents().size());
@@ -795,7 +801,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, Object> context = buildContext("user-123");
 
         // First evaluation should return old value
-        String result1 = provider.getVariantValue(flagKey, "fallback", context);
+        String result1 = provider.getVariantValue(flagKey, fallbackVariantValue, context);
         assertEquals("old-value", result1);
 
         // Simulate a polling update by changing the mock response
@@ -808,7 +814,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Thread.sleep(1500);
 
         // Second evaluation should return new value after polling update
-        String result2 = provider.getVariantValue(flagKey, "fallback", context);
+        String result2 = provider.getVariantValue(flagKey, fallbackVariantValue, context);
         assertEquals("new-value", result2);
 
         provider.stopPollingForDefinitions();
@@ -1024,7 +1030,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         eventSender.reset();
         Map<String, Object> context = buildContext("test-user-123");
-        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>("fallback"), context, true);
+        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>(fallbackVariantValue), context, true);
 
         // Verify variant was selected
         assertTrue(result.isSuccess());
@@ -1058,7 +1064,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         eventSender.reset();
         Map<String, Object> context = buildContext("normal-user-456");
-        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>("fallback"), context, true);
+        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>(fallbackVariantValue), context, true);
 
         // Verify variant was selected via normal rollout
         assertTrue(result.isSuccess());
@@ -1102,7 +1108,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment-b due to 100% override
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue(flagKey, "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("All users should get treatment-b due to 100% variant split override",
                 "green", result);
         }
@@ -1133,7 +1139,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment due to variant_override
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue(flagKey, "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("variant_override should take precedence over variant_splits",
                 "red", result);
         }
@@ -1157,7 +1163,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment based on flag-level splits
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue(flagKey, "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("Should use flag-level splits when no variant_splits in rollout",
                 "red", result);
         }
@@ -1191,7 +1197,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-123");
-        hashingProvider.getVariantValue(flagKey, "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1239,7 +1245,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-456");
-        hashingProvider.getVariantValue(flagKey, "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1291,7 +1297,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-789");
-        hashingProvider.getVariantValue(flagKey, "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls - should have 2 rollout hash calls with indices 0 and 1
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1343,7 +1349,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-legacy");
-        hashingProvider.getVariantValue(flagKey, "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls use legacy "rollout" salt
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1386,7 +1392,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-legacy-variant");
-        hashingProvider.getVariantValue(flagKey, "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls use legacy "variant" salt
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
