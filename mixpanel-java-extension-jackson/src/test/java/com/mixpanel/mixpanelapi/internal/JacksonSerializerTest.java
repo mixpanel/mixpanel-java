@@ -6,8 +6,12 @@ import org.json.JSONObject;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.skyscreamer.jsonassert.JSONCompareMode;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 public class JacksonSerializerTest extends TestCase {
@@ -57,6 +61,14 @@ public class JacksonSerializerTest extends TestCase {
         message.put("double_value", 3.14159);
         message.put("float_value", 2.5f);
         message.put("string_value", "test with \"quotes\" and special chars: \n\t");
+
+        //This block is testing different serialized types to ensure it matches OrgJsonSerializer
+        message.put("big_decimal_value", new BigDecimal("1234567890.123456789"));
+        message.put("big_integer_value", new BigInteger("12345678901234567890"));
+        message.put("date", new Date(1704067200000L));
+        Calendar testCalendar = Calendar.getInstance();
+        testCalendar.setTimeInMillis(1704067200000L); // 2024-01-01 00:00:00 UTC
+        message.put("calendar", testCalendar);
 
         JSONObject nested = new JSONObject();
         nested.put("level2", new JSONObject().put("level3", "deep value"));
