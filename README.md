@@ -138,10 +138,6 @@ RemoteFlagsConfig config = RemoteFlagsConfig.builder()
     .projectToken("YOUR_PROJECT_TOKEN")
     .build();
 
-MixpanelAPI mixpanel = new MixpanelAPI.Builder()
-    .flagsConfig(config)
-    .build();
-
 try (MixpanelAPI mixpanel = new MixpanelAPI.Builder().flagsConfig(config).build()) {
     Map<String, Object> context = new HashMap<>();
     context.put("distinct_id", "user-456");
