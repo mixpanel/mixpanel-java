@@ -4,6 +4,7 @@ import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.*;
 import com.mixpanel.mixpanelapi.featureflags.util.HashUtils;
+import com.mixpanel.mixpanelapi.featureflags.util.JsonLogicEngine;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -132,6 +133,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             Map<String, ExperimentationFlag> newDefinitions = parseDefinitions(response);
             flagDefinitions.set(newDefinitions);
             ready.set(true);
+
             logger.log(Level.FINE, "Successfully fetched " + newDefinitions.size() + " flag definitions");
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to fetch flag definitions", e);
@@ -299,8 +301,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        // Parse new declarative runtime evaluation rule (jsonLogic format)
         JSONObject runtimeEvaluationRule = json.optJSONObject("runtime_evaluation_rule");
+        // TODO Joshua JSONObject runtimeEvaluationRule = JsonCaseDesensitizer.lowercaseAllNodes(json.optJSONObject("runtime_evaluation_rule"));
 
         Map<String, Float> variantSplits = null;
         JSONObject variantSplitsJson = json.optJSONObject("variant_splits");
@@ -445,19 +447,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     }
 
     private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
-        JsonLogic jsonLogic = new JsonLogic();
         Map<String, Object> customProperties = getCustomProperties(context);
-        if (customProperties == null) {
-            return false;
-        }
-        try {
-            String ruleJson = rollout.getRuntimeEvaluationRule().toString();
-            Object result = jsonLogic.apply(ruleJson, customProperties);
-            return JsonLogic.truthy(result);
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Error evaluating runtime conditions", e);
-            return false;
-        }
+        return JsonLogicEngine.evaluate(rollout.getRuntimeEvaluationRule(), customProperties);
     }
 
     /**
