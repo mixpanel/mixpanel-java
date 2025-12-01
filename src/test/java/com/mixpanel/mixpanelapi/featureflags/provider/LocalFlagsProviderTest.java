@@ -590,6 +590,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             )
         );
 
+    @Test
     public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
@@ -598,6 +599,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(variantValue, result);
     }
 
+    @Test
     public void testReturnVariantWhenRuntimeEvaluationConditionsNotSatisfied() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
