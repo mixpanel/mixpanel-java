@@ -302,7 +302,6 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
 
         JSONObject runtimeEvaluationRule = json.optJSONObject("runtime_evaluation_rule");
-        // TODO Joshua JSONObject runtimeEvaluationRule = JsonCaseDesensitizer.lowercaseAllNodes(json.optJSONObject("runtime_evaluation_rule"));
 
         Map<String, Float> variantSplits = null;
         JSONObject variantSplitsJson = json.optJSONObject("variant_splits");

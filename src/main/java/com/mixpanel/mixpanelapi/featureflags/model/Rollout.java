@@ -5,8 +5,6 @@ import java.util.Map;
 
 import org.json.JSONObject;
 
-import com.google.gson.JsonObject;
-
 /**
  * Represents a rollout rule within a feature flag experiment.
  * <p>
