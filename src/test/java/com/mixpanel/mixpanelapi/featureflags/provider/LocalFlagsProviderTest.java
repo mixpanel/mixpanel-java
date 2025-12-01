@@ -6,21 +6,11 @@ import com.mixpanel.mixpanelapi.featureflags.model.*;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLStreamHandler;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 
@@ -287,8 +277,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
             }
             if (r.hasRuntimeEvaluation()) {
-                JSONObject runtimeRule = new JSONObject(r.getRuntimeEvaluationRuleMap());
-                rolloutJson.put("runtime_evaluation_rule", runtimeRule);
+                rolloutJson.put("runtime_evaluation_rule", r.getRuntimeEvaluationRule());
             }
             if (r.hasVariantSplits()) {
                 JSONObject variantSplitsObj = new JSONObject(r.getVariantSplits());
@@ -643,7 +632,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         return rollouts;
     }
     private List<Rollout> toRuntimeRule(Map<String, Object> runtimeEval) {
-        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeEval, null, null, null));
+        JSONObject runtimeRuleJson = new JSONObject(runtimeEval);
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeRuleJson, null, null, null));
         return rollouts;
     }
 

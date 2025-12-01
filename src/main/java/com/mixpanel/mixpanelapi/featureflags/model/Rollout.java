@@ -3,6 +3,10 @@ package com.mixpanel.mixpanelapi.featureflags.model;
 import java.util.Collections;
 import java.util.Map;
 
+import org.json.JSONObject;
+
+import com.google.gson.JsonObject;
+
 /**
  * Represents a rollout rule within a feature flag experiment.
  * <p>
@@ -15,7 +19,7 @@ import java.util.Map;
  */
 public final class Rollout {
     private final float rolloutPercentage;
-    private Map<String, Object> runtimeEvaluationRule;
+    private final JSONObject runtimeEvaluationRule;
     private final Map<String, Object> legacyRuntimeEvaluationDefinition;
     private final VariantOverride variantOverride;
     private final Map<String, Float> variantSplits;
@@ -24,18 +28,17 @@ public final class Rollout {
      * Creates a new Rollout with all parameters.
      *
      * @param rolloutPercentage the percentage of users to include (0.0-1.0)
+     * @param runtimeEvaluationRule optional JSONObject containing jsonLogic rule for targeting
      * @param legacyRuntimeEvaluationDefinition optional map of property name to expected value for targeting
      * @param variantOverride optional variant override to force selection
      * @param variantSplits optional map of variant key to split percentage at assignment group level
      */
-    public Rollout(float rolloutPercentage, Map<String, Object> runtimeEvaluationRule, Map<String, Object> legacyRuntimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
+    public Rollout(float rolloutPercentage, JSONObject runtimeEvaluationRule, Map<String, Object> legacyRuntimeEvaluationDefinition, VariantOverride variantOverride, Map<String, Float> variantSplits) {
         this.rolloutPercentage = rolloutPercentage;
         this.legacyRuntimeEvaluationDefinition = legacyRuntimeEvaluationDefinition != null
             ? Collections.unmodifiableMap(legacyRuntimeEvaluationDefinition)
             : null;
-        this.runtimeEvaluationRule = runtimeEvaluationRule != null
-            ? Collections.unmodifiableMap(runtimeEvaluationRule)
-            : null;
+        this.runtimeEvaluationRule = runtimeEvaluationRule;
         this.variantOverride = variantOverride;
         this.variantSplits = variantSplits != null
             ? Collections.unmodifiableMap(variantSplits)
@@ -55,6 +58,7 @@ public final class Rollout {
         this.legacyRuntimeEvaluationDefinition = legacyRuntimeEvaluationDefinition != null
             ? Collections.unmodifiableMap(legacyRuntimeEvaluationDefinition)
             : null;
+        this.runtimeEvaluationRule = null;
         this.variantOverride = variantOverride;
         this.variantSplits = variantSplits != null
             ? Collections.unmodifiableMap(variantSplits)
@@ -109,7 +113,7 @@ public final class Rollout {
      * @return true if this rollout has runtime evaluation criteria
      */
     public boolean hasRuntimeEvaluation() {
-        return runtimeEvaluationRule != null && !runtimeEvaluationRule.isEmpty();
+        return runtimeEvaluationRule != null && runtimeEvaluationRule.length() > 0;
     }
 
     /**
@@ -136,15 +140,7 @@ public final class Rollout {
                 '}';
     }
 
-    public Map<String, Object> getRuntimeEvaluationRuleMap() {
+    public JSONObject getRuntimeEvaluationRule() {
         return runtimeEvaluationRule;
-    }
-
-    public String getRuntimeEvaluationRule() {
-        if (runtimeEvaluationRule == null) {
-            return null;
-        }
-        // Convert Map to JSON string for JsonLogic library using org.json
-        return new org.json.JSONObject(runtimeEvaluationRule).toString();
     }
 }

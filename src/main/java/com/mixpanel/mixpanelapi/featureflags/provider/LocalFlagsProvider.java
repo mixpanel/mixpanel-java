@@ -132,7 +132,6 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             Map<String, ExperimentationFlag> newDefinitions = parseDefinitions(response);
             flagDefinitions.set(newDefinitions);
             ready.set(true);
-
             logger.log(Level.FINE, "Successfully fetched " + newDefinitions.size() + " flag definitions");
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to fetch flag definitions", e);
@@ -301,14 +300,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
 
         // Parse new declarative runtime evaluation rule (jsonLogic format)
-        Map<String, Object> runtimeEvaluationRule = null;
-        JSONObject runtimeRuleJson = json.optJSONObject("runtime_evaluation_rule");
-        if (runtimeRuleJson != null) {
-            runtimeEvaluationRule = new HashMap<>();
-            for (String key : runtimeRuleJson.keySet()) {
-                runtimeEvaluationRule.put(key, runtimeRuleJson.get(key));
-            }
-        }
+        JSONObject runtimeEvaluationRule = json.optJSONObject("runtime_evaluation_rule");
 
         Map<String, Float> variantSplits = null;
         JSONObject variantSplitsJson = json.optJSONObject("variant_splits");
@@ -459,7 +451,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return false;
         }
         try {
-            String ruleJson = rollout.getRuntimeEvaluationRule();
+            String ruleJson = rollout.getRuntimeEvaluationRule().toString();
             Object result = jsonLogic.apply(ruleJson, customProperties);
             return JsonLogic.truthy(result);
         } catch (Exception e) {
