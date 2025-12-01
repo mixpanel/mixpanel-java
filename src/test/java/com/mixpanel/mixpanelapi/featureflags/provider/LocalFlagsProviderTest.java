@@ -597,10 +597,45 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             )
         );
     Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = Map.of(
-            "and", 
+            "and",
             List.of(
                 planEqualsPremiumCaseInsensitive,
                 emailContainsGmailCaseInsensitive
+            )
+        );
+    Map<String, Object> springfieldInUrl = Map.of(
+            "in",
+            List.of(
+                "Springfield",
+                Map.of("var", "url")
+            )
+        );
+    Map<String, Object> nameInArray = Map.of(
+            "in",
+            List.of(
+                Map.of("var", "name"),
+                List.of("a", "b", "c", "all-from-the-ui")
+            )
+        );
+    Map<String, Object> nameAndCountry = Map.of(
+            "and",
+            List.of(
+                Map.of("==", List.of(Map.of("var", "name"), "Johannes")),
+                Map.of("==", List.of(Map.of("var", "country"), "Deutschland"))
+            )
+        );
+    Map<String, Object> queriesGreaterThan25 = Map.of(
+            ">",
+            List.of(
+                Map.of("var", "queries_ran"),
+                25
+            )
+        );
+    Map<String, Object> invalidRuntimeRule = Map.of(
+            "=oops=",
+            List.of(
+                Map.of("var", "plan"),
+                "Premium"
             )
         );
 
@@ -690,6 +725,108 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         createFlag(toLegacyRuntimeRule(runtimeEval));
 
         String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));
+
+        assertEquals(fallbackVariantValue, result);
+        assertEquals(0, eventSender.getEvents().size());
+    }
+
+    @Test
+    public void testReturnFallbackWhenNoRuntimeParametersProvided() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(null);
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeRuleIsInvalid() {
+        createFlag(toRuntimeRule(invalidRuntimeRule));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "Premium"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithInOperatorSatisfied() {
+        createFlag(toRuntimeRule(springfieldInUrl));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("url", "https://helloworld.com/Springfield/all-about-it"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(springfieldInUrl));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("url", "https://helloworld.com/Boston/all-about-it"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithInOperatorForArraySatisfied() {
+        createFlag(toRuntimeRule(nameInArray));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "b"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorForArrayNotSatisfied() {
+        createFlag(toRuntimeRule(nameInArray));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "d"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithAndOperatorSatisfied() {
+        createFlag(toRuntimeRule(nameAndCountry));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "Johannes", "country", "Deutschland"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithAndOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(nameAndCountry));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("name", "Johannes", "country", "USA"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithGreaterThanOperatorSatisfied() {
+        createFlag(toRuntimeRule(queriesGreaterThan25));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("queries_ran", 27));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithGreaterThanOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(queriesGreaterThan25));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("queries_ran", 20));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenLegacyRuntimeEvaluationMultipleConditionsNotSatisfied() {
+        Map<String, Object> runtimeEval = Map.of("plan", "premium", "region", "US");
+
+        createFlag(toLegacyRuntimeRule(runtimeEval));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free", "region", "US"));
 
         assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
