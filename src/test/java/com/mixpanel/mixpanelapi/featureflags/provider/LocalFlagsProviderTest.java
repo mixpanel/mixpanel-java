@@ -601,6 +601,15 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(fallbackVariantValue, result);
     }
 
+    @Test
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitive() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("Plan", "prEmiUm"));
+
+        assertEquals(variantValue, result);
+    }
+
     private void createFlag(List<Rollout> rollouts) {
         List<Variant> variants = Arrays.asList(new Variant(variantKey, variantValue, false, 1.0f));
         String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
@@ -617,11 +626,9 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     @Test
     public void testReturnVariantWhenLegacyRuntimeEvaluationConditionsSatisfied() {
         Map<String, Object> runtimeEval = Map.of("plan", "premium");
-        List<Rollout> rollouts = toLegacyRuntimeRule(runtimeEval);
-        createFlag(rollouts);
+        createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        Map<String, Object> customProps = Map.of("plan", "premium");
-        String result = evaluateFlagsWithRuntimeParameters(customProps);
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
 
         assertEquals(variantValue, result);
         assertEquals(1, eventSender.getEvents().size());
@@ -641,11 +648,9 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnFallbackWhenLegacyRuntimeEvaluationConditionsNotSatisfied() {
         Map<String, Object> runtimeEval = Map.of("plan", "premium");
 
-        List<Rollout> rollouts = toLegacyRuntimeRule(runtimeEval);
-        createFlag(rollouts);
+        createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        Map<String, Object> customProps = Map.of("plan", "free");
-        String result = evaluateFlagsWithRuntimeParameters(customProps);
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "free"));
 
         assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
