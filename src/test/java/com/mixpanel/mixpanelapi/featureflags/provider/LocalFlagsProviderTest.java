@@ -582,6 +582,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 "premium"              // Value
             )
         );
+    Map<String, Object> planEqualsPremiumCaseInsensitive = Map.of(
+            "==", 
+            List.of(
+                Map.of("var", "pLan"), // Key
+                "Premium"              // Value
+            )
+        );
 
     @Test
     public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfied() {
@@ -602,10 +609,19 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
-    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitive() {
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveParams() {
         createFlag(toRuntimeRule(planEqualsPremium));
 
         String result = evaluateFlagsWithRuntimeParameters(Map.of("Plan", "prEmiUm"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
+        createFlag(toRuntimeRule(planEqualsPremiumCaseInsensitive));
+
+        String result = evaluateFlagsWithRuntimeParameters(Map.of("plan", "premium"));
 
         assertEquals(variantValue, result);
     }
