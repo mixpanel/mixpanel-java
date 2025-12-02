@@ -4,6 +4,7 @@ import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.*;
 import com.mixpanel.mixpanelapi.featureflags.util.HashUtils;
+import com.mixpanel.mixpanelapi.featureflags.util.JsonLogicEngine;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 
 /**
  * Local feature flags evaluation provider.
@@ -288,14 +290,17 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        Map<String, Object> runtimeEval = null;
-        JSONObject runtimeEvalJson = json.optJSONObject("runtime_evaluation_definition");
-        if (runtimeEvalJson != null) {
-            runtimeEval = new HashMap<>();
-            for (String key : runtimeEvalJson.keySet()) {
-                runtimeEval.put(key, runtimeEvalJson.get(key));
+        // Parse legacy runtime evaluation (simple key-value format)
+        Map<String, Object> legacyRuntimeEval = null;
+        JSONObject legacyRuntimeEvalJson = json.optJSONObject("runtime_evaluation_definition");
+        if (legacyRuntimeEvalJson != null) {
+            legacyRuntimeEval = new HashMap<>();
+            for (String key : legacyRuntimeEvalJson.keySet()) {
+                legacyRuntimeEval.put(key, legacyRuntimeEvalJson.get(key));
             }
         }
+
+        JSONObject runtimeEvaluationRule = json.optJSONObject("runtime_evaluation_rule");
 
         Map<String, Float> variantSplits = null;
         JSONObject variantSplitsJson = json.optJSONObject("variant_splits");
@@ -306,7 +311,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        return new Rollout(rolloutPercentage, runtimeEval, variantOverride, variantSplits);
+        return new Rollout(rolloutPercentage, runtimeEvaluationRule, legacyRuntimeEval, variantOverride, variantSplits);
     }
 
     // #endregion
@@ -386,6 +391,12 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 }
 
                 // Check runtime evaluation, continue if this rollout has runtime conditions and it doesn't match
+                if (rollout.hasLegacyRuntimeEvaluation()) {
+                    if (!matchesLegacyRuntimeConditions(rollout, context)) {
+                        continue;
+                    }
+                }
+
                 if (rollout.hasRuntimeEvaluation()) {
                     if (!matchesRuntimeConditions(rollout, context)) {
                         continue;
@@ -433,18 +444,23 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         }
     }
 
+    private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
+        Map<String, Object> customProperties = getCustomProperties(context);
+        return JsonLogicEngine.evaluate(rollout.getRuntimeEvaluationRule(), customProperties);
+    }
+
     /**
      * Evaluates runtime conditions for a rollout.
      * 
      * @return true if all runtime conditions match, false otherwise (or if custom_properties is missing)
      */
-    private boolean matchesRuntimeConditions(Rollout rollout, Map<String, Object> context) {
+    private boolean matchesLegacyRuntimeConditions(Rollout rollout, Map<String, Object> context) {
         Map<String, Object> customProperties = getCustomProperties(context);
         if (customProperties == null) {
             return false;
         }
 
-        Map<String, Object> runtimeEval = rollout.getRuntimeEvaluationDefinition();
+        Map<String, Object> runtimeEval = rollout.getLegacyRuntimeEvaluationDefinition();
         for (Map.Entry<String, Object> entry : runtimeEval.entrySet()) {
             String key = entry.getKey();
             Object expectedValue = entry.getValue();
