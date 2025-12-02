@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.util;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 
@@ -17,13 +18,13 @@ public class JsonLogicEngine {
 
     public static boolean evaluate(JSONObject rule, Map<String, Object> data) {
         if (data == null) {
-            data = Map.of();
+            data = new HashMap<>();
         }
-        data = (Map<String, Object>) JsonCaseDesensitizer.lowercaseAllNodes(data);
+        Map<String, Object> lowercasedData = (Map<String, Object>) JsonCaseDesensitizer.lowercaseAllNodes(data);
         try {
             String ruleJson = JsonCaseDesensitizer.lowercaseLeafNodes(rule).toString();
-            logger.log(Level.FINE, () -> "Evaluating JsonLogic rule: " + ruleJson + " with data: " + data.toString());
-            Object result = jsonLogic.apply(ruleJson, data);
+            logger.log(Level.FINE, () -> "Evaluating JsonLogic rule: " + ruleJson + " with data: " + lowercasedData.toString());
+            Object result = jsonLogic.apply(ruleJson, lowercasedData);
             return JsonLogic.truthy(result);
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating runtime rule", e);
