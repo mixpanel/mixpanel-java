@@ -53,7 +53,7 @@ public class JsonCaseDesensitizer {
                 result.add(lowercaseAllNodes(item));
             }
             return result;
-         } else {
+        } else {
             return object;
         }
     }

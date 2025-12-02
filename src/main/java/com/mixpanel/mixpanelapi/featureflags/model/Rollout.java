@@ -139,6 +139,9 @@ public final class Rollout {
                 '}';
     }
 
+    /**
+     * @return optional JSONObject containing JsonLogic rule for runtime evaluation, or null if not set
+     */
     public JSONObject getRuntimeEvaluationRule() {
         return runtimeEvaluationRule;
     }

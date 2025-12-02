@@ -22,7 +22,7 @@ public class JsonLogicEngine {
         data = (Map<String, Object>) JsonCaseDesensitizer.lowercaseAllNodes(data);
         try {
             String ruleJson = JsonCaseDesensitizer.lowercaseLeafNodes(rule).toString();
-            logger.log(Level.FINE, "Evaluating JsonLogic rule: " + ruleJson + " with data: " + data.toString());
+            logger.log(Level.FINE, () -> "Evaluating JsonLogic rule: " + ruleJson + " with data: " + data.toString());
             Object result = jsonLogic.apply(ruleJson, data);
             return JsonLogic.truthy(result);
         } catch (Exception e) {
