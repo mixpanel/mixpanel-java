@@ -2,6 +2,9 @@ package com.mixpanel.mixpanelapi.featureflags.util;
 
 import java.util.Map;
 
+/**
+ * Implements case-insensitive comparison for runtime evaluation rule definitions and runtime parameters.
+ */
 public class JsonCaseDesensitizer {
     public static Object lowercaseLeafNodes(Object object) {
         if (object == null) {
@@ -43,8 +46,14 @@ public class JsonCaseDesensitizer {
                 result.put(lowerKey, lowercaseAllNodes(entry.getValue()));
             }
             return result;
-        } 
-         else {
+        } else if( object instanceof Iterable) {
+            Iterable<?> iterable = (Iterable<?>) object;
+            java.util.List<Object> result = new java.util.ArrayList<>();
+            for (Object item : iterable) {
+                result.add(lowercaseAllNodes(item));
+            }
+            return result;
+         } else {
             return object;
         }
     }

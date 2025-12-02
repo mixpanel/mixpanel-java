@@ -7,15 +7,19 @@ import org.json.JSONObject;
 
 import io.github.jamsesso.jsonlogic.JsonLogic;
 
+/**
+ * Wrapper for third-party library to evaluate JsonLogic DML rules.
+ */
 public class JsonLogicEngine {
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(JsonLogicEngine.class.getName());
+
+    private static final JsonLogic jsonLogic = new JsonLogic();
 
     public static boolean evaluate(JSONObject rule, Map<String, Object> data) {
         if (data == null) {
             data = Map.of();
         }
         data = (Map<String, Object>) JsonCaseDesensitizer.lowercaseAllNodes(data);
-        JsonLogic jsonLogic = new JsonLogic();
         try {
             String ruleJson = JsonCaseDesensitizer.lowercaseLeafNodes(rule).toString();
             logger.log(Level.FINE, "Evaluating JsonLogic rule: " + ruleJson + " with data: " + data.toString());

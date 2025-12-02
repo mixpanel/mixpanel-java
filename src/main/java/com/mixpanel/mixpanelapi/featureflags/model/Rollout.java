@@ -132,7 +132,8 @@ public final class Rollout {
     public String toString() {
         return "Rollout{" +
                 "rolloutPercentage=" + rolloutPercentage +
-                ", runtimeEvaluationDefinition=" + legacyRuntimeEvaluationDefinition +
+                ", legacyRuntimeEvaluationDefinition=" + legacyRuntimeEvaluationDefinition +
+                ", runtimeEvaluationRule=" + runtimeEvaluationRule +
                 ", variantOverride='" + variantOverride + '\'' +
                 ", variantSplits=" + variantSplits +
                 '}';
