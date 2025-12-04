@@ -742,7 +742,7 @@ public class MixpanelAPI implements AutoCloseable {
          * Sets the connect timeout for Mixpanel network requests
          *
          * @param connectTimeoutInMillis connection timeout in milliseconds.
-         *                               Value must be >= 0.
+         *                               Value must be 0 or larger.
          *                               0 indicates indefinite (no) timeout.
          * @return this Builder instance for method chaining
          */
@@ -757,7 +757,7 @@ public class MixpanelAPI implements AutoCloseable {
          * Sets the read timeout for Mixpanel network requests
          *
          * @param readTimeoutInMillis read timeout in milliseconds.
-         *                            Value must be >= 0.
+         *                            Value must be 0 or larger.
          *                            0 indicates indefinite (no) timeout.
          * @return this Builder instance for method chaining
          */
