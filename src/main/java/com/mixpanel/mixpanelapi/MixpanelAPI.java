@@ -43,14 +43,16 @@ public class MixpanelAPI implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(MixpanelAPI.class.getName());
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
 
-    private static final int CONNECT_TIMEOUT_MILLIS = 2000;
-    private static final int READ_TIMEOUT_MILLIS = 10000;
+    private static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 2000;
+    private static final int DEFAULT_READ_TIMEOUT_MILLIS = 10000;
 
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
     protected final String mGroupsEndpoint;
     protected final String mImportEndpoint;
     protected final boolean mUseGzipCompression;
+    protected final Integer mConnectTimeout;
+    protected final Integer mReadTimeout;
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
     protected final JsonSerializer mJsonSerializer;
@@ -69,7 +71,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(null, null, null, null, useGzipCompression, null, null, null);
+        this(null, null, null, null, useGzipCompression, null, null, null, null, null);
     }
 
     /**
@@ -98,7 +100,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null);
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null);
     }
 
     /**
@@ -111,7 +113,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null);
     }
 
     /**
@@ -125,7 +127,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null);
     }
 
     /**
@@ -140,7 +142,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null);
     }
 
     /**
@@ -156,7 +158,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null);
     }
 
     /**
@@ -173,7 +175,9 @@ public class MixpanelAPI implements AutoCloseable {
             builder.useGzipCompression,
             builder.flagsConfig instanceof LocalFlagsConfig ? (LocalFlagsConfig) builder.flagsConfig : null,
             builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null,
-            builder.jsonSerializer
+            builder.jsonSerializer,
+            builder.connectTimeout,
+            builder.readTimeout
         );
     }
 
@@ -197,13 +201,17 @@ public class MixpanelAPI implements AutoCloseable {
         boolean useGzipCompression, 
         LocalFlagsConfig localFlagsConfig, 
         RemoteFlagsConfig remoteFlagsConfig,
-        JsonSerializer jsonSerializer
+        JsonSerializer jsonSerializer,
+        Integer connectTimeout,
+        Integer readTimeout
     ) {
         mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
         mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
         mGroupsEndpoint = groupsEndpoint != null ? groupsEndpoint : Config.BASE_ENDPOINT + "/groups";
         mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
+        mConnectTimeout = connectTimeout != null ? connectTimeout : DEFAULT_CONNECT_TIMEOUT_MILLIS;
+        mReadTimeout = readTimeout != null ? readTimeout : DEFAULT_READ_TIMEOUT_MILLIS;
         mDefaultJsonSerializer = new OrgJsonSerializer();
         if (jsonSerializer != null) {
             logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
@@ -313,8 +321,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeout);
+        conn.setConnectTimeout(mConnectTimeout);
         conn.setDoOutput(true);
 
         byte[] dataToSend;
@@ -463,8 +471,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
         URL endpoint = new URL(endpointUrl);
         HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeout);
+        conn.setConnectTimeout(mConnectTimeout);
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
@@ -649,6 +657,8 @@ public class MixpanelAPI implements AutoCloseable {
         private boolean useGzipCompression;
         private BaseFlagsConfig flagsConfig;
         private JsonSerializer jsonSerializer;
+        private Integer connectTimeout;
+        private Integer readTimeout;
 
         /**
          * Sets the endpoint URL for Mixpanel events messages.
@@ -725,6 +735,36 @@ public class MixpanelAPI implements AutoCloseable {
          */
         public Builder jsonSerializer(JsonSerializer jsonSerializer) {
             this.jsonSerializer = jsonSerializer;
+            return this;
+        }
+
+        /**
+         * Sets the connect timeout for Mixpanel network requests
+         *
+         * @param connectTimeoutInMillis connection timeout in milliseconds.
+         *                               Value must be >= 0.
+         *                               0 indicates indefinite (no) timeout.
+         * @return this Builder instance for method chaining
+         */
+        public Builder connectTimeout(int connectTimeoutInMillis) {
+            if (connectTimeoutInMillis >= 0) {
+                this.connectTimeout = connectTimeoutInMillis;
+            }
+            return this;
+        }
+
+        /**
+         * Sets the read timeout for Mixpanel network requests
+         *
+         * @param readTimeoutInMillis read timeout in milliseconds.
+         *                            Value must be >= 0.
+         *                            0 indicates indefinite (no) timeout.
+         * @return this Builder instance for method chaining
+         */
+        public Builder readTimeout(int readTimeoutInMillis) {
+            if (readTimeoutInMillis >= 0) {
+                this.readTimeout = readTimeoutInMillis;
+            }
             return this;
         }
 

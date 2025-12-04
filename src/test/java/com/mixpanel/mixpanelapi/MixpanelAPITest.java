@@ -1138,6 +1138,8 @@ public class MixpanelAPITest extends TestCase
         assertFalse(api.mUseGzipCompression);
         assertNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
+        assertEquals(Integer.valueOf(10000), api.mReadTimeout);
+        assertEquals(Integer.valueOf(2000), api.mConnectTimeout);
         api.close();
     }
 
@@ -1150,6 +1152,8 @@ public class MixpanelAPITest extends TestCase
         String expectedPeopleEndpoint = "https://custom.example.com/people";
         String expectedGroupsEndpoint = "https://custom.example.com/groups";
         String expectedImportEndpoint = "https://custom.example.com/import";
+        Integer expectedReadTimeout = 5000;
+        Integer expectedConnectTimeout = 7000;
         boolean expectedGzipCompression = true;
         LocalFlagsConfig expectedLocalFlagsConfig = 
             new LocalFlagsConfig.Builder().build();
@@ -1164,6 +1168,8 @@ public class MixpanelAPITest extends TestCase
             .useGzipCompression(expectedGzipCompression)
             .flagsConfig(expectedLocalFlagsConfig)
             .jsonSerializer(expectedJsonSerializer)
+            .connectTimeout(expectedConnectTimeout)
+            .readTimeout(expectedReadTimeout)
             .build();
         
         // THEN
@@ -1175,6 +1181,8 @@ public class MixpanelAPITest extends TestCase
         assertEquals(expectedJsonSerializer, api.mJsonSerializer);
         assertNotNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
+        assertEquals(expectedReadTimeout, api.mReadTimeout);
+        assertEquals(expectedConnectTimeout, api.mConnectTimeout);
         api.close();
     }
 
@@ -1398,6 +1406,37 @@ public class MixpanelAPITest extends TestCase
         assertEquals(expectedGzipCompression, api.mUseGzipCompression);
         assertNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
+        api.close();
+    }
+
+    public void testZeroValueTimeouts() {
+        // GIVEN
+        Integer expectedTimeout = 0;
+
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .connectTimeout(0)
+            .readTimeout(0)
+            .build();
+        
+        // THEN
+        assertEquals(expectedTimeout, api.mConnectTimeout);
+        assertEquals(expectedTimeout, api.mReadTimeout);
+        api.close();
+    }
+
+    public void testNegativeValueTimeoutUsesDefaults() {
+        // GIVEN
+
+        // WHEN
+        MixpanelAPI api = new MixpanelAPI.Builder()
+                .connectTimeout(-1000)
+                .readTimeout(-2000)
+                .build();
+
+        // THEN
+        assertEquals(Integer.valueOf(2000), api.mConnectTimeout);
+        assertEquals(Integer.valueOf(10000), api.mReadTimeout);
         api.close();
     }
 }
