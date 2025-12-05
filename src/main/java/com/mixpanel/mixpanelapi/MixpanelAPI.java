@@ -269,14 +269,41 @@ public class MixpanelAPI implements AutoCloseable {
      * should be called in a separate thread or in a queue consumer.
      *
      * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param useIpAddress if true, Mixpanel will use the ip address of the request for geolocation
      * @throws IOException
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
-        String ipParameter = "ip=0";
-        if (useIpAddress) {
-            ipParameter = "ip=1";
-        }
+        DeliveryOptions options = new DeliveryOptions.Builder()
+            .useIpAddress(useIpAddress)
+            .build();
+        deliver(toSend, options);
+    }
+
+    /**
+     * Attempts to send a given delivery to the Mixpanel servers with custom options.
+     * Will block, possibly on multiple server requests. For most applications, this method
+     * should be called in a separate thread or in a queue consumer.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * DeliveryOptions options = new DeliveryOptions.Builder()
+     *     .importStrictMode(false)  // Disable strict validation for imports
+     *     .useIpAddress(true)       // Use IP address for geolocation (events/people/groups only)
+     *     .build();
+     *
+     * mixpanelApi.deliver(delivery, options);
+     * }</pre>
+     *
+     * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param options configuration options for delivery
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if the server rejects the messages
+     * @see ClientDelivery
+     * @see DeliveryOptions
+     */
+    public void deliver(ClientDelivery toSend, DeliveryOptions options) throws IOException {
+        String ipParameter = options.useIpAddress() ? "ip=1" : "ip=0";
 
         String eventsUrl = mEventsEndpoint + "?" + ipParameter;
         List<JSONObject> events = toSend.getEventsMessages();
@@ -290,10 +317,10 @@ public class MixpanelAPI implements AutoCloseable {
         List<JSONObject> groupMessages = toSend.getGroupMessages();
         sendMessages(groupMessages, groupsUrl);
 
-        // Handle import messages - use strict mode and extract token for auth
         List<JSONObject> importMessages = toSend.getImportMessages();
         if (importMessages.size() > 0) {
-            String importUrl = mImportEndpoint + "?strict=1";
+            String strictParam = options.isImportStrictMode() ? "1" : "0";
+            String importUrl = mImportEndpoint + "?strict=" + strictParam;
             sendImportMessages(importMessages, importUrl);
         }
     }
@@ -534,7 +561,7 @@ public class MixpanelAPI implements AutoCloseable {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
         } catch (IOException e) {
-            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // HTTP error codes (401, 400, 413, etc.) throw IOException when calling getInputStream()
             // Check if it's an HTTP error and read the error stream for details
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
@@ -559,12 +586,24 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // Import endpoint returns different formats depending on strict mode:
+        // - strict=1: JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // - strict=0: Plain text "0" (not imported) or "1" (imported)
         if (response == null) {
             return false;
         }
 
-        // Parse JSON response
+        // First, try to handle strict=0 response format (plain text "0" or "1")
+        String trimmedResponse = response.trim();
+        if ("1".equals(trimmedResponse)) {
+            // strict=0 with successful import
+            return true;
+        } else if ("0".equals(trimmedResponse)) {
+            // strict=0 with failed import (events not imported, reason unknown)
+            return false;
+        }
+
+        // Try to parse as JSON response (strict=1 format)
         try {
             JSONObject jsonResponse = new JSONObject(response);
 
