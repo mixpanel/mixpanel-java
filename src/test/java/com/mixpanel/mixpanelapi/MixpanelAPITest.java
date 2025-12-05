@@ -1439,4 +1439,140 @@ public class MixpanelAPITest extends TestCase
         assertEquals(Integer.valueOf(10000), api.mReadTimeout);
         api.close();
     }
+
+    // ==================== DeliveryOptions Tests ====================
+
+    public void testDeliveryOptionsDefaultValues() {
+        // GIVEN/WHEN
+        DeliveryOptions options = new DeliveryOptions.Builder().build();
+
+        // THEN - defaults should be importStrictMode=true, useIpAddress=false
+        assertTrue(options.isImportStrictMode());
+        assertFalse(options.useIpAddress());
+    }
+
+    public void testDeliveryOptionsAllCustomValues() {
+        // GIVEN/WHEN
+        DeliveryOptions options = new DeliveryOptions.Builder()
+            .importStrictMode(false)
+            .useIpAddress(true)
+            .build();
+
+        // THEN
+        assertFalse(options.isImportStrictMode());
+        assertTrue(options.useIpAddress());
+    }
+
+
+    // ==================== Strict Mode Import Tests ====================
+
+    public void testImportWithStrictModeEnabled() {
+        // Test that strict=1 is in the URL when strictMode is true (default)
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            // Use default options (strictMode=true)
+            api.deliver(c);
+            
+            String url = capturedUrls.get("endpoint");
+            assertTrue("Default: strict=1 in URL", url.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        api.close();
+    }
+
+    public void testImportWithStrictModeDisabled() {
+        // Test that strict=0 is in the URL when strictMode is false
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            // Disable strict mode
+            DeliveryOptions options = new DeliveryOptions.Builder()
+                .importStrictMode(false)
+                .build();
+            api.deliver(c, options);
+
+            String url = capturedUrls.get("endpoint");
+            assertTrue("With importStrictMode=false: strict=0 in URL", url.contains("strict=0"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        api.close();
+    }
+
+    public void testDeliverWithOptionsUsesIpAddress() {
+        // Test that useIpAddress option is respected
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) {
+                capturedUrls.put("events", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        JSONObject event = mBuilder.event("user-1", "test event", null);
+        c.addMessage(event);
+        
+        try {
+            // With useIpAddress=true
+            DeliveryOptions options = new DeliveryOptions.Builder()
+                .useIpAddress(true)
+                .build();
+            api.deliver(c, options);
+            
+            String url = capturedUrls.get("events");
+            assertTrue("With useIpAddress=true: ip=1 in URL", url.contains("ip=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        }
+        
+        api.close();
+    }
 }
