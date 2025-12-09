@@ -53,6 +53,7 @@ public class MixpanelAPI implements AutoCloseable {
     protected final boolean mUseGzipCompression;
     protected final Integer mConnectTimeout;
     protected final Integer mReadTimeout;
+    protected Integer mImportMaxMessageCount;
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
     protected final JsonSerializer mJsonSerializer;
@@ -71,7 +72,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(null, null, null, null, useGzipCompression, null, null, null, null, null);
+        this(null, null, null, null, useGzipCompression, null, null, null, null, null, null);
     }
 
     /**
@@ -100,7 +101,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null);
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null, null);
     }
 
     /**
@@ -113,7 +114,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null, null);
     }
 
     /**
@@ -127,7 +128,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null, null);
     }
 
     /**
@@ -142,7 +143,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null, null);
     }
 
     /**
@@ -158,7 +159,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null, null);
     }
 
     /**
@@ -168,16 +169,17 @@ public class MixpanelAPI implements AutoCloseable {
      */
     private MixpanelAPI(Builder builder) {
         this(
-            builder.eventsEndpoint, 
-            builder.peopleEndpoint, 
-            builder.groupsEndpoint, 
-            builder.importEndpoint, 
+            builder.eventsEndpoint,
+            builder.peopleEndpoint,
+            builder.groupsEndpoint,
+            builder.importEndpoint,
             builder.useGzipCompression,
             builder.flagsConfig instanceof LocalFlagsConfig ? (LocalFlagsConfig) builder.flagsConfig : null,
             builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null,
             builder.jsonSerializer,
             builder.connectTimeout,
-            builder.readTimeout
+            builder.readTimeout,
+            builder.importMaxMessageCount
         );
     }
 
@@ -192,18 +194,22 @@ public class MixpanelAPI implements AutoCloseable {
      * @param localFlagsConfig configuration for local feature flags
      * @param remoteFlagsConfig configuration for remote feature flags
      * @param jsonSerializer custom JSON serializer (null uses default)
+     * @param connectTimeout connection timeout in milliseconds (null uses default)
+     * @param readTimeout read timeout in milliseconds (null uses default)
+     * @param importMaxMessageCount maximum messages per import batch (null uses default)
      */
     private MixpanelAPI(
-        String eventsEndpoint, 
-        String peopleEndpoint, 
-        String groupsEndpoint, 
-        String importEndpoint, 
-        boolean useGzipCompression, 
-        LocalFlagsConfig localFlagsConfig, 
+        String eventsEndpoint,
+        String peopleEndpoint,
+        String groupsEndpoint,
+        String importEndpoint,
+        boolean useGzipCompression,
+        LocalFlagsConfig localFlagsConfig,
         RemoteFlagsConfig remoteFlagsConfig,
         JsonSerializer jsonSerializer,
         Integer connectTimeout,
-        Integer readTimeout
+        Integer readTimeout,
+        Integer importMaxMessageCount
     ) {
         mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
         mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
@@ -212,6 +218,8 @@ public class MixpanelAPI implements AutoCloseable {
         mUseGzipCompression = useGzipCompression;
         mConnectTimeout = connectTimeout != null ? connectTimeout : DEFAULT_CONNECT_TIMEOUT_MILLIS;
         mReadTimeout = readTimeout != null ? readTimeout : DEFAULT_READ_TIMEOUT_MILLIS;
+        mImportMaxMessageCount = importMaxMessageCount != null ?
+                Math.min(importMaxMessageCount, Config.IMPORT_MAX_MESSAGE_SIZE) : Config.IMPORT_MAX_MESSAGE_SIZE;
         mDefaultJsonSerializer = new OrgJsonSerializer();
         if (jsonSerializer != null) {
             logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
@@ -269,14 +277,41 @@ public class MixpanelAPI implements AutoCloseable {
      * should be called in a separate thread or in a queue consumer.
      *
      * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param useIpAddress if true, Mixpanel will use the ip address of the request for geolocation
      * @throws IOException
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
-        String ipParameter = "ip=0";
-        if (useIpAddress) {
-            ipParameter = "ip=1";
-        }
+        DeliveryOptions options = new DeliveryOptions.Builder()
+            .useIpAddress(useIpAddress)
+            .build();
+        deliver(toSend, options);
+    }
+
+    /**
+     * Attempts to send a given delivery to the Mixpanel servers with custom options.
+     * Will block, possibly on multiple server requests. For most applications, this method
+     * should be called in a separate thread or in a queue consumer.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * DeliveryOptions options = new DeliveryOptions.Builder()
+     *     .importStrictMode(false)  // Disable strict validation for imports
+     *     .useIpAddress(true)       // Use IP address for geolocation (events/people/groups only)
+     *     .build();
+     *
+     * mixpanelApi.deliver(delivery, options);
+     * }</pre>
+     *
+     * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param options configuration options for delivery
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if the server rejects the messages
+     * @see ClientDelivery
+     * @see DeliveryOptions
+     */
+    public void deliver(ClientDelivery toSend, DeliveryOptions options) throws IOException {
+        String ipParameter = options.useIpAddress() ? "ip=1" : "ip=0";
 
         String eventsUrl = mEventsEndpoint + "?" + ipParameter;
         List<JSONObject> events = toSend.getEventsMessages();
@@ -290,10 +325,10 @@ public class MixpanelAPI implements AutoCloseable {
         List<JSONObject> groupMessages = toSend.getGroupMessages();
         sendMessages(groupMessages, groupsUrl);
 
-        // Handle import messages - use strict mode and extract token for auth
         List<JSONObject> importMessages = toSend.getImportMessages();
         if (importMessages.size() > 0) {
-            String importUrl = mImportEndpoint + "?strict=1";
+            String strictParam = options.isImportStrictMode() ? "1" : "0";
+            String importUrl = mImportEndpoint + "?strict=" + strictParam;
             sendImportMessages(importMessages, importUrl);
         }
     }
@@ -426,10 +461,10 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Send messages in batches (max 2000 per batch for /import)
+        // Send messages in batches (max 2000 per batch for /import by default)
         // If token is empty, the server will reject with 401 Unauthorized
-        for (int i = 0; i < messages.size(); i += Config.IMPORT_MAX_MESSAGE_SIZE) {
-            int endIndex = i + Config.IMPORT_MAX_MESSAGE_SIZE;
+        for (int i = 0; i < messages.size(); i += mImportMaxMessageCount) {
+            int endIndex = i + mImportMaxMessageCount;
             endIndex = Math.min(endIndex, messages.size());
             List<JSONObject> batch = messages.subList(i, endIndex);
 
@@ -534,7 +569,7 @@ public class MixpanelAPI implements AutoCloseable {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
         } catch (IOException e) {
-            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // HTTP error codes (401, 400, 413, etc.) throw IOException when calling getInputStream()
             // Check if it's an HTTP error and read the error stream for details
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
@@ -559,12 +594,24 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // Import endpoint returns different formats depending on strict mode:
+        // - strict=1: JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // - strict=0: Plain text "0" (not imported) or "1" (imported)
         if (response == null) {
             return false;
         }
 
-        // Parse JSON response
+        // First, try to handle strict=0 response format (plain text "0" or "1")
+        String trimmedResponse = response.trim();
+        if ("1".equals(trimmedResponse)) {
+            // strict=0 with successful import
+            return true;
+        } else if ("0".equals(trimmedResponse)) {
+            // strict=0 with failed import (events not imported, reason unknown)
+            return false;
+        }
+
+        // Try to parse as JSON response (strict=1 format)
         try {
             JSONObject jsonResponse = new JSONObject(response);
 
@@ -659,6 +706,7 @@ public class MixpanelAPI implements AutoCloseable {
         private JsonSerializer jsonSerializer;
         private Integer connectTimeout;
         private Integer readTimeout;
+        private Integer importMaxMessageCount;
 
         /**
          * Sets the endpoint URL for Mixpanel events messages.
@@ -764,6 +812,22 @@ public class MixpanelAPI implements AutoCloseable {
         public Builder readTimeout(int readTimeoutInMillis) {
             if (readTimeoutInMillis >= 0) {
                 this.readTimeout = readTimeoutInMillis;
+            }
+            return this;
+        }
+
+        /**
+         * Sets the maximum number of messages to include in a single batch for the /import endpoint.
+         * The default value is 2000 messages per batch.
+         * The max accepted value is 2000
+         *
+         * @param importMaxMessageCount the maximum number of import messages per batch.
+         *                              Value must be greater than 0 and less than or equal to 2000.
+         * @return this Builder instance for method chaining
+         */
+        public Builder importMaxMessageCount(int importMaxMessageCount) {
+            if (importMaxMessageCount > 0 && importMaxMessageCount <= Config.IMPORT_MAX_MESSAGE_SIZE) {
+                this.importMaxMessageCount = importMaxMessageCount;
             }
             return this;
         }

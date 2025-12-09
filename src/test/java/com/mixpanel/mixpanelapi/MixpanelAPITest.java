@@ -852,6 +852,67 @@ public class MixpanelAPITest extends TestCase
         }
     }
 
+    public void testCustomImportMaxMessageCount() {
+        // Test that custom importMaxMessageCount configuration is respected via Builder
+        final List<String> sends = new ArrayList<String>();
+        final int customBatchSize = 100;
+
+        // We can't override sendImportData with builder so we have to set it custom here.
+        MixpanelAPI testApi = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            {
+                // Use the custom batch size
+                mImportMaxMessageCount = customBatchSize;
+            }
+
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                sends.add(dataString);
+                return true;
+            }
+        };
+
+        ClientDelivery c = new ClientDelivery();
+        // Use 180 days ago (6 months, within >5 days and <1 year range)
+        long historicalTime = System.currentTimeMillis() - (180L * 24L * 60L * 60L * 1000L);
+
+        // Create 250 import events (should be split into 3 batches: 100 + 100 + 50)
+        int totalEvents = 250;
+        for (int i = 0; i < totalEvents; i++) {
+            try {
+                JSONObject props = new JSONObject();
+                props.put("time", historicalTime + i);
+                props.put("$insert_id", "custom-batch-" + i);
+                props.put("count", i);
+
+                JSONObject importEvent = mBuilder.importEvent("a distinct id", "Test Event", props);
+                c.addMessage(importEvent);
+            } catch (JSONException e) {
+                fail("Failed to create import event: " + e.toString());
+            }
+        }
+
+        try {
+            testApi.deliver(c);
+
+            // Should be split into 3 batches (100 + 100 + 50)
+            assertEquals("Messages split into 3 batches", 3, sends.size());
+
+            JSONArray firstBatch = new JSONArray(sends.get(0));
+            assertEquals("First batch has 100 events", customBatchSize, firstBatch.length());
+
+            JSONArray secondBatch = new JSONArray(sends.get(1));
+            assertEquals("Second batch has 100 events", customBatchSize, secondBatch.length());
+
+            JSONArray thirdBatch = new JSONArray(sends.get(2));
+            assertEquals("Third batch has 50 events", 50, thirdBatch.length());
+
+        } catch (IOException e) {
+            fail("IOException during delivery: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON parsing error: " + e.toString());
+        }
+    }
+
     public void testImportMessageValidation() {
         // Test that import messages are validated correctly
         ClientDelivery c = new ClientDelivery();
@@ -1135,6 +1196,7 @@ public class MixpanelAPITest extends TestCase
         assertEquals(Config.BASE_ENDPOINT + "/engage", api.mPeopleEndpoint);
         assertEquals(Config.BASE_ENDPOINT + "/groups", api.mGroupsEndpoint);
         assertEquals(Config.BASE_ENDPOINT + "/import", api.mImportEndpoint);
+        assertEquals((Integer) Config.IMPORT_MAX_MESSAGE_SIZE, (Integer) api.mImportMaxMessageCount);
         assertFalse(api.mUseGzipCompression);
         assertNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
@@ -1152,6 +1214,7 @@ public class MixpanelAPITest extends TestCase
         String expectedPeopleEndpoint = "https://custom.example.com/people";
         String expectedGroupsEndpoint = "https://custom.example.com/groups";
         String expectedImportEndpoint = "https://custom.example.com/import";
+        Integer expectedImportMaxMessageCount = 150;
         Integer expectedReadTimeout = 5000;
         Integer expectedConnectTimeout = 7000;
         boolean expectedGzipCompression = true;
@@ -1165,6 +1228,7 @@ public class MixpanelAPITest extends TestCase
             .peopleEndpoint(expectedPeopleEndpoint)
             .groupsEndpoint(expectedGroupsEndpoint)
             .importEndpoint(expectedImportEndpoint)
+            .importMaxMessageCount(expectedImportMaxMessageCount)
             .useGzipCompression(expectedGzipCompression)
             .flagsConfig(expectedLocalFlagsConfig)
             .jsonSerializer(expectedJsonSerializer)
@@ -1179,12 +1243,50 @@ public class MixpanelAPITest extends TestCase
         assertEquals(expectedImportEndpoint, api.mImportEndpoint);
         assertEquals(expectedGzipCompression, api.mUseGzipCompression);
         assertEquals(expectedJsonSerializer, api.mJsonSerializer);
+        assertEquals(expectedImportMaxMessageCount, api.mImportMaxMessageCount);
         assertNotNull(api.mLocalFlags);
         assertNull(api.mRemoteFlags);
         assertEquals(expectedReadTimeout, api.mReadTimeout);
         assertEquals(expectedConnectTimeout, api.mConnectTimeout);
         api.close();
     }
+
+    /**
+     * Test import max message count is 2000
+     */
+    public void testBuilderImportMaxDoesNotExceed() {
+        MixpanelAPI api = new MixpanelAPI.Builder()
+                .importMaxMessageCount(3000)
+                .build();
+
+        assertEquals((Integer) 2000, api.mImportMaxMessageCount);
+        api.close();
+    }
+
+    /**
+     * Test import max message count at set minimum
+     */
+    public void testBuilderImportMaxWithMinimum() {
+        MixpanelAPI api = new MixpanelAPI.Builder()
+                .importMaxMessageCount(1)
+                .build();
+
+        assertEquals((Integer) 1, api.mImportMaxMessageCount);
+        api.close();
+    }
+
+    /**
+     * Test import max message count ignores if lower than minimum
+     */
+    public void testBuilderImportMaxHasMinimum() {
+        MixpanelAPI api = new MixpanelAPI.Builder()
+                .importMaxMessageCount(0)
+                .build();
+
+        assertEquals((Integer) 2000, api.mImportMaxMessageCount);
+        api.close();
+    }
+
 
     /**
      * Test builder with LocalFlagsConfig
@@ -1437,6 +1539,142 @@ public class MixpanelAPITest extends TestCase
         // THEN
         assertEquals(Integer.valueOf(2000), api.mConnectTimeout);
         assertEquals(Integer.valueOf(10000), api.mReadTimeout);
+        api.close();
+    }
+
+    // ==================== DeliveryOptions Tests ====================
+
+    public void testDeliveryOptionsDefaultValues() {
+        // GIVEN/WHEN
+        DeliveryOptions options = new DeliveryOptions.Builder().build();
+
+        // THEN - defaults should be importStrictMode=true, useIpAddress=false
+        assertTrue(options.isImportStrictMode());
+        assertFalse(options.useIpAddress());
+    }
+
+    public void testDeliveryOptionsAllCustomValues() {
+        // GIVEN/WHEN
+        DeliveryOptions options = new DeliveryOptions.Builder()
+            .importStrictMode(false)
+            .useIpAddress(true)
+            .build();
+
+        // THEN
+        assertFalse(options.isImportStrictMode());
+        assertTrue(options.useIpAddress());
+    }
+
+
+    // ==================== Strict Mode Import Tests ====================
+
+    public void testImportWithStrictModeEnabled() {
+        // Test that strict=1 is in the URL when strictMode is true (default)
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            // Use default options (strictMode=true)
+            api.deliver(c);
+            
+            String url = capturedUrls.get("endpoint");
+            assertTrue("Default: strict=1 in URL", url.contains("strict=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        api.close();
+    }
+
+    public void testImportWithStrictModeDisabled() {
+        // Test that strict=0 is in the URL when strictMode is false
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendImportData(String dataString, String endpointUrl, String token) {
+                capturedUrls.put("endpoint", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        long historicalTime = System.currentTimeMillis() - (90L * 24L * 60L * 60L * 1000L);
+        
+        try {
+            JSONObject props = new JSONObject();
+            props.put("time", historicalTime);
+            props.put("$insert_id", "insert-id-1");
+            JSONObject importEvent = mBuilder.importEvent("user-1", "test event", props);
+            c.addMessage(importEvent);
+            
+            // Disable strict mode
+            DeliveryOptions options = new DeliveryOptions.Builder()
+                .importStrictMode(false)
+                .build();
+            api.deliver(c, options);
+
+            String url = capturedUrls.get("endpoint");
+            assertTrue("With importStrictMode=false: strict=0 in URL", url.contains("strict=0"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        } catch (JSONException e) {
+            fail("JSON error: " + e.toString());
+        }
+        
+        api.close();
+    }
+
+    public void testDeliverWithOptionsUsesIpAddress() {
+        // Test that useIpAddress option is respected
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        
+        MixpanelAPI api = new MixpanelAPI("events url", "people url", "groups url", "import url") {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) {
+                capturedUrls.put("events", endpointUrl);
+                return true;
+            }
+        };
+        
+        ClientDelivery c = new ClientDelivery();
+        JSONObject event = mBuilder.event("user-1", "test event", null);
+        c.addMessage(event);
+        
+        try {
+            // With useIpAddress=true
+            DeliveryOptions options = new DeliveryOptions.Builder()
+                .useIpAddress(true)
+                .build();
+            api.deliver(c, options);
+            
+            String url = capturedUrls.get("events");
+            assertTrue("With useIpAddress=true: ip=1 in URL", url.contains("ip=1"));
+            
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        }
+        
         api.close();
     }
 }
