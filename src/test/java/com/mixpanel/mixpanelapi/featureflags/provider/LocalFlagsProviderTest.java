@@ -6,22 +6,13 @@ import com.mixpanel.mixpanelapi.featureflags.model.*;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLStreamHandler;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.mixpanel.mixpanelapi.featureflags.provider.TestUtils.*;
 import static org.junit.Assert.*;
 
 /**
@@ -282,9 +273,12 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 variantOverrideObj.put("key", r.getVariantOverride().getKey());
                 rolloutJson.put("variant_override", variantOverrideObj);
             }
-            if (r.hasRuntimeEvaluation()) {
-                JSONObject runtimeEval = new JSONObject(r.getRuntimeEvaluationDefinition());
+            if (r.hasLegacyRuntimeEvaluation()) {
+                JSONObject runtimeEval = new JSONObject(r.getLegacyRuntimeEvaluationDefinition());
                 rolloutJson.put("runtime_evaluation_definition", runtimeEval);
+            }
+            if (r.hasRuntimeEvaluation()) {
+                rolloutJson.put("runtime_evaluation_rule", r.getRuntimeEvaluationRule());
             }
             if (r.hasVariantSplits()) {
                 JSONObject variantSplitsObj = new JSONObject(r.getVariantSplits());
@@ -577,53 +571,265 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     // #endregion
     // #region Runtime Evaluation Tests
 
+    String variantKey = "premium-variant";
+    String variantValue = "gold";
+    String flagKey = "test-flag";
+    String distinctIdContextKey = "distinct_id";
+    String fallbackVariantValue = "fallback";
+    Map<String, Object> planEqualsPremium = mapOf(
+            "==", 
+            listOf(
+                mapOf("var", "plan"), // Key
+                "premium"              // Value
+            )
+        );
+    Map<String, Object> planEqualsPremiumCaseInsensitive = mapOf(
+            "==", 
+            listOf(
+                mapOf("var", "pLan"), // Key
+                "Premium"              // Value
+            )
+        );
+    Map<String, Object> emailContainsGmailCaseInsensitive = mapOf(
+            "in", 
+            listOf(
+                "gmaIl",              // Value
+                mapOf("var", "emAil") // Key
+            )
+        );
+    Map<String, Object> planEqualsPremiumAndEmailContainsGmailCaseInsensitive = mapOf(
+            "and",
+            listOf(
+                planEqualsPremiumCaseInsensitive,
+                emailContainsGmailCaseInsensitive
+            )
+        );
+    Map<String, Object> springfieldInUrl = mapOf(
+            "in",
+            listOf(
+                "Springfield",
+                mapOf("var", "url")
+            )
+        );
+    Map<String, Object> nameInArray = mapOf(
+            "in",
+            listOf(
+                mapOf("var", "name"),
+                listOf("a", "b", "c", "all-from-the-ui")
+            )
+        );
+    Map<String, Object> nameAndCountry = mapOf(
+            "and",
+            listOf(
+                mapOf("==", listOf(mapOf("var", "name"), "Johannes")),
+                mapOf("==", listOf(mapOf("var", "country"), "Deutschland"))
+            )
+        );
+    Map<String, Object> queriesGreaterThan25 = mapOf(
+            ">",
+            listOf(
+                mapOf("var", "queries_ran"),
+                25
+            )
+        );
+    Map<String, Object> invalidRuntimeRule = mapOf(
+            "=oops=",
+            listOf(
+                mapOf("var", "plan"),
+                "Premium"
+            )
+        );
+
     @Test
-    public void testReturnVariantWhenRuntimeEvaluationConditionsSatisfied() {
-        List<Variant> variants = Arrays.asList(new Variant("premium-variant", "gold", false, 1.0f));
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfied() {
+        createFlag(toRuntimeRule(planEqualsPremium));
 
-        // Runtime evaluation: requires plan=premium
-        Map<String, Object> runtimeEval = new HashMap<>();
-        runtimeEval.put("plan", "premium");
-        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeEval, null, null));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
 
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
-
-        provider = createProviderWithResponse(response);
-
-        // Context with matching custom properties
-        provider.startPollingForDefinitions();
-        Map<String, Object> customProps = new HashMap<>();
-        customProps.put("plan", "premium");
-        Map<String, Object> context = buildContextWithProperties("user-123", customProps);
-
-        String result = provider.getVariantValue("test-flag", "fallback", context);
-
-        assertEquals("gold", result);
-        assertEquals(1, eventSender.getEvents().size());
+        assertEquals(variantValue, result);
     }
 
     @Test
-    public void testReturnFallbackWhenRuntimeEvaluationConditionsNotSatisfied() {
-        List<Variant> variants = Arrays.asList(new Variant("premium-variant", "gold", false, 1.0f));
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsNotSatisfied() {
+        createFlag(toRuntimeRule(planEqualsPremium));
 
-        // Runtime evaluation: requires plan=premium
-        Map<String, Object> runtimeEval = new HashMap<>();
-        runtimeEval.put("plan", "premium");
-        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeEval, null, null));
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free"));
 
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        assertEquals(fallbackVariantValue, result);
+    }
 
+    @Test
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveParams() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("Plan", "prEmiUm"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenSimpleRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
+        createFlag(toRuntimeRule(planEqualsPremiumCaseInsensitive));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenComplexRuntimeEvaluationConditionsSatisfiedCaseInsensitiveRule() {
+        createFlag(toRuntimeRule(planEqualsPremiumAndEmailContainsGmailCaseInsensitive));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium", "email", "user@gmail.com"));
+
+        assertEquals(variantValue, result);
+    }
+
+    private void createFlag(List<Rollout> rollouts) {
+        List<Variant> variants = Arrays.asList(new Variant(variantKey, variantValue, false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
         provider = createProviderWithResponse(response);
+    }
 
-        // Context with non-matching custom properties
+    private String evaluateFlagsWithRuntimeParameters(Map<String, Object> customProps) {
         provider.startPollingForDefinitions();
-        Map<String, Object> customProps = new HashMap<>();
-        customProps.put("plan", "free");
         Map<String, Object> context = buildContextWithProperties("user-123", customProps);
+        String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+        return result;
+    }
 
-        String result = provider.getVariantValue("test-flag", "fallback", context);
+    @Test
+    public void testReturnVariantWhenLegacyRuntimeEvaluationConditionsSatisfied() {
+        Map<String, Object> runtimeEval = mapOf("plan", "premium");
+        createFlag(toLegacyRuntimeRule(runtimeEval));
 
-        assertEquals("fallback", result);
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "premium"));
+
+        assertEquals(variantValue, result);
+        assertEquals(1, eventSender.getEvents().size());
+    }
+
+    private List<Rollout> toLegacyRuntimeRule(Map<String, Object> runtimeEval) {
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeEval, null, null));
+        return rollouts;
+    }
+    private List<Rollout> toRuntimeRule(Map<String, Object> runtimeEval) {
+        JSONObject runtimeRuleJson = new JSONObject(runtimeEval);
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, runtimeRuleJson, null, null, null));
+        return rollouts;
+    }
+
+    @Test
+    public void testReturnFallbackWhenLegacyRuntimeEvaluationConditionsNotSatisfied() {
+        Map<String, Object> runtimeEval = mapOf("plan", "premium");
+
+        createFlag(toLegacyRuntimeRule(runtimeEval));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free"));
+
+        assertEquals(fallbackVariantValue, result);
+        assertEquals(0, eventSender.getEvents().size());
+    }
+
+    @Test
+    public void testReturnFallbackWhenNoRuntimeParametersProvided() {
+        createFlag(toRuntimeRule(planEqualsPremium));
+
+        String result = evaluateFlagsWithRuntimeParameters(null);
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeRuleIsInvalid() {
+        createFlag(toRuntimeRule(invalidRuntimeRule));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "Premium"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithInOperatorSatisfied() {
+        createFlag(toRuntimeRule(springfieldInUrl));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("url", "https://helloworld.com/Springfield/all-about-it"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(springfieldInUrl));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("url", "https://helloworld.com/Boston/all-about-it"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithInOperatorForArraySatisfied() {
+        createFlag(toRuntimeRule(nameInArray));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "b"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithInOperatorForArrayNotSatisfied() {
+        createFlag(toRuntimeRule(nameInArray));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "d"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithAndOperatorSatisfied() {
+        createFlag(toRuntimeRule(nameAndCountry));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "Johannes", "country", "Deutschland"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithAndOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(nameAndCountry));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("name", "Johannes", "country", "USA"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnVariantWhenRuntimeEvaluationWithGreaterThanOperatorSatisfied() {
+        createFlag(toRuntimeRule(queriesGreaterThan25));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("queries_ran", 27));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenRuntimeEvaluationWithGreaterThanOperatorNotSatisfied() {
+        createFlag(toRuntimeRule(queriesGreaterThan25));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("queries_ran", 20));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenLegacyRuntimeEvaluationMultipleConditionsNotSatisfied() {
+        Map<String, Object> runtimeEval = mapOf("plan", "premium", "region", "US");
+
+        createFlag(toLegacyRuntimeRule(runtimeEval));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("plan", "free", "region", "US"));
+
+        assertEquals(fallbackVariantValue, result);
         assertEquals(0, eventSender.getEvents().size());
     }
 
@@ -634,19 +840,19 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testTrackExposureWhenVariantIsSelected() {
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
 
         Map<String, Object> context = buildContext("user-123");
         provider.startPollingForDefinitions();
-        provider.getVariantValue("test-flag", "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         assertEquals(1, eventSender.getEvents().size());
         MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("user-123", event.distinctId);
         assertEquals("$experiment_started", event.eventName);
-        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals(flagKey, event.properties.getString("Experiment name"));
         assertEquals("variant-a", event.properties.getString("Variant name"));
         assertEquals("local", event.properties.getString("Flag evaluation mode"));
         assertTrue(event.properties.getLong("Variant fetch latency (ms)") >= 0);
@@ -660,7 +866,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         Map<String, Object> context = buildContext("user-123");
         provider.startPollingForDefinitions();
-        provider.getVariantValue("test-flag", "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         assertEquals(0, eventSender.getEvents().size());
     }
@@ -669,14 +875,14 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testDoNotTrackExposureWhenDistinctIdIsMissing() {
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
 
         // Context without distinct_id
         provider.startPollingForDefinitions();
         Map<String, Object> context = new HashMap<>();
-        provider.getVariantValue("test-flag", "fallback", context);
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // No exposure should be tracked (and it returns fallback anyway)
         assertEquals(0, eventSender.getEvents().size());
@@ -689,7 +895,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testReturnReadyWhenFlagsAreLoaded() {
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
 
@@ -738,13 +944,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testIsEnabledReturnsTrueForBooleanTrueVariant() {
         List<Variant> variants = Arrays.asList(new Variant("enabled", true, false, 1.0f));
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
 
         Map<String, Object> context = buildContext("user-123");
         provider.startPollingForDefinitions();
-        boolean result = provider.isEnabled("test-flag", context);
+        boolean result = provider.isEnabled(flagKey, context);
 
         assertTrue(result);
     }
@@ -764,7 +970,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Start with initial flag definition
         List<Variant> variants1 = Arrays.asList(new Variant("variant-old", "old-value", false, 1.0f));
         List<Rollout> rollouts1 = Arrays.asList(new Rollout(1.0f));
-        String response1 = buildFlagsResponse("test-flag", "distinct_id", variants1, rollouts1, null);
+        String response1 = buildFlagsResponse(flagKey, distinctIdContextKey, variants1, rollouts1, null);
 
         provider = new TestableLocalFlagsProvider(config, SDK_VERSION, eventSender);
         provider.setMockResponse("/flags/definitions", response1);
@@ -773,20 +979,20 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, Object> context = buildContext("user-123");
 
         // First evaluation should return old value
-        String result1 = provider.getVariantValue("test-flag", "fallback", context);
+        String result1 = provider.getVariantValue(flagKey, fallbackVariantValue, context);
         assertEquals("old-value", result1);
 
         // Simulate a polling update by changing the mock response
         List<Variant> variants2 = Arrays.asList(new Variant("variant-new", "new-value", false, 1.0f));
         List<Rollout> rollouts2 = Arrays.asList(new Rollout(1.0f));
-        String response2 = buildFlagsResponse("test-flag", "distinct_id", variants2, rollouts2, null);
+        String response2 = buildFlagsResponse(flagKey, distinctIdContextKey, variants2, rollouts2, null);
         provider.setMockResponse("/flags/definitions", response2);
 
         // Wait for polling to occur
         Thread.sleep(1500);
 
         // Second evaluation should return new value after polling update
-        String result2 = provider.getVariantValue("test-flag", "fallback", context);
+        String result2 = provider.getVariantValue(flagKey, fallbackVariantValue, context);
         assertEquals("new-value", result2);
 
         provider.stopPollingForDefinitions();
@@ -799,13 +1005,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testGetAllVariantsReturnsAllSuccessfullySelectedVariants() {
         // Create multiple flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", "distinct_id",
+            new FlagDefinition("flag-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-2", "distinct_id",
+            new FlagDefinition("flag-2", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-3", "distinct_id",
+            new FlagDefinition("flag-3", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-c", "value-c", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)))
         );
@@ -843,13 +1049,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testGetAllVariantsReturnsOnlySuccessfulVariants() {
         // Create flags with mixed rollout percentages
         List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-success-1", "distinct_id",
+            new FlagDefinition("flag-success-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),  // 100% rollout - will succeed
-            new FlagDefinition("flag-fail-1", "distinct_id",
+            new FlagDefinition("flag-fail-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
                 Arrays.asList(new Rollout(0.0f))),  // 0% rollout - will fallback
-            new FlagDefinition("flag-success-2", "distinct_id",
+            new FlagDefinition("flag-success-2", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-c", "value-c", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)))   // 100% rollout - will succeed
         );
@@ -874,13 +1080,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testGetAllVariantsTracksExposureEventsWhenReportExposureTrue() {
         // Create 3 flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", "distinct_id",
+            new FlagDefinition("flag-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-2", "distinct_id",
+            new FlagDefinition("flag-2", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-3", "distinct_id",
+            new FlagDefinition("flag-3", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-c", "value-c", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)))
         );
@@ -902,13 +1108,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     public void testGetAllVariantsDoesNotTrackExposureEventsWhenReportExposureFalse() {
         // Create 3 flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", "distinct_id",
+            new FlagDefinition("flag-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-2", "distinct_id",
+            new FlagDefinition("flag-2", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f))),
-            new FlagDefinition("flag-3", "distinct_id",
+            new FlagDefinition("flag-3", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-c", "value-c", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)))
         );
@@ -939,11 +1145,11 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Create flags with experiment metadata
         List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", "distinct_id",
+            new FlagDefinition("flag-1", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)),
                 null, experimentId1, true),
-            new FlagDefinition("flag-2", "distinct_id",
+            new FlagDefinition("flag-2", distinctIdContextKey,
                 Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
                 Arrays.asList(new Rollout(1.0f)),
                 null, experimentId2, false)
@@ -996,13 +1202,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, String> testUsers = new HashMap<>();
         testUsers.put("test-user-123", "treatment");
 
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, testUsers);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, testUsers);
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
         eventSender.reset();
         Map<String, Object> context = buildContext("test-user-123");
-        SelectedVariant<String> result = provider.getVariant("test-flag", new SelectedVariant<>("fallback"), context, true);
+        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>(fallbackVariantValue), context, true);
 
         // Verify variant was selected
         assertTrue(result.isSuccess());
@@ -1014,7 +1220,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("test-user-123", event.distinctId);
         assertEquals("$experiment_started", event.eventName);
-        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals(flagKey, event.properties.getString("Experiment name"));
         assertEquals("treatment", event.properties.getString("Variant name"));
         assertEquals(Boolean.TRUE, event.properties.getBoolean("$is_qa_tester"));
     }
@@ -1030,13 +1236,13 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         Map<String, String> testUsers = new HashMap<>();
         testUsers.put("different-user", "control");
 
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, testUsers);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, testUsers);
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
         eventSender.reset();
         Map<String, Object> context = buildContext("normal-user-456");
-        SelectedVariant<String> result = provider.getVariant("test-flag", new SelectedVariant<>("fallback"), context, true);
+        SelectedVariant<String> result = provider.getVariant(flagKey, new SelectedVariant<>(fallbackVariantValue), context, true);
 
         // Verify variant was selected via normal rollout
         assertTrue(result.isSuccess());
@@ -1048,7 +1254,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
         assertEquals("normal-user-456", event.distinctId);
         assertEquals("$experiment_started", event.eventName);
-        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertEquals(flagKey, event.properties.getString("Experiment name"));
         assertEquals("control", event.properties.getString("Variant name"));
         assertEquals(Boolean.FALSE, event.properties.getBoolean("$is_qa_tester"));
     }
@@ -1072,7 +1278,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         variantSplits.put("treatment-b", 1.0f);
 
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, variantSplits));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
@@ -1080,7 +1286,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment-b due to 100% override
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue("test-flag", "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("All users should get treatment-b due to 100% variant split override",
                 "green", result);
         }
@@ -1103,7 +1309,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         VariantOverride variantOverride = new VariantOverride("treatment"); // But override forces treatment
 
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, variantOverride, variantSplits));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
@@ -1111,7 +1317,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment due to variant_override
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue("test-flag", "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("variant_override should take precedence over variant_splits",
                 "red", result);
         }
@@ -1127,7 +1333,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Rollout without variant_splits (null)
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null));
-        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
 
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
@@ -1135,7 +1341,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         // Test multiple users - all should get treatment based on flag-level splits
         for (int i = 0; i < 10; i++) {
             Map<String, Object> context = buildContext("user-" + i);
-            String result = provider.getVariantValue("test-flag", "fallback", context);
+            String result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
             assertEquals("Should use flag-level splits when no variant_splits in rollout",
                 "red", result);
         }
@@ -1155,7 +1361,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Create flag definition with hash_salt
         String hashSalt = "abc123def456abc123def456abc12345"; // 32-char hex string
-        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+        FlagDefinition flagDef = new FlagDefinition(flagKey, distinctIdContextKey, variants, rollouts, null, null, null, hashSalt);
 
         JSONObject root = new JSONObject();
         JSONArray flagsArray = new JSONArray();
@@ -1169,7 +1375,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-123");
-        hashingProvider.getVariantValue("test-flag", "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1186,7 +1392,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         assertNotNull("Should have called calculateRolloutHash", rolloutHashCall);
         assertEquals("Context value should be user-123", "user-123", rolloutHashCall.contextValue);
-        assertEquals("Flag key should be test-flag", "test-flag", rolloutHashCall.flagKey);
+        assertEquals("Flag key should be test-flag", flagKey, rolloutHashCall.flagKey);
         assertEquals("Hash salt should include rollout index 0", hashSalt + "0", rolloutHashCall.hashSalt);
         assertEquals("Rollout index should be 0", Integer.valueOf(0), rolloutHashCall.rolloutIndex);
     }
@@ -1203,7 +1409,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Create flag definition with hash_salt
         String hashSalt = "def789abc012def789abc012def78901"; // 32-char hex string
-        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+        FlagDefinition flagDef = new FlagDefinition(flagKey, distinctIdContextKey, variants, rollouts, null, null, null, hashSalt);
 
         JSONObject root = new JSONObject();
         JSONArray flagsArray = new JSONArray();
@@ -1217,7 +1423,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-456");
-        hashingProvider.getVariantValue("test-flag", "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1233,7 +1439,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         assertNotNull("Should have called calculateVariantHash", variantHashCall);
         assertEquals("Context value should be user-456", "user-456", variantHashCall.contextValue);
-        assertEquals("Flag key should be test-flag", "test-flag", variantHashCall.flagKey);
+        assertEquals("Flag key should be test-flag", flagKey, variantHashCall.flagKey);
         assertEquals("Hash salt should include 'variant'", hashSalt + "variant", variantHashCall.hashSalt);
         assertNull("Rollout index should be null for variant hash", variantHashCall.rolloutIndex);
     }
@@ -1255,7 +1461,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Create flag definition with hash_salt
         String hashSalt = "012345678901234567890123456789ab"; // 32-char hex string
-        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, hashSalt);
+        FlagDefinition flagDef = new FlagDefinition(flagKey, distinctIdContextKey, variants, rollouts, null, null, null, hashSalt);
 
         JSONObject root = new JSONObject();
         JSONArray flagsArray = new JSONArray();
@@ -1269,7 +1475,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-789");
-        hashingProvider.getVariantValue("test-flag", "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls - should have 2 rollout hash calls with indices 0 and 1
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1307,7 +1513,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
 
         // Create flag definition WITHOUT hash_salt (null)
-        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, null);
+        FlagDefinition flagDef = new FlagDefinition(flagKey, distinctIdContextKey, variants, rollouts, null, null, null, null);
 
         JSONObject root = new JSONObject();
         JSONArray flagsArray = new JSONArray();
@@ -1321,7 +1527,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-legacy");
-        hashingProvider.getVariantValue("test-flag", "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls use legacy "rollout" salt
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
@@ -1350,7 +1556,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f, null, null, null)); // 100% rollout
 
         // Create flag definition WITHOUT hash_salt (null)
-        FlagDefinition flagDef = new FlagDefinition("test-flag", "distinct_id", variants, rollouts, null, null, null, null);
+        FlagDefinition flagDef = new FlagDefinition(flagKey, distinctIdContextKey, variants, rollouts, null, null, null, null);
 
         JSONObject root = new JSONObject();
         JSONArray flagsArray = new JSONArray();
@@ -1364,7 +1570,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         // Evaluate the flag
         Map<String, Object> context = buildContext("user-legacy-variant");
-        hashingProvider.getVariantValue("test-flag", "fallback", context);
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
 
         // Verify hash calls use legacy "variant" salt
         List<TestableHashingLocalFlagsProvider.HashCall> hashCalls = hashingProvider.getHashCalls();
