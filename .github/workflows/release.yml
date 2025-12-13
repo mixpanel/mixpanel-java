@@ -71,6 +71,9 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+        cd mixpanel-java-extension-jackson
+        mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+        cd ..
 
     - name: Set version from input
       id: set-version-input
@@ -80,15 +83,27 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+        cd mixpanel-java-extension-jackson
+        mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+        cd ..
 
-    - name: Run tests
+    - name: Run tests - Main SDK
       run: mvn clean test
+
+    - name: Run tests - Jackson Extension
+      run: |
+        cd mixpanel-java-extension-jackson
+        mvn clean test
+        cd ..
 
     - name: Deploy to Maven Central
       env:
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         mvn clean deploy -Dgpg.passphrase=$GPG_PASSPHRASE
+        cd mixpanel-java-extension-jackson
+        mvn clean deploy -Dgpg.passphrase=$GPG_PASSPHRASE
+        cd ..
 
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
@@ -98,7 +113,7 @@ jobs:
         script: |
           const releaseBody = `## Mixpanel Java SDK v${process.env.VERSION}
 
-          ### Maven
+          ### Maven - Main SDK
           \`\`\`xml
           <dependency>
               <groupId>com.mixpanel</groupId>
@@ -107,11 +122,21 @@ jobs:
           </dependency>
           \`\`\`
 
+          ### Maven - Jackson Extension (Optional)
+          \`\`\`xml
+          <dependency>
+              <groupId>com.mixpanel</groupId>
+              <artifactId>mixpanel-java-extension-jackson</artifactId>
+              <version>${process.env.VERSION}</version>
+          </dependency>
+          \`\`\`
+
           ### Changes
           See [CHANGELOG](https://github.com/mixpanel/mixpanel-java/blob/master/CHANGELOG.md) for details.
 
           ### Links
-          - [Maven Central](https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java/${process.env.VERSION})
+          - [Maven Central - Main SDK](https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java/${process.env.VERSION})
+          - [Maven Central - Jackson Extension](https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java-extension-jackson/${process.env.VERSION})
           - [JavaDoc](http://mixpanel.github.io/mixpanel-java/)`;
 
           await github.rest.repos.createRelease({
@@ -133,12 +158,24 @@ jobs:
     - name: Wait for Maven Central sync
       run: sleep 300  # Wait 5 minutes for synchronization
 
-    - name: Verify artifact on Maven Central
+    - name: Verify artifacts on Maven Central
       run: |
         VERSION=${{ needs.release.outputs.version }}
+        
+        # Verify main SDK
         RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://repo1.maven.org/maven2/com/mixpanel/mixpanel-java/${VERSION}/mixpanel-java-${VERSION}.jar)
         if [ $RESPONSE -eq 200 ]; then
-          echo "✅ Artifact successfully published to Maven Central"
+          echo "✅ Main SDK successfully published to Maven Central"
         else
-          echo "⚠️ Artifact not yet available on Maven Central (HTTP $RESPONSE). This is normal - it may take up to 30 minutes to appear."
+          echo "⚠️ Main SDK not yet available on Maven Central (HTTP $RESPONSE)"
         fi
+        
+        # Verify Jackson extension
+        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://repo1.maven.org/maven2/com/mixpanel/mixpanel-java-extension-jackson/${VERSION}/mixpanel-java-extension-jackson-${VERSION}.jar)
+        if [ $RESPONSE -eq 200 ]; then
+          echo "✅ Jackson extension successfully published to Maven Central"
+        else
+          echo "⚠️ Jackson extension not yet available on Maven Central (HTTP $RESPONSE)"
+        fi
+        
+        echo "Note: Artifacts may take up to 30 minutes to appear on Maven Central"

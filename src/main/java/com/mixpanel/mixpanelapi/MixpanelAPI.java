@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
-import org.json.JSONArray;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -25,7 +25,7 @@ import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.util.VersionUtil;
 import com.mixpanel.mixpanelapi.internal.JsonSerializer;
-import com.mixpanel.mixpanelapi.internal.SerializerFactory;
+import com.mixpanel.mixpanelapi.internal.OrgJsonSerializer;
 
 /**
  * Simple interface to the Mixpanel tracking API, intended for use in
@@ -43,16 +43,21 @@ public class MixpanelAPI implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(MixpanelAPI.class.getName());
     private static final int BUFFER_SIZE = 256; // Small, we expect small responses.
 
-    private static final int CONNECT_TIMEOUT_MILLIS = 2000;
-    private static final int READ_TIMEOUT_MILLIS = 10000;
+    private static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 2000;
+    private static final int DEFAULT_READ_TIMEOUT_MILLIS = 10000;
 
     protected final String mEventsEndpoint;
     protected final String mPeopleEndpoint;
     protected final String mGroupsEndpoint;
     protected final String mImportEndpoint;
     protected final boolean mUseGzipCompression;
+    protected final Integer mConnectTimeout;
+    protected final Integer mReadTimeout;
+    protected Integer mImportMaxMessageCount;
     protected final LocalFlagsProvider mLocalFlags;
     protected final RemoteFlagsProvider mRemoteFlags;
+    protected final JsonSerializer mJsonSerializer;
+    protected final OrgJsonSerializer mDefaultJsonSerializer;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -67,7 +72,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(Config.BASE_ENDPOINT + "/track", Config.BASE_ENDPOINT + "/engage", Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", useGzipCompression, null, null);
+        this(null, null, null, null, useGzipCompression, null, null, null, null, null, null);
     }
 
     /**
@@ -96,24 +101,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        mEventsEndpoint = Config.BASE_ENDPOINT + "/track";
-        mPeopleEndpoint = Config.BASE_ENDPOINT + "/engage";
-        mGroupsEndpoint = Config.BASE_ENDPOINT + "/groups";
-        mImportEndpoint = Config.BASE_ENDPOINT + "/import";
-        mUseGzipCompression = false;
-
-        if (localFlagsConfig != null) {
-            EventSender eventSender = createEventSender(localFlagsConfig, this);
-            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
-            mRemoteFlags = null;
-        } else if (remoteFlagsConfig != null) {
-            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
-            mLocalFlags = null;
-            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
-        } else {
-            mLocalFlags = null;
-            mRemoteFlags = null;
-        }
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null, null);
     }
 
     /**
@@ -126,7 +114,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, Config.BASE_ENDPOINT + "/groups", Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null, null);
     }
 
     /**
@@ -140,7 +128,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, Config.BASE_ENDPOINT + "/import", false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null, null);
     }
 
     /**
@@ -155,7 +143,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null, null);
     }
 
     /**
@@ -171,28 +159,87 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null, null);
     }
 
     /**
-     * Main constructor used by all other constructors.
+     * Constructs a MixpanelAPI object using a builder.
      *
-     * @param eventsEndpoint a URL that will accept Mixpanel events messages
-     * @param peopleEndpoint a URL that will accept Mixpanel people messages
-     * @param groupsEndpoint a URL that will accept Mixpanel groups messages
-     * @param importEndpoint a URL that will accept Mixpanel import messages
-     * @param useGzipCompression whether to use gzip compression for network requests
-     * @param localFlags optional LocalFlagsProvider for local feature flags (can be null)
-     * @param remoteFlags optional RemoteFlagsProvider for remote feature flags (can be null)
+     * @param builder the Builder instance containing configuration
      */
-    private MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression, LocalFlagsProvider localFlags, RemoteFlagsProvider remoteFlags) {
-        mEventsEndpoint = eventsEndpoint;
-        mPeopleEndpoint = peopleEndpoint;
-        mGroupsEndpoint = groupsEndpoint;
-        mImportEndpoint = importEndpoint;
+    private MixpanelAPI(Builder builder) {
+        this(
+            builder.eventsEndpoint,
+            builder.peopleEndpoint,
+            builder.groupsEndpoint,
+            builder.importEndpoint,
+            builder.useGzipCompression,
+            builder.flagsConfig instanceof LocalFlagsConfig ? (LocalFlagsConfig) builder.flagsConfig : null,
+            builder.flagsConfig instanceof RemoteFlagsConfig ? (RemoteFlagsConfig) builder.flagsConfig : null,
+            builder.jsonSerializer,
+            builder.connectTimeout,
+            builder.readTimeout,
+            builder.importMaxMessageCount
+        );
+    }
+
+    /**
+     * Main private constructor used by all other constructors.
+     *
+     * @param eventsEndpoint a URL that will accept Mixpanel events messages (null uses default)
+     * @param peopleEndpoint a URL that will accept Mixpanel people messages (null uses default)
+     * @param groupsEndpoint a URL that will accept Mixpanel groups messages (null uses default)
+     * @param importEndpoint a URL that will accept Mixpanel import messages (null uses default)
+     * @param useGzipCompression whether to use gzip compression for network requests
+     * @param localFlagsConfig configuration for local feature flags
+     * @param remoteFlagsConfig configuration for remote feature flags
+     * @param jsonSerializer custom JSON serializer (null uses default)
+     * @param connectTimeout connection timeout in milliseconds (null uses default)
+     * @param readTimeout read timeout in milliseconds (null uses default)
+     * @param importMaxMessageCount maximum messages per import batch (null uses default)
+     */
+    private MixpanelAPI(
+        String eventsEndpoint,
+        String peopleEndpoint,
+        String groupsEndpoint,
+        String importEndpoint,
+        boolean useGzipCompression,
+        LocalFlagsConfig localFlagsConfig,
+        RemoteFlagsConfig remoteFlagsConfig,
+        JsonSerializer jsonSerializer,
+        Integer connectTimeout,
+        Integer readTimeout,
+        Integer importMaxMessageCount
+    ) {
+        mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
+        mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
+        mGroupsEndpoint = groupsEndpoint != null ? groupsEndpoint : Config.BASE_ENDPOINT + "/groups";
+        mImportEndpoint = importEndpoint != null ? importEndpoint : Config.BASE_ENDPOINT + "/import";
         mUseGzipCompression = useGzipCompression;
-        mLocalFlags = localFlags;
-        mRemoteFlags = remoteFlags;
+        mConnectTimeout = connectTimeout != null ? connectTimeout : DEFAULT_CONNECT_TIMEOUT_MILLIS;
+        mReadTimeout = readTimeout != null ? readTimeout : DEFAULT_READ_TIMEOUT_MILLIS;
+        mImportMaxMessageCount = importMaxMessageCount != null ?
+                Math.min(importMaxMessageCount, Config.IMPORT_MAX_MESSAGE_SIZE) : Config.IMPORT_MAX_MESSAGE_SIZE;
+        mDefaultJsonSerializer = new OrgJsonSerializer();
+        if (jsonSerializer != null) {
+            logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
+            mJsonSerializer = jsonSerializer;
+        } else {
+            mJsonSerializer = mDefaultJsonSerializer;
+        }
+
+        if (localFlagsConfig != null) {
+            EventSender eventSender = createEventSender(localFlagsConfig, this);
+            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
+            mRemoteFlags = null;
+        } else if (remoteFlagsConfig != null) {
+            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
+            mLocalFlags = null;
+            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
+        } else {
+            mLocalFlags = null;
+            mRemoteFlags = null;
+        }
     }
 
     /**
@@ -230,14 +277,41 @@ public class MixpanelAPI implements AutoCloseable {
      * should be called in a separate thread or in a queue consumer.
      *
      * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param useIpAddress if true, Mixpanel will use the ip address of the request for geolocation
      * @throws IOException
      * @see ClientDelivery
      */
     public void deliver(ClientDelivery toSend, boolean useIpAddress) throws IOException {
-        String ipParameter = "ip=0";
-        if (useIpAddress) {
-            ipParameter = "ip=1";
-        }
+        DeliveryOptions options = new DeliveryOptions.Builder()
+            .useIpAddress(useIpAddress)
+            .build();
+        deliver(toSend, options);
+    }
+
+    /**
+     * Attempts to send a given delivery to the Mixpanel servers with custom options.
+     * Will block, possibly on multiple server requests. For most applications, this method
+     * should be called in a separate thread or in a queue consumer.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * DeliveryOptions options = new DeliveryOptions.Builder()
+     *     .importStrictMode(false)  // Disable strict validation for imports
+     *     .useIpAddress(true)       // Use IP address for geolocation (events/people/groups only)
+     *     .build();
+     *
+     * mixpanelApi.deliver(delivery, options);
+     * }</pre>
+     *
+     * @param toSend a ClientDelivery containing a number of Mixpanel messages
+     * @param options configuration options for delivery
+     * @throws IOException if there's a network error
+     * @throws MixpanelServerException if the server rejects the messages
+     * @see ClientDelivery
+     * @see DeliveryOptions
+     */
+    public void deliver(ClientDelivery toSend, DeliveryOptions options) throws IOException {
+        String ipParameter = options.useIpAddress() ? "ip=1" : "ip=0";
 
         String eventsUrl = mEventsEndpoint + "?" + ipParameter;
         List<JSONObject> events = toSend.getEventsMessages();
@@ -251,10 +325,10 @@ public class MixpanelAPI implements AutoCloseable {
         List<JSONObject> groupMessages = toSend.getGroupMessages();
         sendMessages(groupMessages, groupsUrl);
 
-        // Handle import messages - use strict mode and extract token for auth
         List<JSONObject> importMessages = toSend.getImportMessages();
         if (importMessages.size() > 0) {
-            String importUrl = mImportEndpoint + "?strict=1";
+            String strictParam = options.isImportStrictMode() ? "1" : "0";
+            String importUrl = mImportEndpoint + "?strict=" + strictParam;
             sendImportMessages(importMessages, importUrl);
         }
     }
@@ -282,8 +356,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
         URL endpoint = new URL(endpointUrl);
         URLConnection conn = endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeout);
+        conn.setConnectTimeout(mConnectTimeout);
         conn.setDoOutput(true);
 
         byte[] dataToSend;
@@ -387,10 +461,10 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Send messages in batches (max 2000 per batch for /import)
+        // Send messages in batches (max 2000 per batch for /import by default)
         // If token is empty, the server will reject with 401 Unauthorized
-        for (int i = 0; i < messages.size(); i += Config.IMPORT_MAX_MESSAGE_SIZE) {
-            int endIndex = i + Config.IMPORT_MAX_MESSAGE_SIZE;
+        for (int i = 0; i < messages.size(); i += mImportMaxMessageCount) {
+            int endIndex = i + mImportMaxMessageCount;
             endIndex = Math.min(endIndex, messages.size());
             List<JSONObject> batch = messages.subList(i, endIndex);
 
@@ -408,16 +482,11 @@ public class MixpanelAPI implements AutoCloseable {
 
     private String dataString(List<JSONObject> messages) {
         try {
-            JsonSerializer serializer = SerializerFactory.getInstance();
-            return serializer.serializeArray(messages);
+            return mJsonSerializer.serializeArray(messages);
         } catch (IOException e) {
             // Fallback to original implementation if serialization fails
             logger.log(Level.WARNING, "JSON serialization failed unexpectedly; falling back to org.json implementation", e);
-            JSONArray array = new JSONArray();
-            for (JSONObject message:messages) {
-                array.put(message);
-            }
-            return array.toString();
+            return mDefaultJsonSerializer.serializeArray(messages);
         }
     }
 
@@ -437,8 +506,8 @@ public class MixpanelAPI implements AutoCloseable {
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
         URL endpoint = new URL(endpointUrl);
         HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
-        conn.setReadTimeout(READ_TIMEOUT_MILLIS);
-        conn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        conn.setReadTimeout(mReadTimeout);
+        conn.setConnectTimeout(mConnectTimeout);
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
@@ -500,7 +569,7 @@ public class MixpanelAPI implements AutoCloseable {
             responseStream = conn.getInputStream();
             response = slurp(responseStream);
         } catch (IOException e) {
-            // HTTP error codes (401, 400, etc.) throw IOException when calling getInputStream()
+            // HTTP error codes (401, 400, 413, etc.) throw IOException when calling getInputStream()
             // Check if it's an HTTP error and read the error stream for details
             InputStream errorStream = conn.getErrorStream();
             if (errorStream != null) {
@@ -525,12 +594,24 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        // Import endpoint returns JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // Import endpoint returns different formats depending on strict mode:
+        // - strict=1: JSON like {"code":200,"status":"OK","num_records_imported":N}
+        // - strict=0: Plain text "0" (not imported) or "1" (imported)
         if (response == null) {
             return false;
         }
 
-        // Parse JSON response
+        // First, try to handle strict=0 response format (plain text "0" or "1")
+        String trimmedResponse = response.trim();
+        if ("1".equals(trimmedResponse)) {
+            // strict=0 with successful import
+            return true;
+        } else if ("0".equals(trimmedResponse)) {
+            // strict=0 with failed import (events not imported, reason unknown)
+            return false;
+        }
+
+        // Try to parse as JSON response (strict=1 format)
         try {
             JSONObject jsonResponse = new JSONObject(response);
 
@@ -604,6 +685,160 @@ public class MixpanelAPI implements AutoCloseable {
     public void close() {
         if (mLocalFlags != null) {
             mLocalFlags.close();
+        }
+    }
+
+    /**
+     * Builder class for constructing a MixpanelAPI instance with optional configuration.
+     * 
+     * <p>The Builder pattern provides a flexible way to configure MixpanelAPI with various
+     * options including custom endpoints, gzip compression, feature flags, and JSON serializers.</p>
+     *
+     * @since 1.6.1
+     */
+    public static class Builder {
+        private String eventsEndpoint;
+        private String peopleEndpoint;
+        private String groupsEndpoint;
+        private String importEndpoint;
+        private boolean useGzipCompression;
+        private BaseFlagsConfig flagsConfig;
+        private JsonSerializer jsonSerializer;
+        private Integer connectTimeout;
+        private Integer readTimeout;
+        private Integer importMaxMessageCount;
+
+        /**
+         * Sets the endpoint URL for Mixpanel events messages.
+         *
+         * @param eventsEndpoint the URL that will accept Mixpanel events messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder eventsEndpoint(String eventsEndpoint) {
+            this.eventsEndpoint = eventsEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel people messages.
+         *
+         * @param peopleEndpoint the URL that will accept Mixpanel people messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder peopleEndpoint(String peopleEndpoint) {
+            this.peopleEndpoint = peopleEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel groups messages.
+         *
+         * @param groupsEndpoint the URL that will accept Mixpanel groups messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder groupsEndpoint(String groupsEndpoint) {
+            this.groupsEndpoint = groupsEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets the endpoint URL for Mixpanel import messages.
+         *
+         * @param importEndpoint the URL that will accept Mixpanel import messages
+         * @return this Builder instance for method chaining
+         */
+        public Builder importEndpoint(String importEndpoint) {
+            this.importEndpoint = importEndpoint;
+            return this;
+        }
+
+        /**
+         * Sets whether to use gzip compression for network requests.
+         *
+         * @param useGzipCompression true to enable gzip compression, false otherwise
+         * @return this Builder instance for method chaining
+         */
+        public Builder useGzipCompression(boolean useGzipCompression) {
+            this.useGzipCompression = useGzipCompression;
+            return this;
+        }
+
+        /**
+         * Sets the configuration for feature flags evaluation.
+         * Accepts either LocalFlagsConfig or RemoteFlagsConfig.
+         *
+         * @param flagsConfig configuration for feature flags evaluation
+         * @return this Builder instance for method chaining
+         */
+        public Builder flagsConfig(BaseFlagsConfig flagsConfig) {
+            this.flagsConfig = flagsConfig;
+            return this;
+        }
+
+        /**
+         * Sets a custom JSON serializer for message serialization.
+         *
+         * @param jsonSerializer custom JSON serializer implementation
+         * @return this Builder instance for method chaining
+         */
+        public Builder jsonSerializer(JsonSerializer jsonSerializer) {
+            this.jsonSerializer = jsonSerializer;
+            return this;
+        }
+
+        /**
+         * Sets the connect timeout for Mixpanel network requests
+         *
+         * @param connectTimeoutInMillis connection timeout in milliseconds.
+         *                               Value must be 0 or larger.
+         *                               0 indicates indefinite (no) timeout.
+         * @return this Builder instance for method chaining
+         */
+        public Builder connectTimeout(int connectTimeoutInMillis) {
+            if (connectTimeoutInMillis >= 0) {
+                this.connectTimeout = connectTimeoutInMillis;
+            }
+            return this;
+        }
+
+        /**
+         * Sets the read timeout for Mixpanel network requests
+         *
+         * @param readTimeoutInMillis read timeout in milliseconds.
+         *                            Value must be 0 or larger.
+         *                            0 indicates indefinite (no) timeout.
+         * @return this Builder instance for method chaining
+         */
+        public Builder readTimeout(int readTimeoutInMillis) {
+            if (readTimeoutInMillis >= 0) {
+                this.readTimeout = readTimeoutInMillis;
+            }
+            return this;
+        }
+
+        /**
+         * Sets the maximum number of messages to include in a single batch for the /import endpoint.
+         * The default value is 2000 messages per batch.
+         * The max accepted value is 2000
+         *
+         * @param importMaxMessageCount the maximum number of import messages per batch.
+         *                              Value must be greater than 0 and less than or equal to 2000.
+         * @return this Builder instance for method chaining
+         */
+        public Builder importMaxMessageCount(int importMaxMessageCount) {
+            if (importMaxMessageCount > 0 && importMaxMessageCount <= Config.IMPORT_MAX_MESSAGE_SIZE) {
+                this.importMaxMessageCount = importMaxMessageCount;
+            }
+            return this;
+        }
+
+        /**
+         * Builds and returns a new MixpanelAPI instance with the configured settings.
+         *
+         * @return a new MixpanelAPI instance
+         */
+        public MixpanelAPI build() {
+            return new MixpanelAPI(this);
         }
     }
 

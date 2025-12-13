@@ -5,10 +5,8 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
 
@@ -17,12 +15,15 @@ import java.util.List;
  * This implementation provides significant performance improvements for large batches
  * while maintaining compatibility with org.json JSONObjects.
  *
- * @since 1.6.0
+ * @since 1.6.1
  */
 public class JacksonSerializer implements JsonSerializer {
 
     private final JsonFactory jsonFactory;
 
+    /**
+     * Constructs a new JacksonSerializer with default settings.
+     */
     public JacksonSerializer() {
         this.jsonFactory = new JsonFactory();
     }
@@ -38,24 +39,6 @@ public class JacksonSerializer implements JsonSerializer {
             writeJsonArray(generator, messages);
         }
         return writer.toString();
-    }
-
-    @Override
-    public byte[] serializeArrayToBytes(List<JSONObject> messages) throws IOException {
-        if (messages == null || messages.isEmpty()) {
-            return "[]".getBytes(StandardCharsets.UTF_8);
-        }
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (JsonGenerator generator = jsonFactory.createGenerator(outputStream)) {
-            writeJsonArray(generator, messages);
-        }
-        return outputStream.toByteArray();
-    }
-
-    @Override
-    public String getImplementationName() {
-        return "Jackson";
     }
 
     /**
