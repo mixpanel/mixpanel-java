@@ -87,8 +87,11 @@ jobs:
         mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
         cd ..
 
+    - name: Build and install Main SDK locally
+      run: mvn clean install -DskipTests
+
     - name: Run tests - Main SDK
-      run: mvn clean test
+      run: mvn test
 
     - name: Run tests - Jackson Extension
       run: |
