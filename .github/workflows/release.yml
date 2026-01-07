@@ -88,7 +88,7 @@ jobs:
         cd ..
 
     - name: Build and install Main SDK locally
-      run: mvn clean install -DskipTests
+      run: mvn clean install -DskipTests -Dgpg.skip=true
 
     - name: Run tests - Main SDK
       run: mvn test
