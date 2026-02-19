@@ -42,6 +42,9 @@ public class AiBotEntry {
 
     /** Tests whether the given user-agent string matches this bot's pattern. */
     public boolean matches(String userAgent) {
+        if (userAgent == null) {
+            return false;
+        }
         return mPattern.matcher(userAgent).find();
     }
 }

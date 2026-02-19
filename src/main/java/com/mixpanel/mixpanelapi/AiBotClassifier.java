@@ -85,7 +85,7 @@ public class AiBotClassifier {
         return AiBotClassification.noMatch();
     }
 
-    /** Returns an unmodifiable copy of the default bot database for inspection. */
+    /** Returns an unmodifiable view of the default bot database for inspection. */
     public static List<AiBotEntry> getBotDatabase() { return DEFAULT_BOT_DATABASE; }
 
     /**
@@ -105,6 +105,11 @@ public class AiBotClassifier {
         /** Adds multiple custom bot entries. Custom bots are checked before built-in bots. */
         public Builder addBots(List<AiBotEntry> entries) {
             if (entries == null) throw new IllegalArgumentException("entries must not be null");
+            for (AiBotEntry entry : entries) {
+                if (entry == null) {
+                    throw new IllegalArgumentException("entries must not contain null elements");
+                }
+            }
             mAdditionalBots.addAll(entries);
             return this;
         }
