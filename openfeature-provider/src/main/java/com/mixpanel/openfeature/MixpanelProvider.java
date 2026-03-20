@@ -12,15 +12,9 @@ import java.util.Map;
 public class MixpanelProvider implements FeatureProvider {
 
     private final BaseFlagsProvider<?> flagsProvider;
-    private volatile Map<String, Object> globalContext = new HashMap<>();
 
     public MixpanelProvider(BaseFlagsProvider<?> flagsProvider) {
         this.flagsProvider = flagsProvider;
-    }
-
-    @Override
-    public void initialize(EvaluationContext evaluationContext) throws Exception {
-        this.globalContext = convertContext(evaluationContext);
     }
 
     @Override
@@ -30,22 +24,22 @@ public class MixpanelProvider implements FeatureProvider {
 
     @Override
     public ProviderEvaluation<Boolean> getBooleanEvaluation(String key, Boolean defaultValue, EvaluationContext ctx) {
-        return evaluate(key, defaultValue, Boolean.class);
+        return evaluate(key, defaultValue, Boolean.class, ctx);
     }
 
     @Override
     public ProviderEvaluation<String> getStringEvaluation(String key, String defaultValue, EvaluationContext ctx) {
-        return evaluate(key, defaultValue, String.class);
+        return evaluate(key, defaultValue, String.class, ctx);
     }
 
     @Override
     public ProviderEvaluation<Integer> getIntegerEvaluation(String key, Integer defaultValue, EvaluationContext ctx) {
-        return evaluate(key, defaultValue, Integer.class);
+        return evaluate(key, defaultValue, Integer.class, ctx);
     }
 
     @Override
     public ProviderEvaluation<Double> getDoubleEvaluation(String key, Double defaultValue, EvaluationContext ctx) {
-        return evaluate(key, defaultValue, Double.class);
+        return evaluate(key, defaultValue, Double.class, ctx);
     }
 
     @Override
@@ -59,7 +53,7 @@ public class MixpanelProvider implements FeatureProvider {
 
         SelectedVariant<Object> result;
         try {
-            result = flagsProvider.getVariant(key, fallback, globalContext, true);
+            result = flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
         } catch (Exception e) {
             return ProviderEvaluation.<Value>builder()
                     .value(defaultValue)
@@ -91,7 +85,7 @@ public class MixpanelProvider implements FeatureProvider {
         // No-op
     }
 
-    private <T> ProviderEvaluation<T> evaluate(String key, T defaultValue, Class<T> expectedType) {
+    private <T> ProviderEvaluation<T> evaluate(String key, T defaultValue, Class<T> expectedType, EvaluationContext ctx) {
         ProviderEvaluation<T> notReadyResult = checkNotReady(defaultValue);
         if (notReadyResult != null) {
             return notReadyResult;
@@ -101,7 +95,7 @@ public class MixpanelProvider implements FeatureProvider {
 
         SelectedVariant<Object> result;
         try {
-            result = flagsProvider.getVariant(key, fallback, globalContext, true);
+            result = flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
         } catch (Exception e) {
             return ProviderEvaluation.<T>builder()
                     .value(defaultValue)
@@ -194,9 +188,13 @@ public class MixpanelProvider implements FeatureProvider {
         }
         if (value.isNumber()) {
             double d = value.asDouble();
-            if (d == Math.floor(d) && !Double.isInfinite(d)
-                    && d >= Long.MIN_VALUE && d <= Long.MAX_VALUE) {
-                return (long) d;
+            if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                if (d >= Integer.MIN_VALUE && d <= Integer.MAX_VALUE) {
+                    return (int) d;
+                }
+                if (d >= Long.MIN_VALUE && d <= Long.MAX_VALUE) {
+                    return (long) d;
+                }
             }
             return d;
         }

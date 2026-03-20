@@ -302,52 +302,47 @@ public class MixpanelProviderTest {
         assertEquals("ERROR", result.getReason());
     }
 
-    // Context handling — global context set via initialize(), not per-evaluation
+    // Context handling — merged context from ctx parameter is forwarded
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testInitializeSetsGlobalContext() throws Exception {
+    public void testPerEvaluationContextIsForwarded() {
         SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
 
-        Map<String, Value> attrs = new HashMap<>();
-        attrs.put("plan", new Value("pro"));
-        attrs.put("age", new Value(25));
-        provider.initialize(new ImmutableContext(attrs));
-
-        provider.getBooleanEvaluation("flag", false, new ImmutableContext());
-
-        Map<String, Object> captured = contextCaptor.getValue();
-        assertEquals("pro", captured.get("plan"));
-        assertEquals(25L, captured.get("age"));
-    }
-
-    @SuppressWarnings("unchecked")
-    @Test
-    public void testPerEvaluationContextIsIgnored() throws Exception {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
-        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
-        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
-                .thenReturn(variant);
-
-        Map<String, Value> globalAttrs = new HashMap<>();
-        globalAttrs.put("source", new Value("global"));
-        provider.initialize(new ImmutableContext(globalAttrs));
-
-        // Pass a different per-eval context — it should be ignored
         Map<String, Value> perEvalAttrs = new HashMap<>();
-        perEvalAttrs.put("source", new Value("per-eval"));
+        perEvalAttrs.put("plan", new Value("pro"));
+        perEvalAttrs.put("age", new Value(25));
         provider.getBooleanEvaluation("flag", false, new ImmutableContext(perEvalAttrs));
 
         Map<String, Object> captured = contextCaptor.getValue();
-        assertEquals("global", captured.get("source"));
+        assertEquals("pro", captured.get("plan"));
+        assertEquals(25, captured.get("age"));
     }
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testTargetingKeyIsRegularProperty() throws Exception {
+    public void testPerEvaluationContextIsForwardedForObjectEvaluation() {
+        Map<String, Object> objValue = new HashMap<>();
+        objValue.put("key", "value");
+        SelectedVariant<Object> variant = new SelectedVariant<>("v1", objValue, null, null, null);
+        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
+        when(mockFlagsProvider.getVariant(eq("obj-flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
+                .thenReturn(variant);
+
+        Map<String, Value> perEvalAttrs = new HashMap<>();
+        perEvalAttrs.put("source", new Value("per-eval"));
+        provider.getObjectEvaluation("obj-flag", new Value(), new ImmutableContext(perEvalAttrs));
+
+        Map<String, Object> captured = contextCaptor.getValue();
+        assertEquals("per-eval", captured.get("source"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testTargetingKeyIsRegularProperty() {
         SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
@@ -356,9 +351,7 @@ public class MixpanelProviderTest {
         Map<String, Value> attrs = new HashMap<>();
         attrs.put("targetingKey", new Value("tk-value"));
         attrs.put("distinct_id", new Value("user-123"));
-        provider.initialize(new ImmutableContext(attrs));
-
-        provider.getBooleanEvaluation("flag", false, new ImmutableContext());
+        provider.getBooleanEvaluation("flag", false, new ImmutableContext(attrs));
 
         Map<String, Object> captured = contextCaptor.getValue();
         // targetingKey should be passed as-is, not treated specially
@@ -455,6 +448,61 @@ public class MixpanelProviderTest {
 
         assertEquals(defaultValue, result.getValue());
         assertEquals(ErrorCode.GENERAL, result.getErrorCode());
+        assertEquals("ERROR", result.getReason());
+    }
+
+    // Variant key passthrough
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testVariantKeyPassedThroughOnBooleanEvaluation() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("my-variant", true, null, null, null);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(variant);
+
+        ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("flag", false, new ImmutableContext());
+
+        assertEquals("my-variant", result.getVariant());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testVariantKeyPassedThroughOnObjectEvaluation() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("obj-variant", "some-value", null, null, null);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(variant);
+
+        ProviderEvaluation<Value> result = provider.getObjectEvaluation("flag", new Value(), new ImmutableContext());
+
+        assertEquals("obj-variant", result.getVariant());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testNullVariantKeyTreatedAsFallbackOnBooleanEvaluation() {
+        SelectedVariant<Object> variant = new SelectedVariant<>(null, true, null, null, null);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(variant);
+
+        ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("flag", false, new ImmutableContext());
+
+        assertFalse(result.getValue());
+        assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
+        assertEquals("ERROR", result.getReason());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testNullVariantKeyTreatedAsFallbackOnObjectEvaluation() {
+        SelectedVariant<Object> variant = new SelectedVariant<>(null, "some-value", null, null, null);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(variant);
+
+        Value defaultValue = new Value("default");
+        ProviderEvaluation<Value> result = provider.getObjectEvaluation("flag", defaultValue, new ImmutableContext());
+
+        assertEquals(defaultValue, result.getValue());
+        assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
         assertEquals("ERROR", result.getReason());
     }
 
