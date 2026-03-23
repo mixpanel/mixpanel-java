@@ -228,4 +228,12 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     }
 
     // #endregion
+
+    /**
+     * Shuts down this provider and releases any resources.
+     * Subclasses should override this to perform cleanup.
+     */
+    public void shutdown() {
+        // No-op by default
+    }
 }

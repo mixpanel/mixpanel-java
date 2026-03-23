@@ -680,4 +680,9 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             stopPollingForDefinitions();
         }
     }
+
+    @Override
+    public void shutdown() {
+        close();
+    }
 }

@@ -82,7 +82,11 @@ public class MixpanelProvider implements FeatureProvider {
 
     @Override
     public void shutdown() {
-        // No-op
+        try {
+            flagsProvider.shutdown();
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     private <T> ProviderEvaluation<T> evaluate(String key, T defaultValue, Class<T> expectedType, EvaluationContext ctx) {
@@ -155,6 +159,12 @@ public class MixpanelProvider implements FeatureProvider {
             return targetType.cast(value);
         }
         if (targetType == Integer.class && value instanceof Number) {
+            if (value instanceof Double || value instanceof Float) {
+                double doubleVal = ((Number) value).doubleValue();
+                if (doubleVal != Math.floor(doubleVal)) {
+                    return null;
+                }
+            }
             long longVal = ((Number) value).longValue();
             if (longVal < Integer.MIN_VALUE || longVal > Integer.MAX_VALUE) {
                 return null;
