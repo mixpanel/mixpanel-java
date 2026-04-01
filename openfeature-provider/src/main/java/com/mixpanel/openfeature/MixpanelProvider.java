@@ -5,6 +5,8 @@ import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,35 +51,19 @@ public class MixpanelProvider implements FeatureProvider {
             return notReadyResult;
         }
 
-        SelectedVariant<Object> fallback = new SelectedVariant<>(null);
-
         SelectedVariant<Object> result;
         try {
-            result = flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
+            result = fetchVariant(key, ctx);
         } catch (Exception e) {
-            return ProviderEvaluation.<Value>builder()
-                    .value(defaultValue)
-                    .reason("ERROR")
-                    .errorCode(ErrorCode.GENERAL)
-                    .errorMessage(e.getMessage())
-                    .build();
+            return errorResult(defaultValue, ErrorCode.GENERAL, e.getMessage());
         }
 
         if (result.isFallback()) {
-            return ProviderEvaluation.<Value>builder()
-                    .value(defaultValue)
-                    .reason("ERROR")
-                    .errorCode(ErrorCode.FLAG_NOT_FOUND)
-                    .errorMessage("Flag not found: " + key)
-                    .build();
+            return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + key);
         }
 
         Value value = objectToValue(result.getVariantValue());
-        return ProviderEvaluation.<Value>builder()
-                .value(value)
-                .variant(result.getVariantKey())
-                .reason("STATIC")
-                .build();
+        return successResult(value, result.getVariantKey());
     }
 
     @Override
@@ -95,42 +81,44 @@ public class MixpanelProvider implements FeatureProvider {
             return notReadyResult;
         }
 
-        SelectedVariant<Object> fallback = new SelectedVariant<>(null);
-
         SelectedVariant<Object> result;
         try {
-            result = flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
+            result = fetchVariant(key, ctx);
         } catch (Exception e) {
-            return ProviderEvaluation.<T>builder()
-                    .value(defaultValue)
-                    .reason("ERROR")
-                    .errorCode(ErrorCode.GENERAL)
-                    .errorMessage(e.getMessage())
-                    .build();
+            return errorResult(defaultValue, ErrorCode.GENERAL, e.getMessage());
         }
 
         if (result.isFallback()) {
-            return ProviderEvaluation.<T>builder()
-                    .value(defaultValue)
-                    .reason("ERROR")
-                    .errorCode(ErrorCode.FLAG_NOT_FOUND)
-                    .errorMessage("Flag not found: " + key)
-                    .build();
+            return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + key);
         }
 
         T typedValue = coerce(result.getVariantValue(), expectedType);
         if (typedValue == null) {
-            return ProviderEvaluation.<T>builder()
-                    .value(defaultValue)
-                    .reason("ERROR")
-                    .errorCode(ErrorCode.TYPE_MISMATCH)
-                    .errorMessage("Expected " + expectedType.getSimpleName() + " but got " + result.getVariantValue().getClass().getSimpleName())
-                    .build();
+            return errorResult(defaultValue, ErrorCode.TYPE_MISMATCH,
+                    "Expected " + expectedType.getSimpleName() + " but got " + result.getVariantValue().getClass().getSimpleName());
         }
 
+        return successResult(typedValue, result.getVariantKey());
+    }
+
+    private SelectedVariant<Object> fetchVariant(String key, EvaluationContext ctx) {
+        SelectedVariant<Object> fallback = new SelectedVariant<>(null);
+        return flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
+    }
+
+    private <T> ProviderEvaluation<T> errorResult(T defaultValue, ErrorCode errorCode, String errorMessage) {
         return ProviderEvaluation.<T>builder()
-                .value(typedValue)
-                .variant(result.getVariantKey())
+                .value(defaultValue)
+                .reason("ERROR")
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+    }
+
+    private <T> ProviderEvaluation<T> successResult(T value, String variantKey) {
+        return ProviderEvaluation.<T>builder()
+                .value(value)
+                .variant(variantKey)
                 .reason("STATIC")
                 .build();
     }
@@ -139,12 +127,7 @@ public class MixpanelProvider implements FeatureProvider {
         if (flagsProvider instanceof LocalFlagsProvider) {
             LocalFlagsProvider localProvider = (LocalFlagsProvider) flagsProvider;
             if (!localProvider.areFlagsReady()) {
-                return ProviderEvaluation.<T>builder()
-                        .value(defaultValue)
-                        .reason("ERROR")
-                        .errorCode(ErrorCode.PROVIDER_NOT_READY)
-                        .errorMessage("Provider not ready")
-                        .build();
+                return errorResult(defaultValue, ErrorCode.PROVIDER_NOT_READY, "Provider not ready");
             }
         }
         return null;
@@ -217,7 +200,7 @@ public class MixpanelProvider implements FeatureProvider {
             for (int i = 0; i < list.size(); i++) {
                 arr[i] = unwrapValue(list.get(i));
             }
-            return java.util.Arrays.asList(arr);
+            return Arrays.asList(arr);
         }
         if (value.isStructure()) {
             Map<String, Value> struct = value.asStructure().asMap();
@@ -267,7 +250,7 @@ public class MixpanelProvider implements FeatureProvider {
         }
         if (obj instanceof List) {
             List<?> list = (List<?>) obj;
-            java.util.ArrayList<Value> values = new java.util.ArrayList<>();
+            ArrayList<Value> values = new ArrayList<>();
             for (Object item : list) {
                 values.add(objectToValue(item));
             }
