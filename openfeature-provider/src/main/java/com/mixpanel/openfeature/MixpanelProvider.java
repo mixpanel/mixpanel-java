@@ -165,6 +165,10 @@ public class MixpanelProvider implements FeatureProvider {
         if (ctx == null) {
             return context;
         }
+        String targetingKey = ctx.getTargetingKey();
+        if (targetingKey != null && !targetingKey.isEmpty()) {
+            context.put("targetingKey", targetingKey);
+        }
         for (String key : ctx.keySet()) {
             Value val = ctx.getValue(key);
             context.put(key, unwrapValue(val));
@@ -252,6 +256,14 @@ public class MixpanelProvider implements FeatureProvider {
             List<?> list = (List<?>) obj;
             ArrayList<Value> values = new ArrayList<>();
             for (Object item : list) {
+                values.add(objectToValue(item));
+            }
+            return new Value(values);
+        }
+        if (obj instanceof Object[]) {
+            Object[] arr = (Object[]) obj;
+            ArrayList<Value> values = new ArrayList<>();
+            for (Object item : arr) {
                 values.add(objectToValue(item));
             }
             return new Value(values);

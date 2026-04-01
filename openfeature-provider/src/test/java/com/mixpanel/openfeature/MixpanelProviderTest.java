@@ -359,6 +359,48 @@ public class MixpanelProviderTest {
         assertEquals("user-123", captured.get("distinct_id"));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testTargetingKeyFromGetTargetingKeyIsIncluded() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
+                .thenReturn(variant);
+
+        Map<String, Value> attrs = new HashMap<>();
+        attrs.put("distinct_id", new Value("user-123"));
+        attrs.put("plan", new Value("pro"));
+        // ImmutableContext(targetingKey, attributes) sets getTargetingKey() separately from keySet()
+        provider.getBooleanEvaluation("flag", false, new ImmutableContext("tk-from-constructor", attrs));
+
+        Map<String, Object> captured = contextCaptor.getValue();
+        assertEquals("tk-from-constructor", captured.get("targetingKey"));
+        assertEquals("user-123", captured.get("distinct_id"));
+        assertEquals("pro", captured.get("plan"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testExplicitTargetingKeyAttributeOverriddenByGetTargetingKey() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
+                .thenReturn(variant);
+
+        Map<String, Value> attrs = new HashMap<>();
+        attrs.put("targetingKey", new Value("from-attribute"));
+        attrs.put("distinct_id", new Value("user-123"));
+        // ImmutableContext merges the constructor targeting key into keySet(),
+        // so the constructor value takes precedence over an explicit attribute
+        provider.getBooleanEvaluation("flag", false, new ImmutableContext("from-constructor", attrs));
+
+        Map<String, Object> captured = contextCaptor.getValue();
+        // The SDK's ImmutableContext uses the constructor targeting key as the
+        // "targetingKey" entry in keySet(), overriding the explicit attribute
+        assertEquals("from-constructor", captured.get("targetingKey"));
+        assertEquals("user-123", captured.get("distinct_id"));
+    }
+
     // PROVIDER_NOT_READY
 
     @Test
