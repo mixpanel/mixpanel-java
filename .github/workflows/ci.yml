@@ -47,6 +47,43 @@ jobs:
         name: test-results-java-${{ matrix.java-version }}
         path: target/surefire-reports/
 
+  test-openfeature-provider:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: ['8', '11', '17', '21']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK ${{ matrix.java-version }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java-version }}
+        distribution: 'temurin'
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    - name: Install core library to local Maven repository
+      run: mvn install -DskipTests
+
+    - name: Run OpenFeature provider tests
+      run: cd openfeature-provider && mvn clean test
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: openfeature-test-results-java-${{ matrix.java-version }}
+        path: openfeature-provider/target/surefire-reports/
+
   code-quality:
     runs-on: ubuntu-latest
 
