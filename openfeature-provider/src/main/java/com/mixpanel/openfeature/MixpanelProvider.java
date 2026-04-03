@@ -5,6 +5,9 @@ import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -13,6 +16,7 @@ import java.util.Map;
 
 public class MixpanelProvider implements FeatureProvider {
 
+    private static final Logger logger = Logger.getLogger(MixpanelProvider.class.getName());
     private final BaseFlagsProvider<?> flagsProvider;
 
     public MixpanelProvider(BaseFlagsProvider<?> flagsProvider) {
@@ -46,24 +50,9 @@ public class MixpanelProvider implements FeatureProvider {
 
     @Override
     public ProviderEvaluation<Value> getObjectEvaluation(String key, Value defaultValue, EvaluationContext ctx) {
-        ProviderEvaluation<Value> notReadyResult = checkNotReady(defaultValue);
-        if (notReadyResult != null) {
-            return notReadyResult;
-        }
-
-        SelectedVariant<Object> result;
-        try {
-            result = fetchVariant(key, ctx);
-        } catch (Exception e) {
-            return errorResult(defaultValue, ErrorCode.GENERAL, e.getMessage());
-        }
-
-        if (result.isFallback()) {
-            return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + key);
-        }
-
-        Value value = objectToValue(result.getVariantValue());
-        return successResult(value, result.getVariantKey());
+        return evaluate(key, defaultValue, ctx,
+                result -> objectToValue(result.getVariantValue()),
+                "Expected Value");
     }
 
     @Override
@@ -71,11 +60,19 @@ public class MixpanelProvider implements FeatureProvider {
         try {
             flagsProvider.shutdown();
         } catch (Exception e) {
-            // ignore
+            logger.log(Level.WARNING, "Error shutting down Mixpanel flags provider", e);
         }
     }
 
     private <T> ProviderEvaluation<T> evaluate(String key, T defaultValue, Class<T> expectedType, EvaluationContext ctx) {
+        return evaluate(key, defaultValue, ctx,
+                result -> coerce(result.getVariantValue(), expectedType),
+                "Expected " + expectedType.getSimpleName());
+    }
+
+    private <T> ProviderEvaluation<T> evaluate(String key, T defaultValue, EvaluationContext ctx,
+                                                java.util.function.Function<SelectedVariant<Object>, T> mapper,
+                                                String typeDescription) {
         ProviderEvaluation<T> notReadyResult = checkNotReady(defaultValue);
         if (notReadyResult != null) {
             return notReadyResult;
@@ -92,13 +89,13 @@ public class MixpanelProvider implements FeatureProvider {
             return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + key);
         }
 
-        T typedValue = coerce(result.getVariantValue(), expectedType);
-        if (typedValue == null) {
+        T value = mapper.apply(result);
+        if (value == null) {
             return errorResult(defaultValue, ErrorCode.TYPE_MISMATCH,
-                    "Expected " + expectedType.getSimpleName() + " but got " + result.getVariantValue().getClass().getSimpleName());
+                    typeDescription + " but got " + result.getVariantValue().getClass().getSimpleName());
         }
 
-        return successResult(typedValue, result.getVariantKey());
+        return successResult(value, result.getVariantKey());
     }
 
     private SelectedVariant<Object> fetchVariant(String key, EvaluationContext ctx) {
