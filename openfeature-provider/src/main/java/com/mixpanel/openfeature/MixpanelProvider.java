@@ -1,5 +1,8 @@
 package com.mixpanel.openfeature;
 
+import com.mixpanel.mixpanelapi.MixpanelAPI;
+import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
@@ -18,9 +21,50 @@ public class MixpanelProvider implements FeatureProvider {
 
     private static final Logger logger = Logger.getLogger(MixpanelProvider.class.getName());
     private final BaseFlagsProvider<?> flagsProvider;
+    private final MixpanelAPI mixpanel;
 
     public MixpanelProvider(BaseFlagsProvider<?> flagsProvider) {
         this.flagsProvider = flagsProvider;
+        this.mixpanel = null;
+    }
+
+    /**
+     * Constructs a MixpanelProvider with local feature flags evaluation.
+     * Creates a MixpanelAPI instance, extracts the local flags provider,
+     * and automatically starts polling for flag definitions.
+     *
+     * @param token the Mixpanel project token (unused, token is read from config)
+     * @param config configuration for local feature flags evaluation
+     */
+    public MixpanelProvider(String token, LocalFlagsConfig config) {
+        MixpanelAPI api = new MixpanelAPI(config);
+        this.mixpanel = api;
+        LocalFlagsProvider localFlags = api.getLocalFlags();
+        localFlags.startPollingForDefinitions();
+        this.flagsProvider = localFlags;
+    }
+
+    /**
+     * Constructs a MixpanelProvider with remote feature flags evaluation.
+     * Creates a MixpanelAPI instance and extracts the remote flags provider.
+     *
+     * @param token the Mixpanel project token (unused, token is read from config)
+     * @param config configuration for remote feature flags evaluation
+     */
+    public MixpanelProvider(String token, RemoteFlagsConfig config) {
+        MixpanelAPI api = new MixpanelAPI(config);
+        this.mixpanel = api;
+        this.flagsProvider = api.getRemoteFlags();
+    }
+
+    /**
+     * Returns the MixpanelAPI instance used by this provider, or null if the provider
+     * was constructed directly with a BaseFlagsProvider.
+     *
+     * @return the MixpanelAPI instance, or null
+     */
+    public MixpanelAPI getMixpanel() {
+        return mixpanel;
     }
 
     @Override
