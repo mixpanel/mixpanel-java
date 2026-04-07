@@ -148,9 +148,10 @@ public class MixpanelProvider implements FeatureProvider {
     }
 
     private <T> ProviderEvaluation<T> errorResult(T defaultValue, ErrorCode errorCode, String errorMessage) {
+        String reason = errorCode == ErrorCode.FLAG_NOT_FOUND ? "DEFAULT" : "ERROR";
         return ProviderEvaluation.<T>builder()
                 .value(defaultValue)
-                .reason("ERROR")
+                .reason(reason)
                 .errorCode(errorCode)
                 .errorMessage(errorMessage)
                 .build();
@@ -160,7 +161,7 @@ public class MixpanelProvider implements FeatureProvider {
         return ProviderEvaluation.<T>builder()
                 .value(value)
                 .variant(variantKey)
-                .reason("STATIC")
+                .reason("TARGETING_MATCH")
                 .build();
     }
 

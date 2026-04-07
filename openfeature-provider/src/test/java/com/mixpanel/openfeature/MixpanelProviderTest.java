@@ -49,7 +49,7 @@ public class MixpanelProviderTest {
 
         assertTrue(result.getValue());
         assertEquals("on", result.getVariant());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -78,7 +78,7 @@ public class MixpanelProviderTest {
 
         assertFalse(result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     // String evaluation
@@ -94,7 +94,7 @@ public class MixpanelProviderTest {
 
         assertEquals("blue", result.getValue());
         assertEquals("blue", result.getVariant());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -123,7 +123,7 @@ public class MixpanelProviderTest {
 
         assertEquals("fallback", result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     // Integer evaluation
@@ -139,7 +139,7 @@ public class MixpanelProviderTest {
 
         assertEquals(Integer.valueOf(42), result.getValue());
         assertEquals("v1", result.getVariant());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -153,7 +153,7 @@ public class MixpanelProviderTest {
         ProviderEvaluation<Integer> result = provider.getIntegerEvaluation("int-flag", 0, new ImmutableContext());
 
         assertEquals(Integer.valueOf(42), result.getValue());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
     }
 
     @SuppressWarnings("unchecked")
@@ -166,7 +166,7 @@ public class MixpanelProviderTest {
         ProviderEvaluation<Integer> result = provider.getIntegerEvaluation("int-flag", 0, new ImmutableContext());
 
         assertEquals(Integer.valueOf(42), result.getValue());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
     }
 
     @SuppressWarnings("unchecked")
@@ -194,7 +194,7 @@ public class MixpanelProviderTest {
 
         assertEquals(Integer.valueOf(99), result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     @SuppressWarnings("unchecked")
@@ -223,7 +223,7 @@ public class MixpanelProviderTest {
 
         assertEquals(Double.valueOf(3.14), result.getValue());
         assertEquals("v1", result.getVariant());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -237,7 +237,7 @@ public class MixpanelProviderTest {
         ProviderEvaluation<Double> result = provider.getDoubleEvaluation("double-flag", 0.0, new ImmutableContext());
 
         assertEquals(Double.valueOf(42.0), result.getValue());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
     }
 
     @SuppressWarnings("unchecked")
@@ -265,7 +265,7 @@ public class MixpanelProviderTest {
 
         assertEquals(Double.valueOf(9.9), result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     // Object evaluation
@@ -283,7 +283,7 @@ public class MixpanelProviderTest {
 
         assertNotNull(result.getValue());
         assertEquals("v1", result.getVariant());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -299,7 +299,7 @@ public class MixpanelProviderTest {
 
         assertEquals(defaultValue, result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     // Context handling — merged context from ctx parameter is forwarded
@@ -443,7 +443,7 @@ public class MixpanelProviderTest {
         ProviderEvaluation<Boolean> result = localProvider.getBooleanEvaluation("flag", false, new ImmutableContext());
 
         assertTrue(result.getValue());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -458,7 +458,7 @@ public class MixpanelProviderTest {
         ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("flag", false, new ImmutableContext());
 
         assertTrue(result.getValue());
-        assertEquals("STATIC", result.getReason());
+        assertEquals("TARGETING_MATCH", result.getReason());
         assertNull(result.getErrorCode());
     }
 
@@ -530,7 +530,7 @@ public class MixpanelProviderTest {
 
         assertFalse(result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     @SuppressWarnings("unchecked")
@@ -545,7 +545,7 @@ public class MixpanelProviderTest {
 
         assertEquals(defaultValue, result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
-        assertEquals("ERROR", result.getReason());
+        assertEquals("DEFAULT", result.getReason());
     }
 
     // Shutdown
