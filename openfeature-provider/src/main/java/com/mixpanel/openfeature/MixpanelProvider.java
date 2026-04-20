@@ -7,6 +7,8 @@ import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
 import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -263,6 +265,9 @@ public class MixpanelProvider implements FeatureProvider {
         if (obj == null) {
             return new Value();
         }
+        if (obj == JSONObject.NULL) {
+            return new Value();
+        }
         if (obj instanceof Boolean) {
             return new Value((Boolean) obj);
         }
@@ -307,6 +312,22 @@ public class MixpanelProvider implements FeatureProvider {
             ArrayList<Value> values = new ArrayList<>();
             for (Object item : arr) {
                 values.add(objectToValue(item));
+            }
+            return new Value(values);
+        }
+        if (obj instanceof JSONObject) {
+            JSONObject json = (JSONObject) obj;
+            Map<String, Value> structure = new HashMap<>();
+            for (String key : json.keySet()) {
+                structure.put(key, objectToValue(json.get(key)));
+            }
+            return new Value(new ImmutableStructure(structure));
+        }
+        if (obj instanceof JSONArray) {
+            JSONArray arr = (JSONArray) obj;
+            ArrayList<Value> values = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                values.add(objectToValue(arr.get(i)));
             }
             return new Value(values);
         }
