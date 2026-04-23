@@ -4,6 +4,8 @@
 [![OpenFeature](https://img.shields.io/badge/OpenFeature-compatible-green)](https://openfeature.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/mixpanel/mixpanel-java/blob/master/LICENSE)
 
+##### _April 22, 2026_ - [openfeature/v0.1.1](https://github.com/mixpanel/mixpanel-java/releases/tag/openfeature/v0.1.1)
+
 An [OpenFeature](https://openfeature.dev/) provider that integrates Mixpanel's feature flags with the OpenFeature Java SDK. This allows you to use Mixpanel's feature flagging capabilities through OpenFeature's standardized, vendor-agnostic API.
 
 ## Overview
