@@ -1,0 +1,170 @@
+name: Publish Snapshots to Maven Central
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  list-modules:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.modules.outputs.list }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/modules.json
+          sparse-checkout-cone-mode: false
+
+      - name: List modules
+        id: modules
+        run: echo "list=$(jq -c 'keys' .github/modules.json)" >> "$GITHUB_OUTPUT"
+
+  publish-snapshot:
+    needs: list-modules
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.list-modules.outputs.modules) }}
+    concurrency:
+      group: ${{ matrix.module }}-snapshot-publish
+      cancel-in-progress: true
+    name: "Publish ${{ matrix.module }} snapshot"
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Validate secrets
+        run: |
+          missing=""
+          if [ -z "${{ secrets.MAVEN_CENTRAL_USERNAME }}" ]; then missing="$missing MAVEN_CENTRAL_USERNAME"; fi
+          if [ -z "${{ secrets.MAVEN_CENTRAL_TOKEN }}" ]; then missing="$missing MAVEN_CENTRAL_TOKEN"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Resolve module config
+        id: config
+        env:
+          MODULE: ${{ matrix.module }}
+        run: |
+          MODULE_CONFIG=$(jq -e --arg m "$MODULE" '.[$m]' .github/modules.json)
+          echo "poms=$(echo "$MODULE_CONFIG" | jq -c '.poms')" >> "$GITHUB_OUTPUT"
+          echo "prerequisite_poms=$(echo "$MODULE_CONFIG" | jq -c '.prerequisite_poms // []')" >> "$GITHUB_OUTPUT"
+          echo "primary_artifact_id=$(echo "$MODULE_CONFIG" | jq -r '.artifact_ids[0]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Configure Maven settings
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << EOF
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${MAVEN_CENTRAL_USERNAME}</username>
+                <password>${MAVEN_CENTRAL_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Compute snapshot version
+        id: snapshot
+        env:
+          POMS: ${{ steps.config.outputs.poms }}
+        run: |
+          PRIMARY=$(echo "$POMS" | jq -r '.[0]')
+          PRIMARY_DIR=$(dirname "$PRIMARY")
+          CURRENT=$(cd "$PRIMARY_DIR" && mvn -q -B help:evaluate -Dexpression=project.version -DforceStdout)
+
+          if [[ "$CURRENT" == *-SNAPSHOT ]]; then
+            SNAPSHOT_VERSION="$CURRENT"
+          else
+            BASE="${CURRENT%%-*}"
+            IFS='.' read -r MAJ MIN PATCH <<< "$BASE"
+            SNAPSHOT_VERSION="${MAJ}.${MIN}.$((PATCH + 1))-SNAPSHOT"
+          fi
+
+          echo "version=$SNAPSHOT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set snapshot version on module poms
+        env:
+          SNAPSHOT_VERSION: ${{ steps.snapshot.outputs.version }}
+          POMS: ${{ steps.config.outputs.poms }}
+        run: |
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -q -B versions:set -DnewVersion="$SNAPSHOT_VERSION" -DgenerateBackupPoms=false)
+          done
+
+      - name: Install prerequisite modules locally
+        env:
+          PREREQS: ${{ steps.config.outputs.prerequisite_poms }}
+        run: |
+          for pom in $(echo "$PREREQS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.skip=true)
+          done
+
+      - name: Deploy snapshots to Maven Central
+        env:
+          POMS: ${{ steps.config.outputs.poms }}
+        run: |
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B clean deploy -DskipTests -Dgpg.skip=true)
+          done
+
+      - name: Summary
+        env:
+          MODULE: ${{ matrix.module }}
+          SNAPSHOT_VERSION: ${{ steps.snapshot.outputs.version }}
+          ARTIFACT_ID: ${{ steps.config.outputs.primary_artifact_id }}
+        run: |
+          {
+            echo "## ${MODULE} Snapshot Published"
+            echo ""
+            echo "Version **${SNAPSHOT_VERSION}** of \`${ARTIFACT_ID}\` (and any sibling artifacts in this module) has been published to Maven Central Snapshots."
+            echo ""
+            echo "### Usage"
+            echo '```xml'
+            echo "<repositories>"
+            echo "  <repository>"
+            echo "    <id>central-snapshots</id>"
+            echo "    <url>https://central.sonatype.com/repository/maven-snapshots/</url>"
+            echo "    <snapshots><enabled>true</enabled></snapshots>"
+            echo "  </repository>"
+            echo "</repositories>"
+            echo ""
+            echo "<dependency>"
+            echo "  <groupId>com.mixpanel</groupId>"
+            echo "  <artifactId>${ARTIFACT_ID}</artifactId>"
+            echo "  <version>${SNAPSHOT_VERSION}</version>"
+            echo "</dependency>"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY

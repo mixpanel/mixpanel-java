@@ -1,0 +1,30 @@
+{
+  "analytics": {
+    "tag_prefix": "v",
+    "poms": [
+      "pom.xml",
+      "mixpanel-java-extension-jackson/pom.xml"
+    ],
+    "prerequisite_poms": [],
+    "changelog": "CHANGELOG.md",
+    "readme": "README.md",
+    "artifact_ids": [
+      "mixpanel-java",
+      "mixpanel-java-extension-jackson"
+    ]
+  },
+  "openfeature": {
+    "tag_prefix": "openfeature/v",
+    "poms": [
+      "openfeature-provider/pom.xml"
+    ],
+    "prerequisite_poms": [
+      "pom.xml"
+    ],
+    "changelog": "openfeature-provider/CHANGELOG.md",
+    "readme": "openfeature-provider/README.md",
+    "artifact_ids": [
+      "mixpanel-java-openfeature"
+    ]
+  }
+}

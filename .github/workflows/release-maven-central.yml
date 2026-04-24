@@ -1,0 +1,199 @@
+name: Publish Release to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to publish (must match a key in .github/modules.json)'
+        required: true
+        type: string
+        default: 'analytics'
+      confirm_version:
+        description: 'Confirm the version to publish (must match the <version> in every module pom)'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to publish (branch, tag, or SHA). Leave empty for the default branch.'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: ${{ inputs.module }}-maven-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: "Publish ${{ inputs.module }} to Maven Central"
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Validate secrets
+        run: |
+          missing=""
+          if [ -z "${{ secrets.MAVEN_CENTRAL_USERNAME }}" ]; then missing="$missing MAVEN_CENTRAL_USERNAME"; fi
+          if [ -z "${{ secrets.MAVEN_CENTRAL_TOKEN }}" ]; then missing="$missing MAVEN_CENTRAL_TOKEN"; fi
+          if [ -z "${{ secrets.GPG_PRIVATE_KEY }}" ]; then missing="$missing GPG_PRIVATE_KEY"; fi
+          if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then missing="$missing GPG_PASSPHRASE"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+          echo "All required secrets are configured"
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve module config
+        id: module
+        env:
+          MODULE: ${{ inputs.module }}
+          CONFIRM_VERSION: ${{ inputs.confirm_version }}
+        run: |
+          if ! [[ "$CONFIRM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: $CONFIRM_VERSION"
+            exit 1
+          fi
+          MODULE_CONFIG=$(jq -e --arg m "$MODULE" '.[$m]' .github/modules.json) || {
+            echo "::error::Unknown module '$MODULE'. Valid modules: $(jq -r 'keys | join(", ")' .github/modules.json)"
+            exit 1
+          }
+          TAG_PREFIX=$(echo "$MODULE_CONFIG" | jq -r '.tag_prefix')
+          echo "tag=${TAG_PREFIX}${CONFIRM_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "poms=$(echo "$MODULE_CONFIG" | jq -c '.poms')" >> "$GITHUB_OUTPUT"
+          echo "prerequisite_poms=$(echo "$MODULE_CONFIG" | jq -c '.prerequisite_poms // []')" >> "$GITHUB_OUTPUT"
+          echo "changelog=$(echo "$MODULE_CONFIG" | jq -r '.changelog')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Validate pom versions
+        env:
+          CONFIRM_VERSION: ${{ inputs.confirm_version }}
+          POMS: ${{ steps.module.outputs.poms }}
+        run: |
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            POM_VERSION=$(cd "$DIR" && mvn -q -B help:evaluate -Dexpression=project.version -DforceStdout)
+            if [ "$CONFIRM_VERSION" != "$POM_VERSION" ]; then
+              echo "::error::Input version '$CONFIRM_VERSION' does not match $pom version '$POM_VERSION'"
+              exit 1
+            fi
+          done
+          echo "Version confirmed: $CONFIRM_VERSION"
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          echo "allow-preset-passphrase" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpg --list-secret-keys --keyid-format LONG
+
+      - name: Configure Maven settings
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << EOF
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${MAVEN_CENTRAL_USERNAME}</username>
+                <password>${MAVEN_CENTRAL_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Install prerequisite modules locally
+        env:
+          PREREQS: ${{ steps.module.outputs.prerequisite_poms }}
+        run: |
+          for pom in $(echo "$PREREQS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.skip=true)
+          done
+
+      - name: Test all modules
+        env:
+          POMS: ${{ steps.module.outputs.poms }}
+        run: |
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B clean test)
+          done
+
+      - name: Install module poms locally
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          POMS: ${{ steps.module.outputs.poms }}
+        run: |
+          # Install in order so sibling poms in this module can resolve each other from the local repo
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE)
+          done
+
+      - name: Deploy to Maven Central staging
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          POMS: ${{ steps.module.outputs.poms }}
+        run: |
+          for pom in $(echo "$POMS" | jq -r '.[]'); do
+            DIR=$(dirname "$pom")
+            (cd "$DIR" && mvn -B deploy -DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE)
+          done
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.module.outputs.tag }}
+          CHANGELOG: ${{ steps.module.outputs.changelog }}
+          TARGET_REF: ${{ inputs.ref }}
+        run: |
+          NOTES=$(sed -n "/^## \[${TAG}\]/,/^## \[/{/^## \[${TAG}\]/d;/^## \[/d;p;}" "$CHANGELOG")
+
+          ARGS=(--draft --title "$TAG" --notes "$NOTES")
+          if [ -n "$TARGET_REF" ]; then
+            ARGS+=(--target "$TARGET_REF")
+          fi
+
+          gh release create "$TAG" "${ARGS[@]}"
+
+      - name: Summary
+        env:
+          MODULE: ${{ inputs.module }}
+          CONFIRM_VERSION: ${{ inputs.confirm_version }}
+        run: |
+          {
+            echo "## ${MODULE} Publishing Summary"
+            echo ""
+            echo "Version **${CONFIRM_VERSION}** of \`mixpanel-java\` and \`mixpanel-java-extension-jackson\` has been staged to Maven Central."
+            echo ""
+            echo "### Next Steps"
+            echo "1. Go to [Maven Central Portal](https://central.sonatype.com/publishing/deployments)"
+            echo "2. Review the staged artifacts (one bundle per module)"
+            echo "3. Click **Publish** on each to make the release live"
+            echo "4. Review and publish the [draft GitHub release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases) — publishing creates the git tag"
+          } >> $GITHUB_STEP_SUMMARY

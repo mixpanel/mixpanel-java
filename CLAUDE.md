@@ -6,40 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the official Mixpanel tracking library for Java - a production-ready library for sending analytics events and user profile updates to Mixpanel from Java server-side applications.
 
-## Release Process
-
-### Quick Commands for Releases
-
-```bash
-# 1. Update version (remove -SNAPSHOT from pom.xml)
-mvn versions:set -DnewVersion=1.5.4
-
-# 2. Run tests
-mvn clean test
-
-# 3. Deploy to Maven Central Portal
-mvn clean deploy
-
-# 4. After release, prepare next version
-mvn versions:set -DnewVersion=1.5.5-SNAPSHOT
-```
-
-### Key Files
-- **RELEASE.md**: Complete release documentation with step-by-step instructions
-- **.github/workflows/release.yml**: Automated release workflow triggered by version tags
-- **.github/workflows/ci.yml**: Continuous integration for all PRs and master commits
-
-### Maven Central Portal
-- The project uses the new Maven Central Portal (not the deprecated OSSRH)
-- Deployments are visible at: https://central.sonatype.com/publishing/deployments
-- Published artifacts: https://central.sonatype.com/artifact/com.mixpanel/mixpanel-java
-
-### Required GitHub Secrets for CI/CD
-- `GPG_PRIVATE_KEY`: Base64-encoded GPG private key
-- `GPG_PASSPHRASE`: GPG key passphrase
-- `MAVEN_CENTRAL_USERNAME`: Maven Central Portal username
-- `MAVEN_CENTRAL_TOKEN`: Maven Central Portal token
-
 ## Build and Development Commands
 
 ```bash
