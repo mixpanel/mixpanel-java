@@ -164,7 +164,7 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @return the selected variant value or fallback
      */
     public <T> T getVariantValue(String flagKey, T fallbackValue, Map<String, Object> context) {
-        SelectedVariant<T> fallback = new SelectedVariant<>(fallbackValue);
+        SelectedVariant<T> fallback = new SelectedVariant<>(flagKey, null, fallbackValue, null, null, null);
         SelectedVariant<T> result = getVariant(flagKey, fallback, context, true);
         return result.getVariantValue();
     }
@@ -181,7 +181,8 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @return true if the variant value is exactly Boolean true, false otherwise
      */
     public boolean isEnabled(String flagKey, Map<String, Object> context) {
-        SelectedVariant<Object> result = getVariant(flagKey, new SelectedVariant<>(false), context, true);
+        SelectedVariant<Object> fallback = new SelectedVariant<>(flagKey, null, false, null, null, null);
+        SelectedVariant<Object> result = getVariant(flagKey, fallback, context, true);
         Object value = result.getVariantValue();
 
         return value instanceof Boolean && (Boolean) value;

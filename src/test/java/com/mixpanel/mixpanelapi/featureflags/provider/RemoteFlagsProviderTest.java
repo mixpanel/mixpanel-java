@@ -178,6 +178,21 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(0, eventSender.getEvents().size());
     }
 
+    @Test
+    public void testReturnedFallbackHasFlagKeyPopulated() {
+        // Response contains a different flag, so the requested flag triggers the miss path
+        String response = buildRemoteFlagsResponse("other-flag", "variant-a", "value-a");
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("missing-flag", fallback, context, false);
+
+        assertTrue(result.isFallback());
+        assertEquals("fallback", result.getVariantValue());
+        assertEquals("missing-flag", result.getFlagKey());
+    }
+
     // #endregion
 
     // #region Successful Variant Retrieval Tests

@@ -338,7 +338,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
             if (flag == null) {
                 logger.log(Level.WARNING, "Flag not found: " + flagKey);
-                return fallback;
+                return fallback.withFlagKey(flagKey);
             }
 
             // Extract context value
@@ -346,7 +346,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             Object contextValueObj = context.get(contextProperty);
             if (contextValueObj == null) {
                 logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
-                return fallback;
+                return fallback.withFlagKey(flagKey);
             }
             String contextValue = contextValueObj.toString();
 
@@ -403,11 +403,11 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
 
             // No rollout matched
-            return fallback;
+            return fallback.withFlagKey(flagKey);
 
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating flag: " + flagKey, e);
-            return fallback;
+            return fallback.withFlagKey(flagKey);
         }
     }
 
@@ -419,6 +419,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                                                 String flagKey, Map<String, Object> context,
                                                 long startTime, boolean reportExposure) {
         SelectedVariant<T> result = new SelectedVariant<>(
+            flagKey,
             variant.getKey(),
             (T) variant.getValue(),
             flag.getExperimentId(),
@@ -625,7 +626,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         Map<String, ExperimentationFlag> definitions = flagDefinitions.get();
 
         for (ExperimentationFlag flag : definitions.values()) {
-            SelectedVariant<Object> fallback = new SelectedVariant<>(null);
+            SelectedVariant<Object> fallback = new SelectedVariant<>(flag.getKey(), null, null, null, null, null);
             SelectedVariant<Object> result = getVariant(flag.getKey(), fallback, context, reportExposure);
 
             // Only include successfully selected variants (not fallbacks)

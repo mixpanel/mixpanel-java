@@ -41,7 +41,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testBooleanEvaluationSuccess() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("bool-flag", "on", true, null, null, null);
         when(mockFlagsProvider.getVariant(eq("bool-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -56,7 +56,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testBooleanEvaluationTypeMismatch() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", "not-a-boolean", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("bool-flag", "on", "not-a-boolean", null, null, null);
         when(mockFlagsProvider.getVariant(eq("bool-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -86,7 +86,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testStringEvaluationSuccess() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("blue", "blue", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("color-flag", "blue", "blue", null, null, null);
         when(mockFlagsProvider.getVariant(eq("color-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -101,7 +101,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testStringEvaluationTypeMismatch() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", 42, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("string-flag", "on", 42, null, null, null);
         when(mockFlagsProvider.getVariant(eq("string-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -131,7 +131,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testIntegerEvaluationSuccess() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", 42, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("int-flag", "v1", 42, null, null, null);
         when(mockFlagsProvider.getVariant(eq("int-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -146,7 +146,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testIntegerEvaluationFromLong() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", 42L, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("int-flag", "v1", 42L, null, null, null);
         when(mockFlagsProvider.getVariant(eq("int-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -159,7 +159,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testIntegerEvaluationFromDouble() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", 42.0, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("int-flag", "v1", 42.0, null, null, null);
         when(mockFlagsProvider.getVariant(eq("int-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -172,7 +172,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testIntegerEvaluationTypeMismatch() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", "not-a-number", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("int-flag", "v1", "not-a-number", null, null, null);
         when(mockFlagsProvider.getVariant(eq("int-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -200,7 +200,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testIntegerEvaluationOverflowReturnsMismatch() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", Long.MAX_VALUE, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("int-flag", "v1", Long.MAX_VALUE, null, null, null);
         when(mockFlagsProvider.getVariant(eq("int-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -215,7 +215,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testDoubleEvaluationSuccess() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", 3.14, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("double-flag", "v1", 3.14, null, null, null);
         when(mockFlagsProvider.getVariant(eq("double-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -230,7 +230,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testDoubleEvaluationFromInteger() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", 42, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("double-flag", "v1", 42, null, null, null);
         when(mockFlagsProvider.getVariant(eq("double-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -243,7 +243,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testDoubleEvaluationTypeMismatch() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", "not-a-number", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("double-flag", "v1", "not-a-number", null, null, null);
         when(mockFlagsProvider.getVariant(eq("double-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -275,7 +275,7 @@ public class MixpanelProviderTest {
     public void testObjectEvaluationSuccess() {
         Map<String, Object> objValue = new HashMap<>();
         objValue.put("key", "value");
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", objValue, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("obj-flag", "v1", objValue, null, null, null);
         when(mockFlagsProvider.getVariant(eq("obj-flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -307,7 +307,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testPerEvaluationContextIsForwarded() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
@@ -327,7 +327,7 @@ public class MixpanelProviderTest {
     public void testPerEvaluationContextIsForwardedForObjectEvaluation() {
         Map<String, Object> objValue = new HashMap<>();
         objValue.put("key", "value");
-        SelectedVariant<Object> variant = new SelectedVariant<>("v1", objValue, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("obj-flag", "v1", objValue, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("obj-flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
@@ -343,7 +343,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testTargetingKeyIsRegularProperty() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
@@ -362,7 +362,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testTargetingKeyFromGetTargetingKeyIsIncluded() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
@@ -382,7 +382,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testExplicitTargetingKeyAttributeOverriddenByGetTargetingKey() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
                 .thenReturn(variant);
@@ -435,7 +435,7 @@ public class MixpanelProviderTest {
     public void testProviderReadyWithLocalProvider() {
         LocalFlagsProvider mockLocal = mock(LocalFlagsProvider.class);
         when(mockLocal.areFlagsReady()).thenReturn(true);
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         when(mockLocal.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
         MixpanelProvider localProvider = new MixpanelProvider(mockLocal);
@@ -451,7 +451,7 @@ public class MixpanelProviderTest {
     @Test
     public void testProviderNotReadySkippedForNonLocalProvider() {
         // BaseFlagsProvider (non-local) should not check readiness
-        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "on", true, null, null, null);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -498,7 +498,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testVariantKeyPassedThroughOnBooleanEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("my-variant", true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "my-variant", true, null, null, null);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -510,7 +510,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testVariantKeyPassedThroughOnObjectEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>("obj-variant", "some-value", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", "obj-variant", "some-value", null, null, null);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -522,7 +522,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testNullVariantKeyTreatedAsFallbackOnBooleanEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>(null, true, null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", null, true, null, null, null);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -536,7 +536,7 @@ public class MixpanelProviderTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testNullVariantKeyTreatedAsFallbackOnObjectEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>(null, "some-value", null, null, null);
+        SelectedVariant<Object> variant = new SelectedVariant<>("flag", null, "some-value", null, null, null);
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 

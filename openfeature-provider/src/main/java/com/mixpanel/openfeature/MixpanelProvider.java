@@ -145,7 +145,7 @@ public class MixpanelProvider implements FeatureProvider {
     }
 
     private SelectedVariant<Object> fetchVariant(String key, EvaluationContext ctx) {
-        SelectedVariant<Object> fallback = new SelectedVariant<>(null);
+        SelectedVariant<Object> fallback = new SelectedVariant<>(key, null, null, null, null, null);
         return flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
     }
 

@@ -65,7 +65,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
 
             if (flags == null || !flags.has(flagKey)) {
                 logger.log(Level.WARNING, "Flag not found in response: " + flagKey);
-                return fallback;
+                return fallback.withFlagKey(flagKey);
             }
 
             JSONObject flagData = flags.getJSONObject(flagKey);
@@ -73,7 +73,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             Object variantValue = flagData.opt("variant_value");
 
             if (variantKey == null) {
-                return fallback;
+                return fallback.withFlagKey(flagKey);
             }
 
             // Parse experiment metadata
@@ -104,12 +104,12 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             }
 
             @SuppressWarnings("unchecked")
-            SelectedVariant<T> result = new SelectedVariant<>(variantKey, (T) variantValue, experimentId, isExperimentActive, isQaTester);
+            SelectedVariant<T> result = new SelectedVariant<>(flagKey, variantKey, (T) variantValue, experimentId, isExperimentActive, isQaTester);
             return result;
 
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating flag remotely: " + flagKey, e);
-            return fallback;
+            return fallback.withFlagKey(flagKey);
         }
     }
 

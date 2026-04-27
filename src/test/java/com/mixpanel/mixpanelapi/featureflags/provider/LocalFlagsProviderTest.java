@@ -404,6 +404,57 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testReturnedFallbackHasFlagKeyPopulated() {
+        List<Variant> variants = Arrays.asList(new Variant("control", "blue", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse("existing-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = buildContext("user-123");
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("missing-flag", fallback, context, false);
+
+        assertTrue(result.isFallback());
+        assertEquals("fallback", result.getVariantValue());
+        assertEquals("missing-flag", result.getFlagKey());
+    }
+
+    @Test
+    public void testReturnedFallbackHasFlagKeyOnMissingContextProperty() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("test-flag", fallback, new HashMap<>(), false);
+
+        assertTrue(result.isFallback());
+        assertEquals("test-flag", result.getFlagKey());
+    }
+
+    @Test
+    public void testReturnedFallbackHasFlagKeyOnNoRolloutMatched() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(0.0f));
+        String response = buildFlagsResponse("test-flag", "distinct_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = buildContext("user-123");
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("test-flag", fallback, context, false);
+
+        assertTrue(result.isFallback());
+        assertEquals("test-flag", result.getFlagKey());
+    }
+
+    @Test
     public void testReturnFallbackWhenNoContextProvided() {
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
@@ -1030,6 +1081,31 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             assertTrue(variant.isSuccess());
             assertNotNull(variant.getVariantKey());
         }
+    }
+
+    @Test
+    public void testGetAllVariantsPopulatesFlagKeyOnEachResult() {
+        List<FlagDefinition> flags = Arrays.asList(
+            new FlagDefinition("flag-1", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f))),
+            new FlagDefinition("flag-2", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f)))
+        );
+
+        String response = buildMultipleFlagsResponse(flags);
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = buildContext("user-123");
+        List<SelectedVariant<Object>> results = provider.getAllVariants(context, false);
+
+        Set<String> flagKeys = new HashSet<>();
+        for (SelectedVariant<Object> variant : results) {
+            flagKeys.add(variant.getFlagKey());
+        }
+        assertEquals(new HashSet<>(Arrays.asList("flag-1", "flag-2")), flagKeys);
     }
 
     @Test
