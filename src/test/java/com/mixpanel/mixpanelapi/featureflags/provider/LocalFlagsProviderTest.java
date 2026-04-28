@@ -999,10 +999,10 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     // #endregion
-    // #region getAllVariants Tests
+    // #region getAllVariantsByFlag Tests
 
     @Test
-    public void testGetAllVariantsReturnsAllSuccessfullySelectedVariants() {
+    public void testGetAllVariantsByFlagReturnsAllSuccessfullySelectedVariants() {
         // Create multiple flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
             new FlagDefinition("flag-1", distinctIdContextKey,
@@ -1021,32 +1021,32 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider.startPollingForDefinitions();
 
         Map<String, Object> context = buildContext("user-123");
-        List<SelectedVariant<Object>> results = provider.getAllVariants(context, true);
+        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
 
         assertEquals(3, results.size());
-
-        // Verify all variants are successful (not fallbacks)
-        for (SelectedVariant<Object> variant : results) {
-            assertTrue(variant.isSuccess());
-            assertNotNull(variant.getVariantKey());
-        }
+        assertEquals("variant-a", results.get("flag-1").getVariantKey());
+        assertEquals("value-a", results.get("flag-1").getVariantValue());
+        assertEquals("variant-b", results.get("flag-2").getVariantKey());
+        assertEquals("value-b", results.get("flag-2").getVariantValue());
+        assertEquals("variant-c", results.get("flag-3").getVariantKey());
+        assertEquals("value-c", results.get("flag-3").getVariantValue());
     }
 
     @Test
-    public void testGetAllVariantsReturnsEmptyListWhenNoFlagsDefined() {
+    public void testGetAllVariantsByFlagReturnsEmptyMapWhenNoFlagsDefined() {
         String response = "{\"flags\":[]}";
         provider = createProviderWithResponse(response);
         provider.startPollingForDefinitions();
 
         Map<String, Object> context = buildContext("user-123");
-        List<SelectedVariant<Object>> results = provider.getAllVariants(context, true);
+        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
 
         assertNotNull(results);
         assertEquals(0, results.size());
     }
 
     @Test
-    public void testGetAllVariantsReturnsOnlySuccessfulVariants() {
+    public void testGetAllVariantsByFlagOmitsFallbacks() {
         // Create flags with mixed rollout percentages
         List<FlagDefinition> flags = Arrays.asList(
             new FlagDefinition("flag-success-1", distinctIdContextKey,
@@ -1065,19 +1065,59 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         provider.startPollingForDefinitions();
 
         Map<String, Object> context = buildContext("user-123");
-        List<SelectedVariant<Object>> results = provider.getAllVariants(context, true);
+        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
 
-        // Should only return the 2 successful variants
+        // Should only return the 2 successful variants, keyed by flag
         assertEquals(2, results.size());
-
-        // Verify all returned variants are successful
-        for (SelectedVariant<Object> variant : results) {
-            assertTrue(variant.isSuccess());
-        }
+        assertTrue(results.containsKey("flag-success-1"));
+        assertTrue(results.containsKey("flag-success-2"));
+        assertFalse(results.containsKey("flag-fail-1"));
     }
 
     @Test
-    public void testGetAllVariantsTracksExposureEventsWhenReportExposureTrue() {
+    public void testGetAllVariantsByFlagReturnsVariantsWithExperimentMetadata() {
+        // Create test UUIDs
+        UUID experimentId1 = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+        UUID experimentId2 = UUID.fromString("223e4567-e89b-12d3-a456-426614174001");
+
+        // Create flags with experiment metadata
+        List<FlagDefinition> flags = Arrays.asList(
+            new FlagDefinition("flag-1", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f)),
+                null, experimentId1, true),
+            new FlagDefinition("flag-2", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f)),
+                null, experimentId2, false)
+        );
+
+        String response = buildMultipleFlagsResponse(flags);
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = buildContext("user-123");
+        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
+
+        assertEquals(2, results.size());
+
+        SelectedVariant<Object> variantA = results.get("flag-1");
+        assertNotNull("flag-1 should be present", variantA);
+        assertEquals(experimentId1, variantA.getExperimentId());
+        assertEquals(true, variantA.getIsExperimentActive());
+
+        SelectedVariant<Object> variantB = results.get("flag-2");
+        assertNotNull("flag-2 should be present", variantB);
+        assertEquals(experimentId2, variantB.getExperimentId());
+        assertEquals(false, variantB.getIsExperimentActive());
+    }
+
+    // Tests below cover the deprecated getAllVariants() wrapper. They exercise both reportExposure
+    // values to ensure the wrapper preserves exposure-tracking behavior of the underlying call.
+
+    @SuppressWarnings("deprecation")
+    @Test
+    public void testDeprecatedGetAllVariantsTracksExposureEventsWhenReportExposureTrue() {
         // Create 3 flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
             new FlagDefinition("flag-1", distinctIdContextKey,
@@ -1104,8 +1144,9 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(3, results.size());
     }
 
+    @SuppressWarnings("deprecation")
     @Test
-    public void testGetAllVariantsDoesNotTrackExposureEventsWhenReportExposureFalse() {
+    public void testDeprecatedGetAllVariantsDoesNotTrackExposureEventsWhenReportExposureFalse() {
         // Create 3 flags with 100% rollout
         List<FlagDefinition> flags = Arrays.asList(
             new FlagDefinition("flag-1", distinctIdContextKey,
@@ -1135,56 +1176,6 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         for (SelectedVariant<Object> variant : results) {
             assertTrue(variant.isSuccess());
         }
-    }
-
-    @Test
-    public void testGetAllVariantsReturnsVariantsWithExperimentMetadata() {
-        // Create test UUIDs
-        UUID experimentId1 = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
-        UUID experimentId2 = UUID.fromString("223e4567-e89b-12d3-a456-426614174001");
-
-        // Create flags with experiment metadata
-        List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", distinctIdContextKey,
-                Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
-                Arrays.asList(new Rollout(1.0f)),
-                null, experimentId1, true),
-            new FlagDefinition("flag-2", distinctIdContextKey,
-                Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
-                Arrays.asList(new Rollout(1.0f)),
-                null, experimentId2, false)
-        );
-
-        String response = buildMultipleFlagsResponse(flags);
-        provider = createProviderWithResponse(response);
-        provider.startPollingForDefinitions();
-
-        Map<String, Object> context = buildContext("user-123");
-        List<SelectedVariant<Object>> results = provider.getAllVariants(context, true);
-
-        assertEquals(2, results.size());
-
-        // Find variants by their value (order is not guaranteed from HashMap)
-        SelectedVariant<Object> variantA = null;
-        SelectedVariant<Object> variantB = null;
-        for (SelectedVariant<Object> variant : results) {
-            if ("value-a".equals(variant.getVariantValue())) {
-                variantA = variant;
-            } else if ("value-b".equals(variant.getVariantValue())) {
-                variantB = variant;
-            }
-        }
-
-        // Verify both variants were found with their experiment metadata
-        assertNotNull("variant-a should be present", variantA);
-        assertNotNull(variantA.getExperimentId());
-        assertEquals(experimentId1, variantA.getExperimentId());
-        assertEquals(true, variantA.getIsExperimentActive());
-
-        assertNotNull("variant-b should be present", variantB);
-        assertNotNull(variantB.getExperimentId());
-        assertEquals(experimentId2, variantB.getExperimentId());
-        assertEquals(false, variantB.getIsExperimentActive());
     }
 
     // #endregion
