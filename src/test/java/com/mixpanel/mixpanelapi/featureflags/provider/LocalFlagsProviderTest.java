@@ -1074,47 +1074,6 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertFalse(results.containsKey("flag-fail-1"));
     }
 
-    @Test
-    public void testGetAllVariantsByFlagReturnsVariantsWithExperimentMetadata() {
-        // Create test UUIDs
-        UUID experimentId1 = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
-        UUID experimentId2 = UUID.fromString("223e4567-e89b-12d3-a456-426614174001");
-
-        // Create flags with experiment metadata
-        List<FlagDefinition> flags = Arrays.asList(
-            new FlagDefinition("flag-1", distinctIdContextKey,
-                Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
-                Arrays.asList(new Rollout(1.0f)),
-                null, experimentId1, true),
-            new FlagDefinition("flag-2", distinctIdContextKey,
-                Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
-                Arrays.asList(new Rollout(1.0f)),
-                null, experimentId2, false)
-        );
-
-        String response = buildMultipleFlagsResponse(flags);
-        provider = createProviderWithResponse(response);
-        provider.startPollingForDefinitions();
-
-        Map<String, Object> context = buildContext("user-123");
-        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
-
-        assertEquals(2, results.size());
-
-        SelectedVariant<Object> variantA = results.get("flag-1");
-        assertNotNull("flag-1 should be present", variantA);
-        assertEquals(experimentId1, variantA.getExperimentId());
-        assertEquals(true, variantA.getIsExperimentActive());
-
-        SelectedVariant<Object> variantB = results.get("flag-2");
-        assertNotNull("flag-2 should be present", variantB);
-        assertEquals(experimentId2, variantB.getExperimentId());
-        assertEquals(false, variantB.getIsExperimentActive());
-    }
-
-    // Tests below cover the deprecated getAllVariants() wrapper. They exercise both reportExposure
-    // values to ensure the wrapper preserves exposure-tracking behavior of the underlying call.
-
     @SuppressWarnings("deprecation")
     @Test
     public void testDeprecatedGetAllVariantsTracksExposureEventsWhenReportExposureTrue() {
@@ -1176,6 +1135,44 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         for (SelectedVariant<Object> variant : results) {
             assertTrue(variant.isSuccess());
         }
+    }
+
+    @Test
+    public void testGetAllVariantsByFlagReturnsVariantsWithExperimentMetadata() {
+        // Create test UUIDs
+        UUID experimentId1 = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+        UUID experimentId2 = UUID.fromString("223e4567-e89b-12d3-a456-426614174001");
+
+        // Create flags with experiment metadata
+        List<FlagDefinition> flags = Arrays.asList(
+            new FlagDefinition("flag-1", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f)),
+                null, experimentId1, true),
+            new FlagDefinition("flag-2", distinctIdContextKey,
+                Arrays.asList(new Variant("variant-b", "value-b", false, 1.0f)),
+                Arrays.asList(new Rollout(1.0f)),
+                null, experimentId2, false)
+        );
+
+        String response = buildMultipleFlagsResponse(flags);
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = buildContext("user-123");
+        Map<String, SelectedVariant<Object>> results = provider.getAllVariantsByFlag(context, true);
+
+        assertEquals(2, results.size());
+
+        SelectedVariant<Object> variantA = results.get("flag-1");
+        assertNotNull("flag-1 should be present", variantA);
+        assertEquals(experimentId1, variantA.getExperimentId());
+        assertEquals(true, variantA.getIsExperimentActive());
+
+        SelectedVariant<Object> variantB = results.get("flag-2");
+        assertNotNull("flag-2 should be present", variantB);
+        assertEquals(experimentId2, variantB.getExperimentId());
+        assertEquals(false, variantB.getIsExperimentActive());
     }
 
     // #endregion
