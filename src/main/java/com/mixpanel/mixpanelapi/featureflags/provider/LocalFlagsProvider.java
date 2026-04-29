@@ -619,18 +619,36 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      * @param context the evaluation context
      * @param reportExposure whether to track exposure events for flag evaluations
      * @return list of selected variants for all flags where a variant was selected
+     * @deprecated Use {@link #getAllVariantsByFlag(Map, boolean)} which returns a map keyed by
+     *             flag key, so each result can be associated with the flag it was selected for.
      */
+    @Deprecated
     public List<SelectedVariant<Object>> getAllVariants(Map<String, Object> context, boolean reportExposure) {
-        List<SelectedVariant<Object>> results = new ArrayList<>();
+        return new ArrayList<>(getAllVariantsByFlag(context, reportExposure).values());
+    }
+
+    /**
+     * Evaluates all flags and returns their selected variants keyed by flag key.
+     * <p>
+     * Evaluates all flag definitions for the given context and returns a map from
+     * flag key to the successfully selected variant. Flags whose evaluation fell
+     * back (i.e., did not produce a successful variant) are omitted from the map.
+     * </p>
+     *
+     * @param context the evaluation context
+     * @param reportExposure whether to track exposure events for flag evaluations
+     * @return map from flag key to selected variant for all flags where a variant was selected
+     */
+    public Map<String, SelectedVariant<Object>> getAllVariantsByFlag(Map<String, Object> context, boolean reportExposure) {
+        Map<String, SelectedVariant<Object>> results = new HashMap<>();
         Map<String, ExperimentationFlag> definitions = flagDefinitions.get();
 
         for (ExperimentationFlag flag : definitions.values()) {
             SelectedVariant<Object> fallback = new SelectedVariant<>(null);
             SelectedVariant<Object> result = getVariant(flag.getKey(), fallback, context, reportExposure);
 
-            // Only include successfully selected variants (not fallbacks)
             if (result.isSuccess()) {
-                results.add(result);
+                results.put(flag.getKey(), result);
             }
         }
 
