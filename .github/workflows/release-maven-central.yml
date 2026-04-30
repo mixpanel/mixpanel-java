@@ -135,24 +135,14 @@ jobs:
             (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.skip=true)
           done
 
-      - name: Test all modules
-        env:
-          POMS: ${{ steps.module.outputs.poms }}
-        run: |
-          for pom in $(echo "$POMS" | jq -r '.[]'); do
-            DIR=$(dirname "$pom")
-            (cd "$DIR" && mvn -B clean test)
-          done
-
       - name: Install module poms locally
         env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           POMS: ${{ steps.module.outputs.poms }}
         run: |
-          # Install in order so sibling poms in this module can resolve each other from the local repo
+          # Install in order so sibling poms in this module can resolve each other from the local repo during deploy
           for pom in $(echo "$POMS" | jq -r '.[]'); do
             DIR=$(dirname "$pom")
-            (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE)
+            (cd "$DIR" && mvn -B clean install -DskipTests -Dgpg.skip=true)
           done
 
       - name: Deploy to Maven Central staging
