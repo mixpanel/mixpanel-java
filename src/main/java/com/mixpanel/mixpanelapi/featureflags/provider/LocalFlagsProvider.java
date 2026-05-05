@@ -352,7 +352,6 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
             // Check test user overrides
             RuleSet ruleset = flag.getRuleset();
-            Boolean isQaTester = null;
             if (ruleset.hasTestUserOverrides()) {
                 String distinctId = context.get("distinct_id") != null ? context.get("distinct_id").toString() : null;
                 if (distinctId != null) {
@@ -360,19 +359,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                     if (testVariantKey != null) {
                         Variant variant = findVariantByKey(ruleset.getVariants(), testVariantKey);
                         if (variant != null) {
-                            isQaTester = true;
-                            @SuppressWarnings("unchecked")
-                            SelectedVariant<T> result = new SelectedVariant<>(
-                                variant.getKey(),
-                                (T) variant.getValue(),
-                                flag.getExperimentId(),
-                                flag.getIsExperimentActive(),
-                                isQaTester
-                            );
-                            if (reportExposure) {
-                                trackLocalExposure(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
-                            }
-                            return result;
+                            return buildResult(variant, flag, true, flagKey, context, startTime, reportExposure);
                         }
                     }
                 }
@@ -391,45 +378,25 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 }
 
                 // Check runtime evaluation, continue if this rollout has runtime conditions and it doesn't match
-                if (rollout.hasLegacyRuntimeEvaluation()) {
-                    if (!matchesLegacyRuntimeConditions(rollout, context)) {
-                        continue;
-                    }
+                if (rollout.hasLegacyRuntimeEvaluation() && !matchesLegacyRuntimeConditions(rollout, context)) {
+                    continue;
                 }
 
-                if (rollout.hasRuntimeEvaluation()) {
-                    if (!matchesRuntimeConditions(rollout, context)) {
-                        continue;
-                    }
+                if (rollout.hasRuntimeEvaluation() && !matchesRuntimeConditions(rollout, context)) {
+                    continue;
                 }
 
                 // This rollout is selected - determine variant
-                Variant selectedVariant = null;
-
+                Variant selectedVariant;
                 if (rollout.hasVariantOverride()) {
                     selectedVariant = findVariantByKey(ruleset.getVariants(), rollout.getVariantOverride().getKey());
                 } else {
-                    // Calculate variant hash
                     float variantHash = calculateVariantHash(contextValue, flagKey, flag.getHashSalt());
                     selectedVariant = selectVariantBySplit(ruleset.getVariants(), variantHash, rollout);
                 }
 
                 if (selectedVariant != null) {
-                    if (isQaTester == null) {
-                        isQaTester = false;
-                    }
-                    @SuppressWarnings("unchecked")
-                    SelectedVariant<T> result = new SelectedVariant<>(
-                        selectedVariant.getKey(),
-                        (T) selectedVariant.getValue(),
-                        flag.getExperimentId(),
-                        flag.getIsExperimentActive(),
-                        isQaTester
-                    );
-                    if (reportExposure) {
-                        trackLocalExposure(context, flagKey, selectedVariant.getKey(), System.currentTimeMillis() - startTime, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
-                    }
-                    return result;
+                    return buildResult(selectedVariant, flag, false, flagKey, context, startTime, reportExposure);
                 }
 
                 break; // Rollout selected but no variant found
@@ -442,6 +409,27 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             logger.log(Level.WARNING, "Error evaluating flag: " + flagKey, e);
             return fallback;
         }
+    }
+
+    /**
+     * Builds a SelectedVariant result and optionally tracks exposure.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> SelectedVariant<T> buildResult(Variant variant, ExperimentationFlag flag, boolean isQaTester,
+                                                String flagKey, Map<String, Object> context,
+                                                long startTime, boolean reportExposure) {
+        SelectedVariant<T> result = new SelectedVariant<>(
+            variant.getKey(),
+            (T) variant.getValue(),
+            flag.getExperimentId(),
+            flag.getIsExperimentActive(),
+            isQaTester
+        );
+        if (reportExposure) {
+            trackLocalExposure(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime,
+                    flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
+        }
+        return result;
     }
 
     private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
@@ -631,18 +619,36 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      * @param context the evaluation context
      * @param reportExposure whether to track exposure events for flag evaluations
      * @return list of selected variants for all flags where a variant was selected
+     * @deprecated Use {@link #getAllVariantsByFlag(Map, boolean)} which returns a map keyed by
+     *             flag key, so each result can be associated with the flag it was selected for.
      */
+    @Deprecated
     public List<SelectedVariant<Object>> getAllVariants(Map<String, Object> context, boolean reportExposure) {
-        List<SelectedVariant<Object>> results = new ArrayList<>();
+        return new ArrayList<>(getAllVariantsByFlag(context, reportExposure).values());
+    }
+
+    /**
+     * Evaluates all flags and returns their selected variants keyed by flag key.
+     * <p>
+     * Evaluates all flag definitions for the given context and returns a map from
+     * flag key to the successfully selected variant. Flags whose evaluation fell
+     * back (i.e., did not produce a successful variant) are omitted from the map.
+     * </p>
+     *
+     * @param context the evaluation context
+     * @param reportExposure whether to track exposure events for flag evaluations
+     * @return map from flag key to selected variant for all flags where a variant was selected
+     */
+    public Map<String, SelectedVariant<Object>> getAllVariantsByFlag(Map<String, Object> context, boolean reportExposure) {
+        Map<String, SelectedVariant<Object>> results = new HashMap<>();
         Map<String, ExperimentationFlag> definitions = flagDefinitions.get();
 
         for (ExperimentationFlag flag : definitions.values()) {
             SelectedVariant<Object> fallback = new SelectedVariant<>(null);
             SelectedVariant<Object> result = getVariant(flag.getKey(), fallback, context, reportExposure);
 
-            // Only include successfully selected variants (not fallbacks)
             if (result.isSuccess()) {
-                results.add(result);
+                results.put(flag.getKey(), result);
             }
         }
 
@@ -679,5 +685,10 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         if (closed.compareAndSet(false, true)) {
             stopPollingForDefinitions();
         }
+    }
+
+    @Override
+    public void shutdown() {
+        close();
     }
 }

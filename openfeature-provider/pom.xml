@@ -3,12 +3,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.mixpanel</groupId>
-    <artifactId>mixpanel-java-extension-jackson</artifactId>
-    <version>1.8.1</version>
+    <artifactId>mixpanel-java-openfeature</artifactId>
+    <version>0.1.1</version>
     <packaging>jar</packaging>
-    <name>Mixpanel Java SDK - Jackson Extension</name>
+    <name>Mixpanel Java SDK - OpenFeature Provider</name>
     <description>
-        <![CDATA[High-performance Jackson serializer extension for Mixpanel Java SDK. Provides improved performance for large batch operations.]]>
+        <![CDATA[OpenFeature provider for the Mixpanel Java SDK. Integrates Mixpanel feature flags with the OpenFeature standard.]]>
     </description>
 
     <url>https://github.com/mixpanel/mixpanel-java</url>
@@ -39,9 +39,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <jackson.version>2.20.0</jackson.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
     </properties>
 
     <distributionManagement>
@@ -61,8 +60,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
-                    <deploymentName>mixpanel-java-extension-jackson-${project.version}</deploymentName>
-                    <!-- Set autoPublish to true for CI/CD, false for manual review -->
+                    <deploymentName>mixpanel-java-openfeature-${project.version}</deploymentName>
                     <autoPublish>false</autoPublish>
                 </configuration>
             </plugin>
@@ -115,25 +113,28 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
         </plugins>
     </build>
 
     <dependencies>
-        <!-- Mixpanel Java SDK dependency - must match version -->
         <dependency>
             <groupId>com.mixpanel</groupId>
             <artifactId>mixpanel-java</artifactId>
-            <version>${project.version}</version>
+            <version>1.8.0</version>
         </dependency>
 
-        <!-- Jackson dependencies - transitively pulled in -->
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>${jackson.version}</version>
+            <groupId>dev.openfeature</groupId>
+            <artifactId>sdk</artifactId>
+            <version>1.20.1</version>
         </dependency>
 
-        <!-- Test dependencies -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
@@ -142,9 +143,9 @@
         </dependency>
 
         <dependency>
-            <groupId>org.skyscreamer</groupId>
-            <artifactId>jsonassert</artifactId>
-            <version>1.5.1</version>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>4.11.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

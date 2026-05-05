@@ -1,5 +1,7 @@
 This is the official Mixpanel tracking library for Java.
 
+##### _April 29, 2026_ - [v1.8.1](https://github.com/mixpanel/mixpanel-java/releases/tag/v1.8.1)
+
 ## Latest Version
 
 See the [releases page](https://github.com/mixpanel/mixpanel-java/releases) for the latest version.
@@ -8,7 +10,7 @@ See the [releases page](https://github.com/mixpanel/mixpanel-java/releases) for 
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java</artifactId>
-    <version>1.6.1</version>
+    <version>1.8.1</version>
 </dependency>
 ```
 
@@ -57,7 +59,7 @@ To enable high-performance serialization, add the Jackson extension to your proj
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java-extension-jackson</artifactId>
-    <version>1.6.1</version>
+    <version>1.8.1</version>
 </dependency>
 ```
 

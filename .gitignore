@@ -3,3 +3,6 @@
 .metadata
 target/
 .vscode/
+.claude/
+.idea/
+*.iml
