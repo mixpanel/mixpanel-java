@@ -1,5 +1,7 @@
 package com.mixpanel.mixpanelapi.featureflags.config;
 
+import java.util.concurrent.Executor;
+
 /**
  * Configuration for local feature flags evaluation.
  * <p>
@@ -17,11 +19,12 @@ public final class LocalFlagsConfig extends BaseFlagsConfig {
      * @param projectToken the Mixpanel project token
      * @param apiHost the API endpoint host
      * @param requestTimeoutSeconds HTTP request timeout in seconds
+     * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
      * @param enablePolling whether to periodically refresh flag definitions
      * @param pollingIntervalSeconds time between refresh cycles in seconds
      */
-    private LocalFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, boolean enablePolling, int pollingIntervalSeconds) {
-        super(projectToken, apiHost, requestTimeoutSeconds);
+    private LocalFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor, boolean enablePolling, int pollingIntervalSeconds) {
+        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
         this.enablePolling = enablePolling;
         this.pollingIntervalSeconds = pollingIntervalSeconds;
     }
@@ -76,7 +79,7 @@ public final class LocalFlagsConfig extends BaseFlagsConfig {
          */
         @Override
         public LocalFlagsConfig build() {
-            return new LocalFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, enablePolling, pollingIntervalSeconds);
+            return new LocalFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, enablePolling, pollingIntervalSeconds);
         }
     }
 
