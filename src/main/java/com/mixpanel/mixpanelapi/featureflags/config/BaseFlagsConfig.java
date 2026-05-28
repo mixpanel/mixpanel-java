@@ -1,5 +1,7 @@
 package com.mixpanel.mixpanelapi.featureflags.config;
 
+import java.util.concurrent.Executor;
+
 /**
  * Base configuration for feature flags providers.
  * <p>
@@ -10,6 +12,7 @@ public class BaseFlagsConfig {
     private final String projectToken;
     private final String apiHost;
     private final int requestTimeoutSeconds;
+    private final Executor exposureExecutor;
 
     /**
      * Creates a new BaseFlagsConfig with specified settings.
@@ -17,11 +20,13 @@ public class BaseFlagsConfig {
      * @param projectToken the Mixpanel project token
      * @param apiHost the API endpoint host
      * @param requestTimeoutSeconds HTTP request timeout in seconds
+     * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
      */
-    protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds) {
+    protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor) {
         this.projectToken = projectToken;
         this.apiHost = apiHost;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
+        this.exposureExecutor = exposureExecutor;
     }
 
     /**
@@ -46,6 +51,13 @@ public class BaseFlagsConfig {
     }
 
     /**
+     * @return the Executor used to dispatch exposure event HTTP sends, or null for synchronous dispatch
+     */
+    public Executor getExposureExecutor() {
+        return exposureExecutor;
+    }
+
+    /**
      * Builder for BaseFlagsConfig.
      *
      * @param <T> the type of builder (for subclass builders)
@@ -55,6 +67,7 @@ public class BaseFlagsConfig {
         protected String projectToken;
         protected String apiHost = "api.mixpanel.com";
         protected int requestTimeoutSeconds = 10;
+        protected Executor exposureExecutor;
 
         /**
          * Sets the project token.
@@ -90,12 +103,33 @@ public class BaseFlagsConfig {
         }
 
         /**
+         * Sets the executor used to dispatch exposure event HTTP sends.
+         * <p>
+         * When null (the default), exposure events are sent synchronously on the
+         * calling thread — this adds HTTP latency to every flag evaluation when {@code reportExposure} is
+         * enabled.
+         * </p>
+         * <p>
+         * When set, the executor receives one {@link Runnable} per exposure event;
+         * each {@code Runnable} performs a single HTTP POST. If the
+         * executor fails to accept the task, the exposure event is dropped and a warning is logged.
+         * </p>
+         *
+         * @param exposureExecutor executor for exposure event dispatch, or null for synchronous
+         * @return this builder
+         */
+        public T exposureExecutor(Executor exposureExecutor) {
+            this.exposureExecutor = exposureExecutor;
+            return (T) this;
+        }
+
+        /**
          * Builds the BaseFlagsConfig instance.
          *
          * @return a new BaseFlagsConfig
          */
         public BaseFlagsConfig build() {
-            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds);
+            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
         }
     }
 

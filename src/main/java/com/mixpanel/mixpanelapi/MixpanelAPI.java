@@ -10,6 +10,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
@@ -663,16 +664,42 @@ public class MixpanelAPI implements AutoCloseable {
     /**
      * Creates an EventSender that uses the provided MixpanelAPI instance for sending events.
      * This is shared by both local and remote flag evaluation modes.
+     * <p>
+     * If the config provides a non-null exposure executor, the HTTP send is dispatched on
+     * the executor so flag evaluation does not block on network I/O. JSON construction
+     * always runs on the calling thread because {@link MessageBuilder} is not thread-safe.
+     * </p>
      */
     private static EventSender createEventSender(BaseFlagsConfig config, MixpanelAPI api) {
         final MessageBuilder builder = new MessageBuilder(config.getProjectToken());
+        final Executor exposureExecutor = config.getExposureExecutor();
 
         return (distinctId, eventName, properties) -> {
+            final JSONObject event;
             try {
-                JSONObject event = builder.event(distinctId, eventName, properties);
-                api.sendMessage(event);
-            } catch (IOException e) {
-                // Silently fail - exposure tracking should not break flag evaluation
+                event = builder.event(distinctId, eventName, properties);
+            } catch (RuntimeException e) {
+                logger.log(Level.WARNING, "Failed to build exposure event " + eventName, e);
+                return;
+            }
+
+            Runnable send = () -> {
+                try {
+                    api.sendMessage(event);
+                } catch (IOException e) {
+                    logger.log(Level.WARNING, "Failed to send exposure event " + eventName, e);
+                }
+            };
+
+            if (exposureExecutor == null) {
+                send.run();
+                return;
+            }
+
+            try {
+                exposureExecutor.execute(send);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Exposure event dropped — executor failed to accept task for " + eventName, e);
             }
         };
     }

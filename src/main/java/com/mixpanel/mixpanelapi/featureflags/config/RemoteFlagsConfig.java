@@ -1,5 +1,7 @@
 package com.mixpanel.mixpanelapi.featureflags.config;
 
+import java.util.concurrent.Executor;
+
 /**
  * Configuration for remote feature flags evaluation.
  * <p>
@@ -15,9 +17,10 @@ public final class RemoteFlagsConfig extends BaseFlagsConfig {
      * @param projectToken the Mixpanel project token
      * @param apiHost the API endpoint host
      * @param requestTimeoutSeconds HTTP request timeout in seconds
+     * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
      */
-    private RemoteFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds) {
-        super(projectToken, apiHost, requestTimeoutSeconds);
+    private RemoteFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor) {
+        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
     }
 
     /**
@@ -32,7 +35,7 @@ public final class RemoteFlagsConfig extends BaseFlagsConfig {
          */
         @Override
         public RemoteFlagsConfig build() {
-            return new RemoteFlagsConfig(projectToken, apiHost, requestTimeoutSeconds);
+            return new RemoteFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
         }
     }
 
