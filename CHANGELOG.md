@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.9.0](https://github.com/mixpanel/mixpanel-java/tree/v1.9.0) (2026-05-29)
+
+### Fixes
+- allow capability to offload reportExposure to async thread ([#85](https://github.com/mixpanel/mixpanel-java/pull/85))
+
+[Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/v1.8.1...v1.9.0)
+
 ## [v1.8.1](https://github.com/mixpanel/mixpanel-java/tree/v1.8.1) (2026-04-29)
 
 ### Features
