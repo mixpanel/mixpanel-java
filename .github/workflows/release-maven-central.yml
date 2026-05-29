@@ -64,16 +64,22 @@ jobs:
             echo "::error::Unknown module '$MODULE'. Valid modules: $(jq -r 'keys | join(", ")' .github/modules.json)"
             exit 1
           }
+          JAVA_VERSION=$(echo "$MODULE_CONFIG" | jq -r '.java_version // empty')
+          if [ -z "$JAVA_VERSION" ]; then
+            echo "::error::Module '$MODULE' is missing required 'java_version' in .github/modules.json"
+            exit 1
+          fi
           TAG_PREFIX=$(echo "$MODULE_CONFIG" | jq -r '.tag_prefix')
           echo "tag=${TAG_PREFIX}${CONFIRM_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "java_version=$JAVA_VERSION" >> "$GITHUB_OUTPUT"
           echo "poms=$(echo "$MODULE_CONFIG" | jq -c '.poms')" >> "$GITHUB_OUTPUT"
           echo "prerequisite_poms=$(echo "$MODULE_CONFIG" | jq -c '.prerequisite_poms // []')" >> "$GITHUB_OUTPUT"
           echo "changelog=$(echo "$MODULE_CONFIG" | jq -r '.changelog')" >> "$GITHUB_OUTPUT"
 
-      - name: Set up JDK 8
+      - name: Set up JDK ${{ steps.module.outputs.java_version }}
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
-          java-version: '8'
+          java-version: ${{ steps.module.outputs.java_version }}
           distribution: 'temurin'
 
       - name: Cache Maven dependencies
