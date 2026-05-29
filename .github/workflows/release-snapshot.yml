@@ -57,14 +57,20 @@ jobs:
           MODULE: ${{ matrix.module }}
         run: |
           MODULE_CONFIG=$(jq -e --arg m "$MODULE" '.[$m]' .github/modules.json)
+          JAVA_VERSION=$(echo "$MODULE_CONFIG" | jq -r '.java_version // empty')
+          if [ -z "$JAVA_VERSION" ]; then
+            echo "::error::Module '$MODULE' is missing required 'java_version' in .github/modules.json"
+            exit 1
+          fi
+          echo "java_version=$JAVA_VERSION" >> "$GITHUB_OUTPUT"
           echo "poms=$(echo "$MODULE_CONFIG" | jq -c '.poms')" >> "$GITHUB_OUTPUT"
           echo "prerequisite_poms=$(echo "$MODULE_CONFIG" | jq -c '.prerequisite_poms // []')" >> "$GITHUB_OUTPUT"
           echo "primary_artifact_id=$(echo "$MODULE_CONFIG" | jq -r '.artifact_ids[0]')" >> "$GITHUB_OUTPUT"
 
-      - name: Set up JDK 8
+      - name: Set up JDK ${{ steps.config.outputs.java_version }}
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
-          java-version: '8'
+          java-version: ${{ steps.config.outputs.java_version }}
           distribution: 'temurin'
 
       - name: Cache Maven dependencies

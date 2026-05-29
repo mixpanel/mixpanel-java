@@ -1,6 +1,7 @@
 {
   "analytics": {
     "tag_prefix": "v",
+    "java_version": "8",
     "poms": [
       "pom.xml",
       "mixpanel-java-extension-jackson/pom.xml"
@@ -15,6 +16,7 @@
   },
   "openfeature": {
     "tag_prefix": "openfeature/v",
+    "java_version": "11",
     "poms": [
       "openfeature-provider/pom.xml"
     ],
