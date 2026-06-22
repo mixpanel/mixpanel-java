@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.ServiceAccountCredential;
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
@@ -56,6 +57,10 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     /**
      * Performs an HTTP GET request with Basic Auth.
      * <p>
+     * When service account credentials are configured, uses username:secret for authentication.
+     * Otherwise, uses token-based authentication (token as username, empty password).
+     * </p>
+     * <p>
      * This method is protected to allow test subclasses to override HTTP behavior.
      * </p>
      */
@@ -65,8 +70,16 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         conn.setConnectTimeout(config.getRequestTimeoutSeconds() * 1000);
         conn.setReadTimeout(config.getRequestTimeoutSeconds() * 1000);
 
-        // Set Basic Auth header (token as username, empty password)
-        String auth = projectToken + ":";
+        // Set Basic Auth header
+        ServiceAccountCredential credentials = config.getCredentials();
+        String auth;
+        if (credentials != null) {
+            // Service account auth: username:secret
+            auth = credentials.getUsername() + ":" + credentials.getSecret();
+        } else {
+            // Token-based auth: token:empty
+            auth = projectToken + ":";
+        }
         String encodedAuth = java.util.Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
         conn.setRequestProperty("Authorization", "Basic " + encodedAuth);
 

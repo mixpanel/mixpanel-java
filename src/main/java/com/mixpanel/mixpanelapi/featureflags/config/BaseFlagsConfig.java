@@ -2,6 +2,8 @@ package com.mixpanel.mixpanelapi.featureflags.config;
 
 import java.util.concurrent.Executor;
 
+import com.mixpanel.mixpanelapi.ServiceAccountCredential;
+
 /**
  * Base configuration for feature flags providers.
  * <p>
@@ -13,6 +15,7 @@ public class BaseFlagsConfig {
     private final String apiHost;
     private final int requestTimeoutSeconds;
     private final Executor exposureExecutor;
+    private final ServiceAccountCredential credentials;
 
     /**
      * Creates a new BaseFlagsConfig with specified settings.
@@ -21,12 +24,14 @@ public class BaseFlagsConfig {
      * @param apiHost the API endpoint host
      * @param requestTimeoutSeconds HTTP request timeout in seconds
      * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
+     * @param credentials service account credentials for authentication; may be null
      */
-    protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor) {
+    protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor, ServiceAccountCredential credentials) {
         this.projectToken = projectToken;
         this.apiHost = apiHost;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
         this.exposureExecutor = exposureExecutor;
+        this.credentials = credentials;
     }
 
     /**
@@ -58,6 +63,13 @@ public class BaseFlagsConfig {
     }
 
     /**
+     * @return the service account credentials for authentication, or null if not configured
+     */
+    public ServiceAccountCredential getCredentials() {
+        return credentials;
+    }
+
+    /**
      * Builder for BaseFlagsConfig.
      *
      * @param <T> the type of builder (for subclass builders)
@@ -68,6 +80,7 @@ public class BaseFlagsConfig {
         protected String apiHost = "api.mixpanel.com";
         protected int requestTimeoutSeconds = 10;
         protected Executor exposureExecutor;
+        protected ServiceAccountCredential credentials;
 
         /**
          * Sets the project token.
@@ -124,12 +137,28 @@ public class BaseFlagsConfig {
         }
 
         /**
+         * Sets the service account credentials for authentication.
+         * <p>
+         * When provided, feature flag endpoints will use HTTP Basic Authentication with the
+         * service account username and secret, and include project_id as a query parameter
+         * instead of the token parameter.
+         * </p>
+         *
+         * @param credentials service account credentials for authentication
+         * @return this builder
+         */
+        public T credentials(ServiceAccountCredential credentials) {
+            this.credentials = credentials;
+            return (T) this;
+        }
+
+        /**
          * Builds the BaseFlagsConfig instance.
          *
          * @return a new BaseFlagsConfig
          */
         public BaseFlagsConfig build() {
-            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
+            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, credentials);
         }
     }
 

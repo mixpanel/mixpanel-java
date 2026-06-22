@@ -141,13 +141,24 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
     /**
      * Builds the URL for fetching flag definitions.
+     * <p>
+     * When service account credentials are configured, uses project_id parameter.
+     * Otherwise, uses token parameter.
+     * </p>
      */
     private String buildDefinitionsUrl() throws UnsupportedEncodingException {
         StringBuilder url = new StringBuilder();
         url.append("https://").append(config.getApiHost()).append("/flags/definitions");
         url.append("?mp_lib=").append(URLEncoder.encode("java", "UTF-8"));
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
-        url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
+
+        // Use project_id when credentials are present, otherwise use token
+        if (config.getCredentials() != null) {
+            url.append("&project_id=").append(config.getCredentials().getProjectId());
+        } else {
+            url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
+        }
+
         return url.toString();
     }
 

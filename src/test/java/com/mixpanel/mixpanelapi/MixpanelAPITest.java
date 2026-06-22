@@ -1755,22 +1755,22 @@ public class MixpanelAPITest extends TestCase
         final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
         final Map<String, String> capturedUrls = new HashMap<String, String>();
         final Map<String, String> capturedAuthHeaders = new HashMap<String, String>();
+        final Map<String, String> capturedData = new HashMap<String, String>();
 
-        MixpanelAPI api = new MixpanelAPI.Builder()
-            .credentials(credentials)
-            .build();
-
-        // Override sendImportData to capture URL and auth header
-        MixpanelAPI apiWithOverride = new MixpanelAPI.Builder()
+        // Override sendImportData to capture URL and verify it's called with credentials
+        MixpanelAPI apiWithCredentials = new MixpanelAPI.Builder()
             .credentials(credentials)
             .build() {
             @Override
             boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
                 capturedUrls.put("import", endpointUrl);
-                // In a real test, we'd also capture the Authorization header
-                // For now, just verify the URL contains project_id
+                capturedData.put("dataString", dataString);
+                capturedData.put("token", token);
+
+                // Verify project_id is in the URL when using service account
                 assertTrue("Import URL should contain project_id parameter",
                     endpointUrl.contains("project_id=12345"));
+
                 return true;
             }
         };
@@ -1782,16 +1782,126 @@ public class MixpanelAPITest extends TestCase
             ClientDelivery delivery = new ClientDelivery();
             delivery.addImportMessage(importMessage);
 
-            apiWithOverride.deliver(delivery);
+            apiWithCredentials.deliver(delivery);
 
             String importUrl = capturedUrls.get("import");
             assertNotNull("Import URL should be captured", importUrl);
             assertTrue("Import URL should contain project_id", importUrl.contains("project_id=12345"));
+            assertTrue("Import URL should contain strict parameter", importUrl.contains("strict="));
         } catch (IOException e) {
             fail("IOException: " + e.toString());
         }
 
-        apiWithOverride.close();
+        apiWithCredentials.close();
+    }
+
+    /**
+     * Test that token-based authentication still works without credentials (backward compatibility)
+     */
+    public void testTokenBasedAuthenticationForImport() {
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        final Map<String, String> capturedTokens = new HashMap<String, String>();
+
+        // No credentials provided - should use token-based auth
+        MixpanelAPI apiWithoutCredentials = new MixpanelAPI.Builder()
+            .build() {
+            @Override
+            boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+                capturedUrls.put("import", endpointUrl);
+                capturedTokens.put("token", token);
+
+                // Verify project_id is NOT in the URL when using token-based auth
+                assertFalse("Import URL should NOT contain project_id for token-based auth",
+                    endpointUrl.contains("project_id="));
+
+                // Token should be extracted from message properties
+                assertEquals("Token should be from message properties", "test-token", token);
+
+                return true;
+            }
+        };
+
+        try {
+            MessageBuilder builder = new MessageBuilder("test-token");
+            JSONObject importMessage = builder.event("user123", "Signup", null);
+
+            ClientDelivery delivery = new ClientDelivery();
+            delivery.addImportMessage(importMessage);
+
+            apiWithoutCredentials.deliver(delivery);
+
+            String importUrl = capturedUrls.get("import");
+            assertNotNull("Import URL should be captured", importUrl);
+            assertFalse("Import URL should NOT contain project_id for token-based auth",
+                importUrl.contains("project_id="));
+
+            String token = capturedTokens.get("token");
+            assertEquals("Token should be extracted from message", "test-token", token);
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        }
+
+        apiWithoutCredentials.close();
+    }
+
+    /**
+     * Test that service account credentials are NOT used for regular tracking endpoints
+     */
+    public void testServiceAccountNotUsedForTracking() {
+        final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+        final Map<String, String> capturedEventUrls = new HashMap<String, String>();
+        final Map<String, String> capturedPeopleUrls = new HashMap<String, String>();
+        final Map<String, String> capturedGroupUrls = new HashMap<String, String>();
+
+        MixpanelAPI apiWithCredentials = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .build() {
+            @Override
+            public boolean sendData(String dataString, String endpointUrl) {
+                // Capture URLs for tracking endpoints
+                if (endpointUrl.contains("/track")) {
+                    capturedEventUrls.put("events", endpointUrl);
+                } else if (endpointUrl.contains("/engage")) {
+                    capturedPeopleUrls.put("people", endpointUrl);
+                } else if (endpointUrl.contains("/groups")) {
+                    capturedGroupUrls.put("groups", endpointUrl);
+                }
+
+                // Verify project_id is NOT in any tracking URLs
+                assertFalse("Tracking URLs should NOT contain project_id",
+                    endpointUrl.contains("project_id="));
+
+                return true;
+            }
+        };
+
+        try {
+            MessageBuilder builder = new MessageBuilder("test-token");
+
+            ClientDelivery delivery = new ClientDelivery();
+            delivery.addMessage(builder.event("user123", "Login", null));
+            delivery.addMessage(builder.set("user123", new JSONObject("{\"name\":\"Test\"}")));
+            delivery.addMessage(builder.groupSet("company", "acme", new JSONObject("{\"plan\":\"pro\"}")));
+
+            apiWithCredentials.deliver(delivery);
+
+            // Verify all tracking endpoints were called WITHOUT service account credentials
+            assertNotNull("Events endpoint should be called", capturedEventUrls.get("events"));
+            assertNotNull("People endpoint should be called", capturedPeopleUrls.get("people"));
+            assertNotNull("Groups endpoint should be called", capturedGroupUrls.get("groups"));
+
+            // None should have project_id parameter
+            assertFalse("Events URL should not have project_id",
+                capturedEventUrls.get("events").contains("project_id="));
+            assertFalse("People URL should not have project_id",
+                capturedPeopleUrls.get("people").contains("project_id="));
+            assertFalse("Groups URL should not have project_id",
+                capturedGroupUrls.get("groups").contains("project_id="));
+        } catch (Exception e) {
+            fail("Exception: " + e.toString());
+        }
+
+        apiWithCredentials.close();
     }
 
     /**

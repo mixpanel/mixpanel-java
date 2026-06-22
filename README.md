@@ -49,9 +49,11 @@ Gzip compression can reduce bandwidth usage and improve performance, especially 
 
 The library supports importing historical events (events older than 5 days that are not accepted using /track) via the `/import` endpoint. Project token will be used for basic auth.
 
-### Service Account Authentication
+### Service Account Authentication (Recommended)
 
-For enhanced security in server-to-server integrations, you can use service account credentials instead of shared API secrets:
+**Service account authentication is the recommended method for server-side integrations.**
+
+Service accounts provide enhanced security by using unique username/secret pairs instead of relying solely on the project token for authentication:
 
 ```java
 import com.mixpanel.mixpanelapi.*;
@@ -68,7 +70,7 @@ MixpanelAPI mixpanel = new MixpanelAPI.Builder()
     .credentials(credentials)
     .build();
 
-// Use normally - credentials are only used for /import endpoint
+// Use normally - credentials are used for /import endpoint and feature flags
 MessageBuilder messages = new MessageBuilder("my token");
 JSONObject event = messages.event("user@example.com", "Signup", null);
 
@@ -78,15 +80,54 @@ delivery.addImportMessage(event);  // This will use service account auth
 mixpanel.deliver(delivery);
 ```
 
+### Service Accounts with Feature Flags
+
+Service account credentials are automatically used for feature flag operations when configured:
+
+```java
+import com.mixpanel.mixpanelapi.*;
+import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
+
+// Create service account credentials
+ServiceAccountCredential credentials = new ServiceAccountCredential(
+    12345L, "service-username", "service-secret"
+);
+
+// Configure feature flags with credentials
+LocalFlagsConfig flagsConfig = LocalFlagsConfig.builder()
+    .projectToken("my-token")
+    .credentials(credentials)  // Credentials for /flags endpoints
+    .pollingIntervalSeconds(60)
+    .build();
+
+MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .flagsConfig(flagsConfig)
+    .build();
+
+// Or pass credentials to MixpanelAPI and they'll be injected into flags config
+MixpanelAPI mixpanel2 = new MixpanelAPI.Builder()
+    .credentials(credentials)
+    .flagsConfig(LocalFlagsConfig.builder()
+        .projectToken("my-token")
+        .pollingIntervalSeconds(60)
+        .build())
+    .build();  // Credentials automatically applied to feature flags
+
+// Feature flag requests will use service account authentication
+mixpanel.getLocalFlags().startPollingForDefinitions();
+boolean isEnabled = mixpanel.getLocalFlags().isEnabled("new-feature", context);
+```
+
 **Important Notes:**
-- Service account credentials are **only used for the `/import` endpoint** (and feature flags)
+- **Recommended for all new integrations** - Service accounts provide enhanced security
+- Service account credentials are used for:
+  - **`/import` endpoint** - Historical event imports
+  - **Feature flags** - `/flags` and `/flags/definitions` endpoints
 - Regular event tracking (`/track`), people updates (`/engage`), and group updates (`/groups`) continue to use the project token included in the message payload
 - When service account credentials are configured:
-  - The `/import` endpoint uses HTTP Basic Authentication with `username:secret`
-  - The `project_id` is included as a query parameter for backend validation
-  - The project token in the message is not used for authentication (but should still be included in events)
-
-Service account authentication is recommended for production server-side applications as it provides better security than shared API secrets.
+  - Authenticated endpoints use HTTP Basic Authentication with `username:secret`
+  - The `project_id` is included as a query parameter instead of `token`
+  - The project token from the message is not used for authentication (but should still be included in tracking events)
 
 ### High-Performance JSON Serialization (Optional)
 

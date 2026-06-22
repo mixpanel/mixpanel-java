@@ -235,13 +235,37 @@ public class MixpanelAPI implements AutoCloseable {
         }
 
         if (localFlagsConfig != null) {
-            EventSender eventSender = createEventSender(localFlagsConfig, this);
-            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender);
+            // If credentials are provided but not set on flags config, inject them
+            LocalFlagsConfig configWithCredentials = localFlagsConfig;
+            if (credentials != null && localFlagsConfig.getCredentials() == null) {
+                configWithCredentials = LocalFlagsConfig.builder()
+                    .projectToken(localFlagsConfig.getProjectToken())
+                    .apiHost(localFlagsConfig.getApiHost())
+                    .requestTimeoutSeconds(localFlagsConfig.getRequestTimeoutSeconds())
+                    .exposureExecutor(localFlagsConfig.getExposureExecutor())
+                    .credentials(credentials)
+                    .pollingIntervalSeconds(localFlagsConfig.getPollingIntervalSeconds())
+                    .enablePolling(localFlagsConfig.isEnablePolling())
+                    .build();
+            }
+            EventSender eventSender = createEventSender(configWithCredentials, this);
+            mLocalFlags = new LocalFlagsProvider(configWithCredentials, VersionUtil.getVersion(), eventSender);
             mRemoteFlags = null;
         } else if (remoteFlagsConfig != null) {
-            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
+            // If credentials are provided but not set on flags config, inject them
+            RemoteFlagsConfig configWithCredentials = remoteFlagsConfig;
+            if (credentials != null && remoteFlagsConfig.getCredentials() == null) {
+                configWithCredentials = RemoteFlagsConfig.builder()
+                    .projectToken(remoteFlagsConfig.getProjectToken())
+                    .apiHost(remoteFlagsConfig.getApiHost())
+                    .requestTimeoutSeconds(remoteFlagsConfig.getRequestTimeoutSeconds())
+                    .exposureExecutor(remoteFlagsConfig.getExposureExecutor())
+                    .credentials(credentials)
+                    .build();
+            }
+            EventSender eventSender = createEventSender(configWithCredentials, this);
             mLocalFlags = null;
-            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender);
+            mRemoteFlags = new RemoteFlagsProvider(configWithCredentials, VersionUtil.getVersion(), eventSender);
         } else {
             mLocalFlags = null;
             mRemoteFlags = null;
@@ -887,9 +911,14 @@ public class MixpanelAPI implements AutoCloseable {
         /**
          * Sets the service account credentials for authentication.
          * <p>
-         * Service account credentials are used for enhanced security in server-to-server
-         * integrations. When provided, the /import endpoint will use HTTP Basic Authentication
-         * with the service account username and secret instead of token-based authentication.
+         * <strong>Recommended:</strong> Service account authentication is the preferred method
+         * for server-side integrations. Service accounts provide enhanced security by using
+         * unique username/secret pairs instead of relying solely on the project token for
+         * authentication.
+         * </p>
+         * <p>
+         * When provided, the /import endpoint will use HTTP Basic Authentication with the
+         * service account username and secret instead of token-based authentication.
          * </p>
          * <p>
          * Service account credentials are only applied to the /import endpoint (and feature flags).
@@ -899,6 +928,7 @@ public class MixpanelAPI implements AutoCloseable {
          *
          * @param credentials service account credentials for authentication
          * @return this Builder instance for method chaining
+         * @see ServiceAccountCredential
          */
         public Builder credentials(ServiceAccountCredential credentials) {
             this.credentials = credentials;
