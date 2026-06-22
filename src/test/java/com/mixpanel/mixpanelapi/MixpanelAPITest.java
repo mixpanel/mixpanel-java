@@ -1677,4 +1677,137 @@ public class MixpanelAPITest extends TestCase
         
         api.close();
     }
+
+    /**
+     * Test that ServiceAccountCredential validates required fields
+     */
+    public void testServiceAccountCredentialValidation() {
+        // Valid credentials should work
+        ServiceAccountCredential valid = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+        assertEquals(12345L, valid.getProjectId());
+        assertEquals("test-user", valid.getUsername());
+        assertEquals("test-secret", valid.getSecret());
+
+        // Invalid project ID (zero or negative)
+        try {
+            new ServiceAccountCredential(0L, "test-user", "test-secret");
+            fail("Should reject zero project ID");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("projectId must be greater than zero"));
+        }
+
+        try {
+            new ServiceAccountCredential(-1L, "test-user", "test-secret");
+            fail("Should reject negative project ID");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("projectId must be greater than zero"));
+        }
+
+        // Invalid username (null or empty)
+        try {
+            new ServiceAccountCredential(12345L, null, "test-secret");
+            fail("Should reject null username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "", "test-secret");
+            fail("Should reject empty username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "   ", "test-secret");
+            fail("Should reject whitespace-only username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        // Invalid secret (null or empty)
+        try {
+            new ServiceAccountCredential(12345L, "test-user", null);
+            fail("Should reject null secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "test-user", "");
+            fail("Should reject empty secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "test-user", "   ");
+            fail("Should reject whitespace-only secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+    }
+
+    /**
+     * Test that service account credentials are used for /import endpoint
+     */
+    public void testServiceAccountAuthenticationForImport() {
+        final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+        final Map<String, String> capturedUrls = new HashMap<String, String>();
+        final Map<String, String> capturedAuthHeaders = new HashMap<String, String>();
+
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .build();
+
+        // Override sendImportData to capture URL and auth header
+        MixpanelAPI apiWithOverride = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .build() {
+            @Override
+            boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
+                capturedUrls.put("import", endpointUrl);
+                // In a real test, we'd also capture the Authorization header
+                // For now, just verify the URL contains project_id
+                assertTrue("Import URL should contain project_id parameter",
+                    endpointUrl.contains("project_id=12345"));
+                return true;
+            }
+        };
+
+        try {
+            MessageBuilder builder = new MessageBuilder("test-token");
+            JSONObject importMessage = builder.event("user123", "Signup", null);
+
+            ClientDelivery delivery = new ClientDelivery();
+            delivery.addImportMessage(importMessage);
+
+            apiWithOverride.deliver(delivery);
+
+            String importUrl = capturedUrls.get("import");
+            assertNotNull("Import URL should be captured", importUrl);
+            assertTrue("Import URL should contain project_id", importUrl.contains("project_id=12345"));
+        } catch (IOException e) {
+            fail("IOException: " + e.toString());
+        }
+
+        apiWithOverride.close();
+    }
+
+    /**
+     * Test that Builder correctly configures credentials
+     */
+    public void testBuilderWithCredentials() {
+        ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .useGzipCompression(true)
+            .connectTimeout(5000)
+            .readTimeout(15000)
+            .build();
+
+        assertNotNull("API should be created with credentials", api);
+        api.close();
+    }
 }

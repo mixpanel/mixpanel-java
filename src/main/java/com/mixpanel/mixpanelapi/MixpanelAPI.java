@@ -59,6 +59,7 @@ public class MixpanelAPI implements AutoCloseable {
     protected final RemoteFlagsProvider mRemoteFlags;
     protected final JsonSerializer mJsonSerializer;
     protected final OrgJsonSerializer mDefaultJsonSerializer;
+    protected final ServiceAccountCredential mCredentials;
 
     /**
      * Constructs a MixpanelAPI object associated with the production, Mixpanel services.
@@ -73,7 +74,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param useGzipCompression whether to use gzip compression for network requests
      */
     public MixpanelAPI(boolean useGzipCompression) {
-        this(null, null, null, null, useGzipCompression, null, null, null, null, null, null);
+        this(null, null, null, null, useGzipCompression, null, null, null, null, null, null, null);
     }
 
     /**
@@ -102,7 +103,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param remoteFlagsConfig configuration for remote feature flags evaluation (can be null)
      */
     private MixpanelAPI(LocalFlagsConfig localFlagsConfig, RemoteFlagsConfig remoteFlagsConfig) {
-        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null, null);
+        this(null, null, null, null, false, localFlagsConfig, remoteFlagsConfig, null, null, null, null, null);
     }
 
     /**
@@ -115,7 +116,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, null, null, false, null, null, null, null, null, null, null);
     }
 
     /**
@@ -129,7 +130,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, null, false, null, null, null, null, null, null, null);
     }
 
     /**
@@ -144,7 +145,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, false, null, null, null, null, null, null, null);
     }
 
     /**
@@ -160,7 +161,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @see #MixpanelAPI()
      */
     public MixpanelAPI(String eventsEndpoint, String peopleEndpoint, String groupsEndpoint, String importEndpoint, boolean useGzipCompression) {
-        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null, null);
+        this(eventsEndpoint, peopleEndpoint, groupsEndpoint, importEndpoint, useGzipCompression, null, null, null, null, null, null, null);
     }
 
     /**
@@ -180,7 +181,8 @@ public class MixpanelAPI implements AutoCloseable {
             builder.jsonSerializer,
             builder.connectTimeout,
             builder.readTimeout,
-            builder.importMaxMessageCount
+            builder.importMaxMessageCount,
+            builder.credentials
         );
     }
 
@@ -198,6 +200,7 @@ public class MixpanelAPI implements AutoCloseable {
      * @param connectTimeout connection timeout in milliseconds (null uses default)
      * @param readTimeout read timeout in milliseconds (null uses default)
      * @param importMaxMessageCount maximum messages per import batch (null uses default)
+     * @param credentials service account credentials for authentication (null uses token-based auth)
      */
     private MixpanelAPI(
         String eventsEndpoint,
@@ -210,7 +213,8 @@ public class MixpanelAPI implements AutoCloseable {
         JsonSerializer jsonSerializer,
         Integer connectTimeout,
         Integer readTimeout,
-        Integer importMaxMessageCount
+        Integer importMaxMessageCount,
+        ServiceAccountCredential credentials
     ) {
         mEventsEndpoint = eventsEndpoint != null ? eventsEndpoint : Config.BASE_ENDPOINT + "/track";
         mPeopleEndpoint = peopleEndpoint != null ? peopleEndpoint : Config.BASE_ENDPOINT + "/engage";
@@ -221,6 +225,7 @@ public class MixpanelAPI implements AutoCloseable {
         mReadTimeout = readTimeout != null ? readTimeout : DEFAULT_READ_TIMEOUT_MILLIS;
         mImportMaxMessageCount = importMaxMessageCount != null ?
                 Math.min(importMaxMessageCount, Config.IMPORT_MAX_MESSAGE_SIZE) : Config.IMPORT_MAX_MESSAGE_SIZE;
+        mCredentials = credentials;
         mDefaultJsonSerializer = new OrgJsonSerializer();
         if (jsonSerializer != null) {
             logger.log(Level.INFO, "Custom JsonSerializer provided: " + jsonSerializer.getClass().getName());
@@ -492,20 +497,32 @@ public class MixpanelAPI implements AutoCloseable {
     }
 
     /**
-     * Sends import data to the /import endpoint with Basic Auth using the project token.
+     * Sends import data to the /import endpoint with authentication.
+     * <p>
+     * When service account credentials are configured, uses HTTP Basic Auth with
+     * username:secret and includes project_id as a query parameter.
+     * Otherwise, uses token-based Basic Auth (token as username, empty password).
+     * </p>
      * The /import endpoint requires:
      * - JSON content type (not URL-encoded like /track)
-     * - Basic authentication with token as username and empty password
-     * - strict=1 parameter for validation
+     * - Basic authentication (either service account or token)
+     * - strict parameter for validation mode
      *
      * @param dataString JSON array of events to import
      * @param endpointUrl The import endpoint URL
-     * @param token The project token for Basic Auth
+     * @param token The project token (used only when service account credentials are not configured)
      * @return true if the server accepted the data
      * @throws IOException if there's a network error
      */
     /* package */ boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
-        URL endpoint = new URL(endpointUrl);
+        // If service account credentials are configured, add project_id as query parameter
+        String finalEndpointUrl = endpointUrl;
+        if (mCredentials != null) {
+            String separator = endpointUrl.contains("?") ? "&" : "?";
+            finalEndpointUrl = endpointUrl + separator + "project_id=" + mCredentials.getProjectId();
+        }
+
+        URL endpoint = new URL(finalEndpointUrl);
         HttpURLConnection conn = (HttpURLConnection) endpoint.openConnection();
         conn.setReadTimeout(mReadTimeout);
         conn.setConnectTimeout(mConnectTimeout);
@@ -513,9 +530,16 @@ public class MixpanelAPI implements AutoCloseable {
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
 
-        // Add Basic Auth header: username is token, password is empty
+        // Add Basic Auth header
         try {
-            String authString = token + ":";
+            String authString;
+            if (mCredentials != null) {
+                // Service account auth: username:secret
+                authString = mCredentials.getUsername() + ":" + mCredentials.getSecret();
+            } else {
+                // Token-based auth: token:empty
+                authString = token + ":";
+            }
             byte[] authBytes = authString.getBytes("utf-8");
             String base64Auth = new String(Base64Coder.encode(authBytes));
             conn.setRequestProperty("Authorization", "Basic " + base64Auth);
@@ -734,6 +758,7 @@ public class MixpanelAPI implements AutoCloseable {
         private Integer connectTimeout;
         private Integer readTimeout;
         private Integer importMaxMessageCount;
+        private ServiceAccountCredential credentials;
 
         /**
          * Sets the endpoint URL for Mixpanel events messages.
@@ -856,6 +881,27 @@ public class MixpanelAPI implements AutoCloseable {
             if (importMaxMessageCount > 0 && importMaxMessageCount <= Config.IMPORT_MAX_MESSAGE_SIZE) {
                 this.importMaxMessageCount = importMaxMessageCount;
             }
+            return this;
+        }
+
+        /**
+         * Sets the service account credentials for authentication.
+         * <p>
+         * Service account credentials are used for enhanced security in server-to-server
+         * integrations. When provided, the /import endpoint will use HTTP Basic Authentication
+         * with the service account username and secret instead of token-based authentication.
+         * </p>
+         * <p>
+         * Service account credentials are only applied to the /import endpoint (and feature flags).
+         * Regular event tracking operations (track, people updates, group updates) continue to
+         * use the project token included in the message payload.
+         * </p>
+         *
+         * @param credentials service account credentials for authentication
+         * @return this Builder instance for method chaining
+         */
+        public Builder credentials(ServiceAccountCredential credentials) {
+            this.credentials = credentials;
             return this;
         }
 
