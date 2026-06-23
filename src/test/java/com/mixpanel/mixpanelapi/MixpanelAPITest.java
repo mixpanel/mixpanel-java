@@ -32,6 +32,8 @@ public class MixpanelAPITest extends TestCase
     private MessageBuilder mBuilder;
     private JSONObject mSampleProps;
     private JSONObject mSampleModifiers;
+    private static final String TEST_TOKEN = "a token";
+
     private String mEventsMessages;
     private String mPeopleMessages;
     private String mGroupMessages;
@@ -59,7 +61,7 @@ public class MixpanelAPITest extends TestCase
     @Override
     public void setUp() {
         mTimeZero = System.currentTimeMillis() / 1000;
-        mBuilder = new MessageBuilder("a token");
+        mBuilder = new MessageBuilder(TEST_TOKEN);
 
         try {
             mSampleProps = new JSONObject();
@@ -1749,18 +1751,28 @@ public class MixpanelAPITest extends TestCase
     }
 
     /**
-     * Test that service account credentials are properly configured via Builder
+     * Test that service account credentials can be configured via Builder
      */
     public void testServiceAccountAuthenticationForImport() {
         final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
 
-        // Build MixpanelAPI with credentials using Builder
         MixpanelAPI api = new MixpanelAPI.Builder()
             .credentials(credentials)
             .build();
 
-        // Verify API constructs successfully with credentials
-        assertNotNull("API should be created with credentials", api);
+        // Verify credentials are stored internally
+        try {
+            java.lang.reflect.Field credField = MixpanelAPI.class.getDeclaredField("mCredentials");
+            credField.setAccessible(true);
+            ServiceAccountCredential storedCreds = (ServiceAccountCredential) credField.get(api);
+
+            assertNotNull("Credentials should be stored", storedCreds);
+            assertEquals("Project ID should match", 12345L, storedCreds.getProjectId());
+            assertEquals("Username should match", "test-user", storedCreds.getUsername());
+            assertEquals("Secret should match", "test-secret", storedCreds.getSecret());
+        } catch (Exception e) {
+            fail("Failed to verify credentials: " + e.getMessage());
+        }
 
         api.close();
     }
@@ -1779,18 +1791,19 @@ public class MixpanelAPITest extends TestCase
     }
 
     /**
-     * Test that service account credentials are properly configured alongside other options
+     * Test that Builder correctly configures credentials alongside other options
      */
     public void testServiceAccountNotUsedForTracking() {
         final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
 
-        // Build MixpanelAPI with credentials - service account credentials should only affect
-        // /import and feature flags, not regular tracking endpoints
         MixpanelAPI api = new MixpanelAPI.Builder()
             .credentials(credentials)
+            .useGzipCompression(true)
+            .connectTimeout(5000)
+            .readTimeout(15000)
             .build();
 
-        // Verify API constructs successfully with credentials
+        // Service account credentials should be configured successfully alongside other options
         assertNotNull("API should be created with credentials", api);
 
         api.close();
@@ -1812,4 +1825,5 @@ public class MixpanelAPITest extends TestCase
         assertNotNull("API should be created with credentials", api);
         api.close();
     }
+
 }
