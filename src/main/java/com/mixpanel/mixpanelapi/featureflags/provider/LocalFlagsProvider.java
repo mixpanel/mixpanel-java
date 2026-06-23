@@ -161,7 +161,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private String buildDefinitionsUrl() throws UnsupportedEncodingException {
         StringBuilder url = new StringBuilder();
         url.append("https://").append(config.getApiHost()).append("/flags/definitions");
-        url.append("?mp_lib=").append(URLEncoder.encode("java", "UTF-8"));
+        url.append("?mp_lib=").append(URLEncoder.encode("jdk", "UTF-8"));
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
         url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
 
