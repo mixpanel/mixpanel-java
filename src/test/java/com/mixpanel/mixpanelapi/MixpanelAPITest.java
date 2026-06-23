@@ -1754,13 +1754,14 @@ public class MixpanelAPITest extends TestCase
     public void testServiceAccountAuthenticationForImport() {
         final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
         final Map<String, String> capturedUrls = new HashMap<String, String>();
-        final Map<String, String> capturedAuthHeaders = new HashMap<String, String>();
         final Map<String, String> capturedData = new HashMap<String, String>();
 
-        // Override sendImportData to capture URL and verify it's called with credentials
-        MixpanelAPI apiWithCredentials = new MixpanelAPI.Builder()
-            .credentials(credentials)
-            .build() {
+        // Create test API that captures import calls
+        class TestMixpanelAPI extends MixpanelAPI {
+            TestMixpanelAPI(Builder builder) {
+                super(builder);
+            }
+
             @Override
             boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
                 capturedUrls.put("import", endpointUrl);
@@ -1773,7 +1774,11 @@ public class MixpanelAPITest extends TestCase
 
                 return true;
             }
-        };
+        }
+
+        MixpanelAPI apiWithCredentials = new TestMixpanelAPI(
+            new MixpanelAPI.Builder().credentials(credentials)
+        );
 
         try {
             MessageBuilder builder = new MessageBuilder("test-token");
@@ -1802,9 +1807,12 @@ public class MixpanelAPITest extends TestCase
         final Map<String, String> capturedUrls = new HashMap<String, String>();
         final Map<String, String> capturedTokens = new HashMap<String, String>();
 
-        // No credentials provided - should use token-based auth
-        MixpanelAPI apiWithoutCredentials = new MixpanelAPI.Builder()
-            .build() {
+        // Create test API that captures import calls
+        class TestMixpanelAPI extends MixpanelAPI {
+            TestMixpanelAPI(Builder builder) {
+                super(builder);
+            }
+
             @Override
             boolean sendImportData(String dataString, String endpointUrl, String token) throws IOException {
                 capturedUrls.put("import", endpointUrl);
@@ -1819,7 +1827,9 @@ public class MixpanelAPITest extends TestCase
 
                 return true;
             }
-        };
+        }
+
+        MixpanelAPI apiWithoutCredentials = new TestMixpanelAPI(new MixpanelAPI.Builder());
 
         try {
             MessageBuilder builder = new MessageBuilder("test-token");
@@ -1853,9 +1863,12 @@ public class MixpanelAPITest extends TestCase
         final Map<String, String> capturedPeopleUrls = new HashMap<String, String>();
         final Map<String, String> capturedGroupUrls = new HashMap<String, String>();
 
-        MixpanelAPI apiWithCredentials = new MixpanelAPI.Builder()
-            .credentials(credentials)
-            .build() {
+        // Create test API that captures tracking calls
+        class TestMixpanelAPI extends MixpanelAPI {
+            TestMixpanelAPI(Builder builder) {
+                super(builder);
+            }
+
             @Override
             public boolean sendData(String dataString, String endpointUrl) {
                 // Capture URLs for tracking endpoints
@@ -1873,7 +1886,11 @@ public class MixpanelAPITest extends TestCase
 
                 return true;
             }
-        };
+        }
+
+        MixpanelAPI apiWithCredentials = new TestMixpanelAPI(
+            new MixpanelAPI.Builder().credentials(credentials)
+        );
 
         try {
             MessageBuilder builder = new MessageBuilder("test-token");
