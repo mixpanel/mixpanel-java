@@ -42,14 +42,26 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private ScheduledExecutorService pollingExecutor;
 
     /**
-     * Creates a new LocalFlagsProvider.
+     * Creates a new LocalFlagsProvider without credentials.
      *
      * @param config the local flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
      */
     public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender) {
-        super(config.getProjectToken(), config, sdkVersion, eventSender);
+        this(config, sdkVersion, eventSender, null);
+    }
+
+    /**
+     * Creates a new LocalFlagsProvider.
+     *
+     * @param config the local flags configuration
+     * @param sdkVersion the SDK version string
+     * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
+     */
+    public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender, com.mixpanel.mixpanelapi.ServiceAccountCredential credentials) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender, credentials);
 
         this.flagDefinitions = new AtomicReference<>(new HashMap<>());
         this.ready = new AtomicBoolean(false);
@@ -153,8 +165,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
 
         // Use project_id when credentials are present, otherwise use token
-        if (config.getCredentials() != null) {
-            url.append("&project_id=").append(config.getCredentials().getProjectId());
+        if (credentials != null) {
+            url.append("&project_id=").append(credentials.getProjectId());
         } else {
             url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
         }

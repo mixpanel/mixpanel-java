@@ -30,14 +30,26 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
     private static final Logger logger = Logger.getLogger(RemoteFlagsProvider.class.getName());
 
     /**
-     * Creates a new RemoteFlagsProvider.
+     * Creates a new RemoteFlagsProvider without credentials.
      *
      * @param config the remote flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
      */
     public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender) {
-        super(config.getProjectToken(), config, sdkVersion, eventSender);
+        this(config, sdkVersion, eventSender, null);
+    }
+
+    /**
+     * Creates a new RemoteFlagsProvider.
+     *
+     * @param config the remote flags configuration
+     * @param sdkVersion the SDK version string
+     * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
+     */
+    public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender, com.mixpanel.mixpanelapi.ServiceAccountCredential credentials) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender, credentials);
     }
 
     // #region Evaluation
@@ -130,8 +142,8 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
 
         // Use project_id when credentials are present, otherwise use token
-        if (config.getCredentials() != null) {
-            url.append("&project_id=").append(config.getCredentials().getProjectId());
+        if (credentials != null) {
+            url.append("&project_id=").append(credentials.getProjectId());
         } else {
             url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
         }

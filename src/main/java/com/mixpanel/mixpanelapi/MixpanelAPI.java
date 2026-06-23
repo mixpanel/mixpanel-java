@@ -235,37 +235,13 @@ public class MixpanelAPI implements AutoCloseable {
         }
 
         if (localFlagsConfig != null) {
-            // If credentials are provided but not set on flags config, inject them
-            LocalFlagsConfig configWithCredentials = localFlagsConfig;
-            if (credentials != null && localFlagsConfig.getCredentials() == null) {
-                configWithCredentials = LocalFlagsConfig.builder()
-                    .projectToken(localFlagsConfig.getProjectToken())
-                    .apiHost(localFlagsConfig.getApiHost())
-                    .requestTimeoutSeconds(localFlagsConfig.getRequestTimeoutSeconds())
-                    .exposureExecutor(localFlagsConfig.getExposureExecutor())
-                    .credentials(credentials)
-                    .pollingIntervalSeconds(localFlagsConfig.getPollingIntervalSeconds())
-                    .enablePolling(localFlagsConfig.isEnablePolling())
-                    .build();
-            }
-            EventSender eventSender = createEventSender(configWithCredentials, this);
-            mLocalFlags = new LocalFlagsProvider(configWithCredentials, VersionUtil.getVersion(), eventSender);
+            EventSender eventSender = createEventSender(localFlagsConfig, this);
+            mLocalFlags = new LocalFlagsProvider(localFlagsConfig, VersionUtil.getVersion(), eventSender, credentials);
             mRemoteFlags = null;
         } else if (remoteFlagsConfig != null) {
-            // If credentials are provided but not set on flags config, inject them
-            RemoteFlagsConfig configWithCredentials = remoteFlagsConfig;
-            if (credentials != null && remoteFlagsConfig.getCredentials() == null) {
-                configWithCredentials = RemoteFlagsConfig.builder()
-                    .projectToken(remoteFlagsConfig.getProjectToken())
-                    .apiHost(remoteFlagsConfig.getApiHost())
-                    .requestTimeoutSeconds(remoteFlagsConfig.getRequestTimeoutSeconds())
-                    .exposureExecutor(remoteFlagsConfig.getExposureExecutor())
-                    .credentials(credentials)
-                    .build();
-            }
-            EventSender eventSender = createEventSender(configWithCredentials, this);
+            EventSender eventSender = createEventSender(remoteFlagsConfig, this);
             mLocalFlags = null;
-            mRemoteFlags = new RemoteFlagsProvider(configWithCredentials, VersionUtil.getVersion(), eventSender);
+            mRemoteFlags = new RemoteFlagsProvider(remoteFlagsConfig, VersionUtil.getVersion(), eventSender, credentials);
         } else {
             mLocalFlags = null;
             mRemoteFlags = null;

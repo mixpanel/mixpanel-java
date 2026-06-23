@@ -82,7 +82,7 @@ mixpanel.deliver(delivery);
 
 ### Service Accounts with Feature Flags
 
-Service account credentials are automatically used for feature flag operations when configured:
+Service account credentials are passed to MixpanelAPI and automatically used for feature flags:
 
 ```java
 import com.mixpanel.mixpanelapi.*;
@@ -93,25 +93,17 @@ ServiceAccountCredential credentials = new ServiceAccountCredential(
     12345L, "service-username", "service-secret"
 );
 
-// Configure feature flags with credentials
+// Configure feature flags
 LocalFlagsConfig flagsConfig = LocalFlagsConfig.builder()
     .projectToken("my-token")
-    .credentials(credentials)  // Credentials for /flags endpoints
     .pollingIntervalSeconds(60)
     .build();
 
+// Pass credentials to MixpanelAPI - they'll be used for both /import and feature flags
 MixpanelAPI mixpanel = new MixpanelAPI.Builder()
+    .credentials(credentials)  // Credentials used for /import AND feature flags
     .flagsConfig(flagsConfig)
     .build();
-
-// Or pass credentials to MixpanelAPI and they'll be injected into flags config
-MixpanelAPI mixpanel2 = new MixpanelAPI.Builder()
-    .credentials(credentials)
-    .flagsConfig(LocalFlagsConfig.builder()
-        .projectToken("my-token")
-        .pollingIntervalSeconds(60)
-        .build())
-    .build();  // Credentials automatically applied to feature flags
 
 // Feature flag requests will use service account authentication
 mixpanel.getLocalFlags().startPollingForDefinitions();

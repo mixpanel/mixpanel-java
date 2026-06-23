@@ -36,6 +36,7 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     protected final C config;
     protected final String sdkVersion;
     protected final EventSender eventSender;
+    protected final ServiceAccountCredential credentials;
 
     /**
      * Creates a new BaseFlagsProvider.
@@ -44,12 +45,14 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @param config the flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
      */
-    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion, EventSender eventSender) {
+    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion, EventSender eventSender, ServiceAccountCredential credentials) {
         this.projectToken = projectToken;
         this.config = config;
         this.sdkVersion = sdkVersion;
         this.eventSender = eventSender;
+        this.credentials = credentials;
     }
 
     // #region HTTP Methods
@@ -71,7 +74,6 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         conn.setReadTimeout(config.getRequestTimeoutSeconds() * 1000);
 
         // Set Basic Auth header
-        ServiceAccountCredential credentials = config.getCredentials();
         String auth;
         if (credentials != null) {
             // Service account auth: username:secret
