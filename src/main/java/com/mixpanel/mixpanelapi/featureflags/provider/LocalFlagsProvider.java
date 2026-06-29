@@ -39,6 +39,9 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private final AtomicBoolean ready;
     private final AtomicBoolean closed;
 
+    // Guards start/stop of pollingExecutor so concurrent startPollingForDefinitions
+    // calls don't both create executors (leaking the first).
+    private final Object pollingLock = new Object();
     private ScheduledExecutorService pollingExecutor;
 
     /**
@@ -75,20 +78,30 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         // Start background polling if enabled
         if (config.isEnablePolling()) {
-            pollingExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "mixpanel-flags-poller");
-                t.setDaemon(true);
-                return t;
-            });
+            synchronized (pollingLock) {
+                if (pollingExecutor != null) {
+                    // Idempotent: a previous call already scheduled the poller.
+                    // Without this guard, two concurrent start calls would each
+                    // allocate a new ScheduledExecutorService and the earlier
+                    // one would leak.
+                    return;
+                }
 
-            pollingExecutor.scheduleAtFixedRate(
-                this::fetchDefinitions,
-                config.getPollingIntervalSeconds(),
-                config.getPollingIntervalSeconds(),
-                TimeUnit.SECONDS
-            );
+                pollingExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "mixpanel-flags-poller");
+                    t.setDaemon(true);
+                    return t;
+                });
 
-            logger.log(Level.INFO, "Started polling for flag definitions every " + config.getPollingIntervalSeconds() + " seconds");
+                pollingExecutor.scheduleAtFixedRate(
+                    this::fetchDefinitions,
+                    config.getPollingIntervalSeconds(),
+                    config.getPollingIntervalSeconds(),
+                    TimeUnit.SECONDS
+                );
+
+                logger.log(Level.INFO, "Started polling for flag definitions every " + config.getPollingIntervalSeconds() + " seconds");
+            }
         }
     }
 
@@ -96,17 +109,22 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      * Stops polling for flag definitions and releases resources.
      */
     public void stopPollingForDefinitions() {
-        if (pollingExecutor != null) {
-            pollingExecutor.shutdown();
-            try {
-                if (!pollingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    pollingExecutor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                pollingExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+        ScheduledExecutorService toShutdown;
+        synchronized (pollingLock) {
+            toShutdown = pollingExecutor;
             pollingExecutor = null;
+        }
+        if (toShutdown == null) {
+            return;
+        }
+        toShutdown.shutdown();
+        try {
+            if (!toShutdown.awaitTermination(5, TimeUnit.SECONDS)) {
+                toShutdown.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            toShutdown.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

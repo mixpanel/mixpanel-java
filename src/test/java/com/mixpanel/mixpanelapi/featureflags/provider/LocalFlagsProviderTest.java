@@ -889,6 +889,76 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     // #endregion
+    // #region Polling Lifecycle Thread Safety (SDK-85)
+
+    // Counts JVM threads named "mixpanel-flags-poller". Each call to
+    // startPollingForDefinitions creates one ScheduledExecutorService whose
+    // worker thread carries that name; before this fix two concurrent starts
+    // would create two of them and leak the first.
+    private static int countPollerThreads() {
+        int count = 0;
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            if (t.isAlive() && "mixpanel-flags-poller".equals(t.getName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Test
+    public void testConcurrentStartPollingDoesNotLeakExecutors() throws Exception {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
+
+        // Use a polling-enabled config so startPollingForDefinitions actually schedules.
+        LocalFlagsConfig pollingConfig = LocalFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .enablePolling(true)
+            .pollingIntervalSeconds(60)
+            .build();
+        TestableLocalFlagsProvider pollingProvider = new TestableLocalFlagsProvider(pollingConfig, SDK_VERSION, eventSender);
+        pollingProvider.setMockResponse("/flags/definitions", response);
+        provider = pollingProvider;
+        int baselinePollers = countPollerThreads();
+
+        int contenders = 8;
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(contenders);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(contenders);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(contenders);
+        try {
+            for (int i = 0; i < contenders; i++) {
+                pool.submit(() -> {
+                    ready.countDown();
+                    try {
+                        start.await();
+                        provider.startPollingForDefinitions();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            ready.await();
+            start.countDown();
+            assertTrue("contenders should finish", done.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            pool.shutdown();
+        }
+
+        // Exactly one poller thread should be running regardless of how many
+        // callers raced. Without the lock, we'd see N.
+        assertEquals(baselinePollers + 1, countPollerThreads());
+
+        provider.stopPollingForDefinitions();
+        // And shutdown should clean it up.
+        Thread.sleep(100);
+        assertEquals(baselinePollers, countPollerThreads());
+    }
+
+    // #endregion
     // #region Readiness Tests
 
     @Test
