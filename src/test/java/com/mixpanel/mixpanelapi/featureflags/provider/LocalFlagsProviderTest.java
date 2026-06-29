@@ -888,6 +888,52 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(0, eventSender.getEvents().size());
     }
 
+    // SDK-84: when the flag is bucketed on a non-distinct_id key (e.g.,
+    // device_id) and the context has that key but not distinct_id, local
+    // eval succeeds — but exposure still needs distinct_id to attribute the
+    // user. Surface the drop via a warning log instead of silently returning.
+    @Test
+    public void testWarnsWhenExposureDroppedDueToMissingDistinctId() throws Exception {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        // Flag is bucketed on device_id, not distinct_id.
+        String response = buildFlagsResponse("device-flag", "device_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        // Capture log records emitted from LocalFlagsProvider.
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LocalFlagsProvider.class.getName());
+        java.util.List<java.util.logging.LogRecord> records = new java.util.ArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            public void publish(java.util.logging.LogRecord record) { records.add(record); }
+            public void flush() {}
+            public void close() {}
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        logger.addHandler(handler);
+        logger.setLevel(java.util.logging.Level.ALL);
+
+        try {
+            Map<String, Object> context = new HashMap<>();
+            context.put("device_id", "device-abc");
+
+            Object result = provider.getVariantValue("device-flag", fallbackVariantValue, context);
+
+            // Eval still succeeds — caller gets the real variant value.
+            assertEquals("value-a", result);
+            // ...but exposure is dropped because distinct_id is missing.
+            assertEquals(0, eventSender.getEvents().size());
+            // And we now log a warning so the drop isn't silent.
+            boolean warned = records.stream()
+                .filter(r -> r.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue())
+                .anyMatch(r -> r.getMessage().contains("device-flag") && r.getMessage().contains("distinct_id"));
+            assertTrue("expected a warning about the dropped exposure event", warned);
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
     // #endregion
     // #region Readiness Tests
 
