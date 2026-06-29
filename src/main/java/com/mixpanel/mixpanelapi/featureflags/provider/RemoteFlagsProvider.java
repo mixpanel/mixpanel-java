@@ -3,6 +3,7 @@ package com.mixpanel.mixpanelapi.featureflags.provider;
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
+import com.mixpanel.mixpanelapi.featureflags.model.Source;
 
 import org.json.JSONObject;
 
@@ -63,9 +64,13 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             JSONObject root = new JSONObject(response);
             JSONObject flags = root.optJSONObject("flags");
 
+            // The /flags endpoint only returns variants the user is enrolled in,
+            // so a missing key could mean the flag doesn't exist OR the user
+            // isn't in any rollout. The remote SDK can't tell them apart without
+            // server-side help — surface as FLAG_NOT_FOUND for now.
             if (flags == null || !flags.has(flagKey)) {
                 logger.log(Level.WARNING, "Flag not found in response: " + flagKey);
-                return fallback;
+                return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
             JSONObject flagData = flags.getJSONObject(flagKey);
@@ -73,7 +78,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             Object variantValue = flagData.opt("variant_value");
 
             if (variantKey == null) {
-                return fallback;
+                return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
             // Parse experiment metadata
@@ -104,12 +109,12 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             }
 
             @SuppressWarnings("unchecked")
-            SelectedVariant<T> result = new SelectedVariant<>(variantKey, (T) variantValue, experimentId, isExperimentActive, isQaTester);
+            SelectedVariant<T> result = new SelectedVariant<T>(variantKey, (T) variantValue, experimentId, isExperimentActive, isQaTester, Source.remote());
             return result;
 
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating flag remotely: " + flagKey, e);
-            return fallback;
+            return fallback.withSource(Source.fallback(Source.Fallback.Reason.BACKEND_ERROR));
         }
     }
 
