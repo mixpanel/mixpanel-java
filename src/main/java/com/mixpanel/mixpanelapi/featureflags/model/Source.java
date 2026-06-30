@@ -46,6 +46,8 @@ public abstract class Source {
         static final Local INSTANCE = new Local();
 
         Local() {}
+
+        @Override public String toString() { return "Local"; }
     }
 
     /** Variant returned by a remote /flags evaluation call. */
@@ -53,6 +55,8 @@ public abstract class Source {
         static final Remote INSTANCE = new Remote();
 
         Remote() {}
+
+        @Override public String toString() { return "Remote"; }
     }
 
     /** Developer-supplied fallback returned because the SDK had no value to serve. */
@@ -78,5 +82,19 @@ public abstract class Source {
         Fallback(Reason reason) {
             this.reason = reason;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Fallback)) return false;
+            return reason == ((Fallback) o).reason;
+        }
+
+        @Override
+        public int hashCode() {
+            return reason.hashCode();
+        }
+
+        @Override public String toString() { return "Fallback(" + reason + ")"; }
     }
 }

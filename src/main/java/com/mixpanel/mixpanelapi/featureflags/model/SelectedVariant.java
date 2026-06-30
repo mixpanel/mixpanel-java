@@ -40,6 +40,12 @@ public final class SelectedVariant<T> {
      * Defaults source to {@link Source#local()} — used by the local provider
      * when constructing a matched variant. Use the overload below to pass an
      * explicit source.
+     *
+     * @param variantKey the variant key (null if this is a fallback)
+     * @param variantValue the variant value
+     * @param experimentId the experiment ID, or null
+     * @param isExperimentActive whether the experiment is active, or null
+     * @param isQaTester whether the user is a QA tester, or null
      */
     public SelectedVariant(String variantKey, T variantValue, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
         this(variantKey, variantValue, experimentId, isExperimentActive, isQaTester, Source.local());
@@ -47,6 +53,13 @@ public final class SelectedVariant<T> {
 
     /**
      * Creates a new SelectedVariant with experimentation metadata and an explicit source.
+     *
+     * @param variantKey the variant key (null if this is a fallback)
+     * @param variantValue the variant value
+     * @param experimentId the experiment ID, or null
+     * @param isExperimentActive whether the experiment is active, or null
+     * @param isQaTester whether the user is a QA tester, or null
+     * @param source where this variant came from; never null
      */
     public SelectedVariant(String variantKey, T variantValue, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester, Source source) {
         this.variantKey = variantKey;
@@ -96,7 +109,12 @@ public final class SelectedVariant<T> {
         return isQaTester;
     }
 
-    /** @return true if this represents a successfully selected variant (not a fallback) */
+    /**
+     * @return true if this represents a successfully selected variant (not a fallback).
+     * <p>Determined by the {@link Source} rather than by {@code variantKey != null}:
+     * a fallback is whatever the SDK stamped as {@link Source.Fallback}, regardless
+     * of whether the caller's fallback object happened to carry a key.</p>
+     */
     public boolean isSuccess() {
         return !(source instanceof Source.Fallback);
     }
