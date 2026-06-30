@@ -70,9 +70,10 @@ public abstract class Source {
             NO_ROLLOUT_MATCH,
             /** Remote evaluation failed (network error, HTTP error, parse error). */
             BACKEND_ERROR,
-            /** Local flags haven't been loaded yet (sync lookup before initial fetch completed). */
-            NOT_READY,
         }
+        // Note: the wrapper handles PROVIDER_NOT_READY by short-circuiting before
+        // invoking the provider (see MixpanelProvider.areFlagsReady check), so
+        // there is no NOT_READY constant here — no producer would ever construct it.
 
         /** Reason the SDK returned this fallback. */
         public final Reason reason;
