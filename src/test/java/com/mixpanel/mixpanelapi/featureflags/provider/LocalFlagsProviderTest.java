@@ -889,7 +889,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     // #endregion
-    // #region Polling Lifecycle Thread Safety (SDK-85)
+    // #region Polling Lifecycle Thread Safety (SDK-81)
 
     // Counts JVM threads named "mixpanel-flags-poller". Each call to
     // startPollingForDefinitions creates one ScheduledExecutorService whose
