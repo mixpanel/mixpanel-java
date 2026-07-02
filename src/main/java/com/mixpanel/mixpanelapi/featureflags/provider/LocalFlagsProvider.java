@@ -671,7 +671,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             // Surface the drop instead of silently returning so callers can
             // see they need to include distinct_id in the context.
             logger.log(Level.WARNING,
-                "Cannot track exposure event for flag '" + flagKey + "' without a distinct_id in the context");
+                "Cannot track exposure event for flag ''{0}'' without a distinct_id in the context",
+                flagKey);
             return;
         }
 

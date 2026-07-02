@@ -911,6 +911,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             public void close() {}
         };
         handler.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.Level originalLevel = logger.getLevel();
         logger.addHandler(handler);
         logger.setLevel(java.util.logging.Level.ALL);
 
@@ -924,13 +925,18 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             assertEquals("value-a", result);
             // ...but exposure is dropped because distinct_id is missing.
             assertEquals(0, eventSender.getEvents().size());
-            // And we now log a warning so the drop isn't silent.
+            // And we now log a warning so the drop isn't silent. Use a
+            // formatter so we can match against the fully-resolved
+            // template (the raw LogRecord.getMessage() still contains {0}).
+            java.util.logging.SimpleFormatter formatter = new java.util.logging.SimpleFormatter();
             boolean warned = records.stream()
                 .filter(r -> r.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue())
-                .anyMatch(r -> r.getMessage().contains("device-flag") && r.getMessage().contains("distinct_id"));
+                .map(formatter::formatMessage)
+                .anyMatch(m -> m.contains("device-flag") && m.contains("distinct_id"));
             assertTrue("expected a warning about the dropped exposure event", warned);
         } finally {
             logger.removeHandler(handler);
+            logger.setLevel(originalLevel);
         }
     }
 
