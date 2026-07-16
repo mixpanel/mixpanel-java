@@ -81,19 +81,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 return t;
             });
 
-            // Wrap in a Throwable-catching runnable: scheduleAtFixedRate
-            // permanently cancels future executions if a tick throws, and
-            // fetchDefinitions only catches Exception — so an Error
-            // (OOM, StackOverflowError, LinkageError, etc.) would silently
-            // kill polling for the lifetime of the JVM.
             pollingExecutor.scheduleAtFixedRate(
-                () -> {
-                    try {
-                        fetchDefinitions();
-                    } catch (Throwable t) {
-                        logger.log(Level.SEVERE, "Uncaught throwable in flag-definitions poll; continuing", t);
-                    }
-                },
+                this::fetchDefinitions,
                 config.getPollingIntervalSeconds(),
                 config.getPollingIntervalSeconds(),
                 TimeUnit.SECONDS
@@ -145,7 +134,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             ready.set(true);
 
             logger.log(Level.FINE, "Successfully fetched " + newDefinitions.size() + " flag definitions");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.log(Level.WARNING, "Failed to fetch flag definitions", e);
         }
     }
