@@ -78,6 +78,15 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         // Start background polling if enabled
         if (config.isEnablePolling()) {
+            int intervalSeconds = config.getPollingIntervalSeconds();
+            if (intervalSeconds <= 0) {
+                // Validate before allocating. If we let scheduleAtFixedRate reject
+                // a non-positive period, pollingExecutor would already be assigned
+                // and the idempotency guard below would block every retry.
+                logger.log(Level.WARNING, "Polling interval must be > 0 seconds; got " + intervalSeconds + ". Polling not started.");
+                return;
+            }
+
             synchronized (pollingLock) {
                 if (pollingExecutor != null) {
                     // Idempotent: a previous call already scheduled the poller.
@@ -95,12 +104,12 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
                 pollingExecutor.scheduleAtFixedRate(
                     this::fetchDefinitions,
-                    config.getPollingIntervalSeconds(),
-                    config.getPollingIntervalSeconds(),
+                    intervalSeconds,
+                    intervalSeconds,
                     TimeUnit.SECONDS
                 );
 
-                logger.log(Level.INFO, "Started polling for flag definitions every " + config.getPollingIntervalSeconds() + " seconds");
+                logger.log(Level.INFO, "Started polling for flag definitions every " + intervalSeconds + " seconds");
             }
         }
     }

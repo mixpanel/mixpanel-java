@@ -958,6 +958,34 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(baselinePollers, countPollerThreads());
     }
 
+    @Test
+    public void testStartPollingWithNonPositiveIntervalDoesNotWedgeExecutor() throws Exception {
+        // Regression: prior to the interval guard, config.pollingIntervalSeconds = 0
+        // would allocate pollingExecutor, then scheduleAtFixedRate would throw
+        // IllegalArgumentException. The executor stayed assigned, and the
+        // idempotency guard blocked every subsequent start attempt.
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
+
+        LocalFlagsConfig badConfig = LocalFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .enablePolling(true)
+            .pollingIntervalSeconds(0)
+            .build();
+        TestableLocalFlagsProvider badProvider = new TestableLocalFlagsProvider(badConfig, SDK_VERSION, eventSender);
+        badProvider.setMockResponse("/flags/definitions", response);
+        int baselinePollers = countPollerThreads();
+
+        badProvider.startPollingForDefinitions();
+
+        // No poller thread was spawned.
+        assertEquals(baselinePollers, countPollerThreads());
+        // And shutdown is a no-op (no executor to close).
+        badProvider.stopPollingForDefinitions();
+        assertEquals(baselinePollers, countPollerThreads());
+    }
+
     // #endregion
     // #region Readiness Tests
 
