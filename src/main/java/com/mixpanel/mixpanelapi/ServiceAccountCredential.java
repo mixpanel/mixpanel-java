@@ -30,7 +30,8 @@ public final class ServiceAccountCredential {
      * @param projectId the Mixpanel project ID
      * @param username the service account username
      * @param secret the service account secret
-     * @throws IllegalArgumentException if projectId is invalid or username/secret are null or empty
+     * @throws IllegalArgumentException if projectId is invalid, username/secret are null or empty,
+     *         or username contains a colon
      */
     public ServiceAccountCredential(long projectId, String username, String secret) {
         if (projectId <= 0) {
@@ -38,6 +39,12 @@ public final class ServiceAccountCredential {
         }
         if (username == null || username.trim().isEmpty()) {
             throw new IllegalArgumentException("username cannot be null or empty");
+        }
+        // The username is used as the user-id in an HTTP Basic Auth header (username:secret).
+        // Per RFC 7617 the user-id must not contain a colon, otherwise the server treats
+        // everything before the first colon as the username, causing a silent auth failure.
+        if (username.contains(":")) {
+            throw new IllegalArgumentException("username cannot contain a colon (':')");
         }
         if (secret == null || secret.trim().isEmpty()) {
             throw new IllegalArgumentException("secret cannot be null or empty");

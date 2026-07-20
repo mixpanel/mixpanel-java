@@ -117,9 +117,9 @@ boolean isEnabled = mixpanel.getLocalFlags().isEnabled("new-feature", context);
   - **Feature flags** - `/flags` and `/flags/definitions` endpoints
 - Regular event tracking (`/track`), people updates (`/engage`), and group updates (`/groups`) continue to use the project token included in the message payload
 - When service account credentials are configured:
-  - Authenticated endpoints use HTTP Basic Authentication with `username:secret`
-  - The `project_id` is included as a query parameter instead of `token`
-  - The project token from the message is not used for authentication (but should still be included in tracking events)
+  - Authenticated endpoints (`/import` and feature flags) use HTTP Basic Authentication with `username:secret` instead of using the project token as the Basic Auth username
+  - The `project_id` is added as a query parameter. Feature flag endpoints (`/flags`, `/flags/definitions`) still include the `token` query parameter alongside `project_id`; the `/import` endpoint does not use a `token` query parameter
+  - The project token is not used for authentication (but should still be included in tracking events)
 
 ### High-Performance JSON Serialization (Optional)
 

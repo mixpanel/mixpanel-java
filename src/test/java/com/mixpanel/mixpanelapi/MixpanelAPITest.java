@@ -1727,6 +1727,14 @@ public class MixpanelAPITest extends TestCase
             assertTrue(e.getMessage().contains("username cannot be null or empty"));
         }
 
+        // Username containing a colon would corrupt the Basic Auth user-id (RFC 7617)
+        try {
+            new ServiceAccountCredential(12345L, "user:name", "test-secret");
+            fail("Should reject username containing a colon");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot contain a colon"));
+        }
+
         // Invalid secret (null or empty)
         try {
             new ServiceAccountCredential(12345L, "test-user", null);
