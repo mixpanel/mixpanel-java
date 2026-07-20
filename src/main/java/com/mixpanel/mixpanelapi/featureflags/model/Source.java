@@ -80,6 +80,9 @@ public abstract class Source {
         public final Reason reason;
 
         Fallback(Reason reason) {
+            if (reason == null) {
+                throw new IllegalArgumentException("reason must not be null; pick a specific Fallback.Reason");
+            }
             this.reason = reason;
         }
 

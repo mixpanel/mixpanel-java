@@ -36,10 +36,12 @@ public final class SelectedVariant<T> {
     }
 
     /**
-     * Creates a new SelectedVariant with experimentation metadata.
-     * Defaults source to {@link Source#local()} — used by the local provider
-     * when constructing a matched variant. Use the overload below to pass an
-     * explicit source.
+     * Creates a new SelectedVariant with experimentation metadata. Defaults
+     * source to {@link Source#local()}.
+     *
+     * @deprecated Retained for source compatibility with v1.9.0. Prefer the
+     * 6-arg overload to pass an explicit {@link Source}, or the 1-arg
+     * {@link #SelectedVariant(Object)} constructor for consumer-side fallbacks.
      *
      * @param variantKey the variant key (null if this is a fallback)
      * @param variantValue the variant value
@@ -47,6 +49,7 @@ public final class SelectedVariant<T> {
      * @param isExperimentActive whether the experiment is active, or null
      * @param isQaTester whether the user is a QA tester, or null
      */
+    @Deprecated
     public SelectedVariant(String variantKey, T variantValue, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
         this(variantKey, variantValue, experimentId, isExperimentActive, isQaTester, Source.local());
     }
@@ -59,7 +62,7 @@ public final class SelectedVariant<T> {
      * @param experimentId the experiment ID, or null
      * @param isExperimentActive whether the experiment is active, or null
      * @param isQaTester whether the user is a QA tester, or null
-     * @param source where this variant came from; never null
+     * @param source where this variant came from; null is coalesced to {@link Source#local()}
      */
     public SelectedVariant(String variantKey, T variantValue, UUID experimentId, Boolean isExperimentActive, Boolean isQaTester, Source source) {
         this.variantKey = variantKey;
@@ -67,7 +70,7 @@ public final class SelectedVariant<T> {
         this.experimentId = experimentId;
         this.isExperimentActive = isExperimentActive;
         this.isQaTester = isQaTester;
-        this.source = source;
+        this.source = source != null ? source : Source.local();
     }
 
     /** @return where this variant came from; never null. */
@@ -148,6 +151,17 @@ public final class SelectedVariant<T> {
         if (experimentId != null ? !experimentId.equals(that.experimentId) : that.experimentId != null) return false;
         if (isExperimentActive != null ? !isExperimentActive.equals(that.isExperimentActive) : that.isExperimentActive != null) return false;
         if (isQaTester != null ? !isQaTester.equals(that.isQaTester) : that.isQaTester != null) return false;
-        return source != null ? source.equals(that.source) : that.source == null;
+        return source.equals(that.source);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = variantKey != null ? variantKey.hashCode() : 0;
+        result = 31 * result + (variantValue != null ? variantValue.hashCode() : 0);
+        result = 31 * result + (experimentId != null ? experimentId.hashCode() : 0);
+        result = 31 * result + (isExperimentActive != null ? isExperimentActive.hashCode() : 0);
+        result = 31 * result + (isQaTester != null ? isQaTester.hashCode() : 0);
+        result = 31 * result + source.hashCode();
+        return result;
     }
 }
