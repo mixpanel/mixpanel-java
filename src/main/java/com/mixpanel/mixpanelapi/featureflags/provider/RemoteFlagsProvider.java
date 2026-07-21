@@ -77,8 +77,13 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             String variantKey = flagData.optString("variant_key", null);
             Object variantValue = flagData.opt("variant_value");
 
+            // The server included the flag key but did not assign a variant —
+            // the flag exists, but no rollout matched the supplied context.
+            // Distinct from "flag not found" so the OpenFeature wrapper can
+            // emit the correct code (DEFAULT reason, no error) instead of
+            // conflating with FLAG_NOT_FOUND.
             if (variantKey == null) {
-                return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
+                return fallback.withSource(Source.fallback(Source.Fallback.Reason.NO_ROLLOUT_MATCH));
             }
 
             // Parse experiment metadata
