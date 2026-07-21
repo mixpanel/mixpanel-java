@@ -4,6 +4,7 @@ import com.mixpanel.mixpanelapi.MixpanelAPI;
 import com.mixpanel.mixpanelapi.featureflags.config.LocalFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
+import com.mixpanel.mixpanelapi.featureflags.model.Source;
 import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
@@ -131,8 +132,14 @@ public class MixpanelProvider implements FeatureProvider {
             return errorResult(defaultValue, ErrorCode.GENERAL, e.getMessage());
         }
 
-        if (result.isFallback()) {
-            return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + key);
+        // A fallback source means the SDK had no real variant to serve.
+        // The reason discriminates why (flag missing, context key missing,
+        // no rollout matched, backend error) so we translate each to the
+        // OpenFeature error the spec assigns to it instead of collapsing
+        // every fallback to FLAG_NOT_FOUND.
+        Source source = result.getSource();
+        if (source instanceof Source.Fallback) {
+            return mapFallback(((Source.Fallback) source).reason, key, defaultValue);
         }
 
         T value = mapper.apply(result);
@@ -144,12 +151,44 @@ public class MixpanelProvider implements FeatureProvider {
         return successResult(value, result.getVariantKey());
     }
 
+    private <T> ProviderEvaluation<T> mapFallback(Source.Fallback.Reason reason, String flagKey, T defaultValue) {
+        switch (reason) {
+            case FLAG_NOT_FOUND:
+                return errorResult(defaultValue, ErrorCode.FLAG_NOT_FOUND, "Flag not found: " + flagKey);
+            case MISSING_CONTEXT_KEY:
+                return errorResult(defaultValue, ErrorCode.TARGETING_KEY_MISSING,
+                        "Missing targeting key for flag: " + flagKey);
+            case NO_ROLLOUT_MATCH:
+                // Flag exists but no rollout matched — per the OpenFeature spec
+                // this is DEFAULT with no error, distinct from FLAG_NOT_FOUND.
+                return defaultResult(defaultValue);
+            case BACKEND_ERROR:
+                return errorResult(defaultValue, ErrorCode.GENERAL,
+                        "Backend error evaluating flag: " + flagKey);
+            default:
+                // Fail closed on unrecognized reasons so a new value added to
+                // the base SDK enum without wiring here doesn't silently
+                // produce a successful-looking evaluation.
+                return errorResult(defaultValue, ErrorCode.GENERAL,
+                        "Unrecognized fallback reason " + reason + " for flag: " + flagKey);
+        }
+    }
+
+    private <T> ProviderEvaluation<T> defaultResult(T defaultValue) {
+        return ProviderEvaluation.<T>builder()
+                .value(defaultValue)
+                .reason("DEFAULT")
+                .build();
+    }
+
     private SelectedVariant<Object> fetchVariant(String key, EvaluationContext ctx) {
         SelectedVariant<Object> fallback = new SelectedVariant<>(null);
         return flagsProvider.getVariant(key, fallback, convertContext(ctx), true);
     }
 
     private <T> ProviderEvaluation<T> errorResult(T defaultValue, ErrorCode errorCode, String errorMessage) {
+        // FLAG_NOT_FOUND is spec-defined DEFAULT (flag missing → fell back to
+        // default); every other error condition is ERROR reason.
         String reason = errorCode == ErrorCode.FLAG_NOT_FOUND ? "DEFAULT" : "ERROR";
         return ProviderEvaluation.<T>builder()
                 .value(defaultValue)
