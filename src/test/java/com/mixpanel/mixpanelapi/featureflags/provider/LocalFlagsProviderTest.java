@@ -11,6 +11,8 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.mixpanel.mixpanelapi.featureflags.provider.TestUtils.*;
 import static org.junit.Assert.*;
@@ -1048,6 +1050,55 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("new-value", result2);
 
         provider.stopPollingForDefinitions();
+    }
+
+    @Test
+    public void testPollingSurvivesThrowableFromFetch() throws Exception {
+        config = LocalFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .enablePolling(true)
+            .pollingIntervalSeconds(1)
+            .build();
+
+        AtomicInteger callCount = new AtomicInteger(0);
+        AtomicReference<Throwable> nextThrow = new AtomicReference<>();
+        String validResponse = buildFlagsResponse(
+            flagKey, distinctIdContextKey,
+            Arrays.asList(new Variant("variant", "value", false, 1.0f)),
+            Arrays.asList(new Rollout(1.0f)),
+            null
+        );
+
+        LocalFlagsProvider throwingProvider = new LocalFlagsProvider(config, SDK_VERSION, eventSender) {
+            @Override
+            protected String httpGet(String urlString) {
+                callCount.incrementAndGet();
+                Throwable t = nextThrow.getAndSet(null);
+                if (t instanceof Error) throw (Error) t;
+                if (t instanceof RuntimeException) throw (RuntimeException) t;
+                return validResponse;
+            }
+        };
+
+        try {
+            // Initial fetch succeeds (call 1).
+            throwingProvider.startPollingForDefinitions();
+            assertEquals(1, callCount.get());
+
+            // Arm an Error to escape the next fetch.
+            nextThrow.set(new Error("simulated JVM-level failure"));
+            // 1s polling interval → wait long enough for two more ticks.
+            Thread.sleep(2500);
+
+            // Before the fix, scheduleAtFixedRate would have permanently
+            // cancelled the task on the Error and callCount would stop at 2.
+            assertTrue(
+                "Polling should continue after a Throwable: callCount=" + callCount.get(),
+                callCount.get() >= 3
+            );
+        } finally {
+            throwingProvider.stopPollingForDefinitions();
+        }
     }
 
     // #endregion

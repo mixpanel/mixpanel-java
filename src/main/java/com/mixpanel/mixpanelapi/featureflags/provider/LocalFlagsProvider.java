@@ -134,7 +134,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             ready.set(true);
 
             logger.log(Level.FINE, "Successfully fetched " + newDefinitions.size() + " flag definitions");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.log(Level.WARNING, "Failed to fetch flag definitions", e);
         }
     }
