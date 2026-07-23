@@ -3,6 +3,7 @@ package com.mixpanel.mixpanelapi.featureflags.provider;
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
+import com.mixpanel.mixpanelapi.featureflags.model.Source;
 
 import org.json.JSONObject;
 import org.junit.After;
@@ -171,10 +172,33 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         provider = createProviderWithResponse(response);
 
         Map<String, Object> context = buildContext("user-123");
-        String result = provider.getVariantValue("non-existent-flag", "fallback", context);
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("non-existent-flag", fallback, context, true);
 
-        // Should return fallback when flag not found
-        assertEquals("fallback", result);
+        // Flag key absent from response — the SDK can't distinguish
+        // "flag doesn't exist" from "user in no rollout" without server help.
+        assertEquals("fallback", result.getVariantValue());
+        assertTrue(result.isFallback());
+        assertEquals(Source.Fallback.Reason.FLAG_NOT_FOUND, ((Source.Fallback) result.getSource()).reason);
+        assertEquals(0, eventSender.getEvents().size());
+    }
+
+    @Test
+    public void testReturnNoRolloutMatchWhenVariantKeyIsNullInResponse() {
+        // Server included the flag key but no assigned variant — flag exists,
+        // user just isn't in any rollout. Must map to NO_ROLLOUT_MATCH, NOT
+        // FLAG_NOT_FOUND, so the OpenFeature wrapper can emit the right code
+        // (DEFAULT reason, no error) instead of conflating the two.
+        String response = buildRemoteFlagsResponse("test-flag", null, null);
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        SelectedVariant<String> fallback = new SelectedVariant<>("fallback");
+        SelectedVariant<String> result = provider.getVariant("test-flag", fallback, context, true);
+
+        assertEquals("fallback", result.getVariantValue());
+        assertTrue(result.isFallback());
+        assertEquals(Source.Fallback.Reason.NO_ROLLOUT_MATCH, ((Source.Fallback) result.getSource()).reason);
         assertEquals(0, eventSender.getEvents().size());
     }
 

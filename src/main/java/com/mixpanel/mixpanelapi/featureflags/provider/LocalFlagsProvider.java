@@ -365,7 +365,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
             if (flag == null) {
                 logger.log(Level.WARNING, "Flag not found: " + flagKey);
-                return fallback;
+                return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
             // Extract context value
@@ -373,7 +373,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             Object contextValueObj = context.get(contextProperty);
             if (contextValueObj == null) {
                 logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
-                return fallback;
+                return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
             }
             String contextValue = contextValueObj.toString();
 
@@ -430,11 +430,11 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
 
             // No rollout matched
-            return fallback;
+            return fallback.withSource(Source.fallback(Source.Fallback.Reason.NO_ROLLOUT_MATCH));
 
         } catch (Exception e) {
             logger.log(Level.WARNING, "Error evaluating flag: " + flagKey, e);
-            return fallback;
+            return fallback.withSource(Source.fallback(Source.Fallback.Reason.BACKEND_ERROR));
         }
     }
 
@@ -445,12 +445,13 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private <T> SelectedVariant<T> buildResult(Variant variant, ExperimentationFlag flag, boolean isQaTester,
                                                 String flagKey, Map<String, Object> context,
                                                 long startTime, boolean reportExposure) {
-        SelectedVariant<T> result = new SelectedVariant<>(
+        SelectedVariant<T> result = new SelectedVariant<T>(
             variant.getKey(),
             (T) variant.getValue(),
             flag.getExperimentId(),
             flag.getIsExperimentActive(),
-            isQaTester
+            isQaTester,
+            Source.local()
         );
         if (reportExposure) {
             trackLocalExposure(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime,
