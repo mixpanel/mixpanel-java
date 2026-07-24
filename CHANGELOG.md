@@ -1,5 +1,17 @@
 # Changelog
 
+## [v1.10.0](https://github.com/mixpanel/mixpanel-java/tree/v1.10.0) (2026-07-24)
+
+### Features
+- add Source discriminated union with Fallback.Reason (SDK-79) ([#89](https://github.com/mixpanel/mixpanel-java/pull/89))
+
+### Fixes
+- guard polling start so concurrent callers don't leak executors (SDK-81) ([#91](https://github.com/mixpanel/mixpanel-java/pull/91))
+- keep polling alive when fetch throws a Throwable (SDK-86) ([#93](https://github.com/mixpanel/mixpanel-java/pull/93))
+- surface dropped exposure when distinct_id missing from context (SDK-84) ([#90](https://github.com/mixpanel/mixpanel-java/pull/90))
+
+[Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/v1.9.0...v1.10.0)
+
 ## [v1.9.0](https://github.com/mixpanel/mixpanel-java/tree/v1.9.0) (2026-05-29)
 
 ### Fixes
