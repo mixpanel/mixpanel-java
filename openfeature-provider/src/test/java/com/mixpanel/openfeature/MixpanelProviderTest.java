@@ -1,6 +1,7 @@
 package com.mixpanel.openfeature;
 
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
+import com.mixpanel.mixpanelapi.featureflags.model.Source;
 import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
@@ -546,6 +547,66 @@ public class MixpanelProviderTest {
         assertEquals(defaultValue, result.getValue());
         assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
         assertEquals("DEFAULT", result.getReason());
+    }
+
+    // Fallback.Reason mapping (SDK-79 / SDK-130)
+
+    @Test
+    public void testFallbackWithFlagNotFoundReasonMapsToFlagNotFound() {
+        SelectedVariant<Object> fallback = new SelectedVariant<>(null, false, null, null, null,
+                Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
+        when(mockFlagsProvider.getVariant(eq("missing"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(fallback);
+
+        ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("missing", false, new ImmutableContext());
+
+        assertFalse(result.getValue());
+        assertEquals(ErrorCode.FLAG_NOT_FOUND, result.getErrorCode());
+        assertEquals("DEFAULT", result.getReason());
+    }
+
+    @Test
+    public void testFallbackWithMissingContextKeyMapsToTargetingKeyMissing() {
+        SelectedVariant<Object> fallback = new SelectedVariant<>(null, false, null, null, null,
+                Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+        when(mockFlagsProvider.getVariant(eq("needs-key"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(fallback);
+
+        ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("needs-key", false, new ImmutableContext());
+
+        assertFalse(result.getValue());
+        assertEquals(ErrorCode.TARGETING_KEY_MISSING, result.getErrorCode());
+        assertEquals("ERROR", result.getReason());
+    }
+
+    @Test
+    public void testFallbackWithNoRolloutMatchReturnsDefaultWithoutError() {
+        SelectedVariant<Object> fallback = new SelectedVariant<>(null, "fallback-val", null, null, null,
+                Source.fallback(Source.Fallback.Reason.NO_ROLLOUT_MATCH));
+        when(mockFlagsProvider.getVariant(eq("no-match"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(fallback);
+
+        ProviderEvaluation<String> result = provider.getStringEvaluation("no-match", "fallback-val", new ImmutableContext());
+
+        // NO_ROLLOUT_MATCH is spec: DEFAULT reason with no error — the flag
+        // exists, the user just didn't match any rollout.
+        assertEquals("fallback-val", result.getValue());
+        assertNull(result.getErrorCode());
+        assertEquals("DEFAULT", result.getReason());
+    }
+
+    @Test
+    public void testFallbackWithBackendErrorMapsToGeneral() {
+        SelectedVariant<Object> fallback = new SelectedVariant<>(null, false, null, null, null,
+                Source.fallback(Source.Fallback.Reason.BACKEND_ERROR));
+        when(mockFlagsProvider.getVariant(eq("backend-fail"), any(SelectedVariant.class), anyMap(), eq(true)))
+                .thenReturn(fallback);
+
+        ProviderEvaluation<Boolean> result = provider.getBooleanEvaluation("backend-fail", false, new ImmutableContext());
+
+        assertFalse(result.getValue());
+        assertEquals(ErrorCode.GENERAL, result.getErrorCode());
+        assertEquals("ERROR", result.getReason());
     }
 
     // Shutdown
