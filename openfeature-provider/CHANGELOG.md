@@ -1,5 +1,9 @@
 # Changelog
 
+## [openfeature/v0.2.0](https://github.com/mixpanel/mixpanel-java/tree/openfeature/v0.2.0) (2026-07-28)
+
+[Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/openfeature/v0.1.1...openfeature/v0.2.0)
+
 ## [openfeature/v0.1.1](https://github.com/mixpanel/mixpanel-java/tree/openfeature/v0.1.1) (2026-04-22)
 
 ### Fixes
