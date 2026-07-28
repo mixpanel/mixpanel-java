@@ -1,6 +1,7 @@
 package com.mixpanel.openfeature;
 
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
+import com.mixpanel.mixpanelapi.featureflags.model.Source;
 import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
 import com.mixpanel.mixpanelapi.featureflags.provider.LocalFlagsProvider;
 import dev.openfeature.sdk.*;
@@ -521,8 +522,14 @@ public class MixpanelProviderTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testNullVariantKeyTreatedAsFallbackOnBooleanEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>(null, true, null, null, null);
+    public void testFallbackSourceTreatedAsFallbackOnBooleanEvaluation() {
+        // Pre-SDK-79 the fallback signal was `variantKey == null`. After SDK-79
+        // (base 1.10.0) it is `source instanceof Source.Fallback`. Construct
+        // the variant with an explicit Fallback source to exercise the same
+        // dispatch path the tests were originally written for.
+        SelectedVariant<Object> variant = new SelectedVariant<>(
+                null, true, null, null, null,
+                Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
@@ -535,8 +542,10 @@ public class MixpanelProviderTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testNullVariantKeyTreatedAsFallbackOnObjectEvaluation() {
-        SelectedVariant<Object> variant = new SelectedVariant<>(null, "some-value", null, null, null);
+    public void testFallbackSourceTreatedAsFallbackOnObjectEvaluation() {
+        SelectedVariant<Object> variant = new SelectedVariant<>(
+                null, "some-value", null, null, null,
+                Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
         when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), anyMap(), eq(true)))
                 .thenReturn(variant);
 
