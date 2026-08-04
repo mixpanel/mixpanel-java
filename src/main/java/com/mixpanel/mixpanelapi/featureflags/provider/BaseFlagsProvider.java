@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.provider;
 
+import com.mixpanel.mixpanelapi.ServiceAccountCredential;
 import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig;
 import com.mixpanel.mixpanelapi.featureflags.model.SelectedVariant;
@@ -35,6 +36,7 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     protected final C config;
     protected final String sdkVersion;
     protected final EventSender eventSender;
+    protected final ServiceAccountCredential credentials;
 
     /**
      * Creates a new BaseFlagsProvider.
@@ -43,18 +45,24 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @param config the flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
      */
-    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion, EventSender eventSender) {
+    protected BaseFlagsProvider(String projectToken, C config, String sdkVersion, EventSender eventSender, ServiceAccountCredential credentials) {
         this.projectToken = projectToken;
         this.config = config;
         this.sdkVersion = sdkVersion;
         this.eventSender = eventSender;
+        this.credentials = credentials;
     }
 
     // #region HTTP Methods
 
     /**
      * Performs an HTTP GET request with Basic Auth.
+     * <p>
+     * When service account credentials are configured, uses username:secret for authentication.
+     * Otherwise, uses token-based authentication (token as username, empty password).
+     * </p>
      * <p>
      * This method is protected to allow test subclasses to override HTTP behavior.
      * </p>
@@ -65,8 +73,15 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         conn.setConnectTimeout(config.getRequestTimeoutSeconds() * 1000);
         conn.setReadTimeout(config.getRequestTimeoutSeconds() * 1000);
 
-        // Set Basic Auth header (token as username, empty password)
-        String auth = projectToken + ":";
+        // Set Basic Auth header
+        String auth;
+        if (credentials != null) {
+            // Service account auth: username:secret
+            auth = credentials.getUsername() + ":" + credentials.getSecret();
+        } else {
+            // Token-based auth: token:empty
+            auth = projectToken + ":";
+        }
         String encodedAuth = java.util.Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
         conn.setRequestProperty("Authorization", "Basic " + encodedAuth);
 

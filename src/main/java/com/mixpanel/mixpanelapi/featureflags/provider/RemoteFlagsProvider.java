@@ -31,14 +31,26 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
     private static final Logger logger = Logger.getLogger(RemoteFlagsProvider.class.getName());
 
     /**
-     * Creates a new RemoteFlagsProvider.
+     * Creates a new RemoteFlagsProvider without credentials.
      *
      * @param config the remote flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
      */
     public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender) {
-        super(config.getProjectToken(), config, sdkVersion, eventSender);
+        this(config, sdkVersion, eventSender, null);
+    }
+
+    /**
+     * Creates a new RemoteFlagsProvider.
+     *
+     * @param config the remote flags configuration
+     * @param sdkVersion the SDK version string
+     * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
+     */
+    public RemoteFlagsProvider(RemoteFlagsConfig config, String sdkVersion, EventSender eventSender, com.mixpanel.mixpanelapi.ServiceAccountCredential credentials) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender, credentials);
     }
 
     // #region Evaluation
@@ -128,6 +140,10 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
 
     /**
      * Builds the URL for remote flag evaluation.
+     * <p>
+     * Always includes token parameter. When service account credentials are configured,
+     * also includes project_id parameter.
+     * </p>
      */
     private String buildFlagsUrl(String flagKey, Map<String, Object> context) throws UnsupportedEncodingException {
         StringBuilder url = new StringBuilder();
@@ -135,6 +151,12 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
         url.append("?mp_lib=").append(URLEncoder.encode("jdk", "UTF-8"));
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
         url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
+
+        // Also include project_id when credentials are present
+        if (credentials != null) {
+            url.append("&project_id=").append(credentials.getProjectId());
+        }
+
         url.append("&flag_key=").append(URLEncoder.encode(flagKey, "UTF-8"));
 
         JSONObject contextJson = new JSONObject(context);

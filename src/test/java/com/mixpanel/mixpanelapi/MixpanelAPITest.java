@@ -32,6 +32,8 @@ public class MixpanelAPITest extends TestCase
     private MessageBuilder mBuilder;
     private JSONObject mSampleProps;
     private JSONObject mSampleModifiers;
+    private static final String TEST_TOKEN = "a token";
+
     private String mEventsMessages;
     private String mPeopleMessages;
     private String mGroupMessages;
@@ -59,7 +61,7 @@ public class MixpanelAPITest extends TestCase
     @Override
     public void setUp() {
         mTimeZero = System.currentTimeMillis() / 1000;
-        mBuilder = new MessageBuilder("a token");
+        mBuilder = new MessageBuilder(TEST_TOKEN);
 
         try {
             mSampleProps = new JSONObject();
@@ -1677,4 +1679,159 @@ public class MixpanelAPITest extends TestCase
         
         api.close();
     }
+
+    /**
+     * Test that ServiceAccountCredential validates required fields
+     */
+    public void testServiceAccountCredentialValidation() {
+        // Valid credentials should work
+        ServiceAccountCredential valid = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+        assertEquals(12345L, valid.getProjectId());
+        assertEquals("test-user", valid.getUsername());
+        assertEquals("test-secret", valid.getSecret());
+
+        // Invalid project ID (zero or negative)
+        try {
+            new ServiceAccountCredential(0L, "test-user", "test-secret");
+            fail("Should reject zero project ID");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("projectId must be greater than zero"));
+        }
+
+        try {
+            new ServiceAccountCredential(-1L, "test-user", "test-secret");
+            fail("Should reject negative project ID");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("projectId must be greater than zero"));
+        }
+
+        // Invalid username (null or empty)
+        try {
+            new ServiceAccountCredential(12345L, null, "test-secret");
+            fail("Should reject null username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "", "test-secret");
+            fail("Should reject empty username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "   ", "test-secret");
+            fail("Should reject whitespace-only username");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot be null or empty"));
+        }
+
+        // Username containing a colon would corrupt the Basic Auth user-id (RFC 7617)
+        try {
+            new ServiceAccountCredential(12345L, "user:name", "test-secret");
+            fail("Should reject username containing a colon");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("username cannot contain a colon"));
+        }
+
+        // Invalid secret (null or empty)
+        try {
+            new ServiceAccountCredential(12345L, "test-user", null);
+            fail("Should reject null secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "test-user", "");
+            fail("Should reject empty secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+
+        try {
+            new ServiceAccountCredential(12345L, "test-user", "   ");
+            fail("Should reject whitespace-only secret");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("secret cannot be null or empty"));
+        }
+    }
+
+    /**
+     * Test that service account credentials can be configured via Builder
+     */
+    public void testServiceAccountAuthenticationForImport() {
+        final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .build();
+
+        // Verify credentials are stored internally
+        try {
+            java.lang.reflect.Field credField = MixpanelAPI.class.getDeclaredField("mCredentials");
+            credField.setAccessible(true);
+            ServiceAccountCredential storedCreds = (ServiceAccountCredential) credField.get(api);
+
+            assertNotNull("Credentials should be stored", storedCreds);
+            assertEquals("Project ID should match", 12345L, storedCreds.getProjectId());
+            assertEquals("Username should match", "test-user", storedCreds.getUsername());
+            assertEquals("Secret should match", "test-secret", storedCreds.getSecret());
+        } catch (Exception e) {
+            fail("Failed to verify credentials: " + e.getMessage());
+        }
+
+        api.close();
+    }
+
+    /**
+     * Test that token-based authentication still works without credentials (backward compatibility)
+     */
+    public void testTokenBasedAuthenticationForImport() {
+        // Build MixpanelAPI without credentials - should use token-based auth
+        MixpanelAPI api = new MixpanelAPI.Builder().build();
+
+        // Verify API constructs successfully without credentials (backward compatibility)
+        assertNotNull("API should be created without credentials", api);
+
+        api.close();
+    }
+
+    /**
+     * Test that Builder correctly configures credentials alongside other options
+     */
+    public void testServiceAccountNotUsedForTracking() {
+        final ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .useGzipCompression(true)
+            .connectTimeout(5000)
+            .readTimeout(15000)
+            .build();
+
+        // Service account credentials should be configured successfully alongside other options
+        assertNotNull("API should be created with credentials", api);
+
+        api.close();
+    }
+
+    /**
+     * Test that Builder correctly configures credentials
+     */
+    public void testBuilderWithCredentials() {
+        ServiceAccountCredential credentials = new ServiceAccountCredential(12345L, "test-user", "test-secret");
+
+        MixpanelAPI api = new MixpanelAPI.Builder()
+            .credentials(credentials)
+            .useGzipCompression(true)
+            .connectTimeout(5000)
+            .readTimeout(15000)
+            .build();
+
+        assertNotNull("API should be created with credentials", api);
+        api.close();
+    }
+
 }

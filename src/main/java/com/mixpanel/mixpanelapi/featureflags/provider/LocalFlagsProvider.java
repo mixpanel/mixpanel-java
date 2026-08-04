@@ -45,14 +45,26 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     private ScheduledExecutorService pollingExecutor;
 
     /**
-     * Creates a new LocalFlagsProvider.
+     * Creates a new LocalFlagsProvider without credentials.
      *
      * @param config the local flags configuration
      * @param sdkVersion the SDK version string
      * @param eventSender the EventSender implementation for tracking exposure events
      */
     public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender) {
-        super(config.getProjectToken(), config, sdkVersion, eventSender);
+        this(config, sdkVersion, eventSender, null);
+    }
+
+    /**
+     * Creates a new LocalFlagsProvider.
+     *
+     * @param config the local flags configuration
+     * @param sdkVersion the SDK version string
+     * @param eventSender the EventSender implementation for tracking exposure events
+     * @param credentials service account credentials for authentication (may be null)
+     */
+    public LocalFlagsProvider(LocalFlagsConfig config, String sdkVersion, EventSender eventSender, com.mixpanel.mixpanelapi.ServiceAccountCredential credentials) {
+        super(config.getProjectToken(), config, sdkVersion, eventSender, credentials);
 
         this.flagDefinitions = new AtomicReference<>(new HashMap<>());
         this.ready = new AtomicBoolean(false);
@@ -168,6 +180,10 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
     /**
      * Builds the URL for fetching flag definitions.
+     * <p>
+     * Always includes token parameter. When service account credentials are configured,
+     * also includes project_id parameter.
+     * </p>
      */
     private String buildDefinitionsUrl() throws UnsupportedEncodingException {
         StringBuilder url = new StringBuilder();
@@ -175,6 +191,12 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         url.append("?mp_lib=").append(URLEncoder.encode("java", "UTF-8"));
         url.append("&lib_version=").append(URLEncoder.encode(sdkVersion, "UTF-8"));
         url.append("&token=").append(URLEncoder.encode(projectToken, "UTF-8"));
+
+        // Also include project_id when credentials are present
+        if (credentials != null) {
+            url.append("&project_id=").append(credentials.getProjectId());
+        }
+
         return url.toString();
     }
 
