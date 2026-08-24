@@ -16,6 +16,10 @@ public class JsonLogicEngine {
 
     private static final JsonLogic jsonLogic = new JsonLogic();
 
+    static {
+        CustomOperators.register(jsonLogic);
+    }
+
     public static boolean evaluate(JSONObject rule, Map<String, Object> data) {
         if (data == null) {
             data = new HashMap<>();

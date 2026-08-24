@@ -835,6 +835,90 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals(0, eventSender.getEvents().size());
     }
 
+    // Custom operator: semver_compare (2026-07-16T00:00:00Z equivalents used below for datetime).
+    Map<String, Object> appVersionAtLeast123 = mapOf(
+            "semver_compare",
+            listOf(
+                mapOf("var", "app_version"),
+                ">=",
+                "1.2.3"
+            )
+        );
+
+    @Test
+    public void testReturnVariantWhenSemverCompareConditionSatisfied() {
+        createFlag(toRuntimeRule(appVersionAtLeast123));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("app_version", "1.5.0"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenSemverCompareConditionNotSatisfied() {
+        createFlag(toRuntimeRule(appVersionAtLeast123));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("app_version", "1.0.0"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenSemverCompareValueUnparseable() {
+        createFlag(toRuntimeRule(appVersionAtLeast123));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("app_version", "not-a-version"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    // Custom operator: datetime_compare. Targets are epoch milliseconds, matching the UI's format.
+    long jul16Ms = 1_784_160_000_000L; // 2026-07-16T00:00:00Z
+    Map<String, Object> signupBeforeJul16 = mapOf(
+            "datetime_compare",
+            listOf(
+                mapOf("var", "signup"),
+                "<",
+                jul16Ms
+            )
+        );
+
+    @Test
+    public void testReturnVariantWhenDatetimeCompareConditionSatisfied() {
+        createFlag(toRuntimeRule(signupBeforeJul16));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("signup", "2026-07-15T00:00:00Z"));
+
+        assertEquals(variantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenDatetimeCompareNumericSubject() {
+        createFlag(toRuntimeRule(signupBeforeJul16));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("signup", 1_784_073_600_000L));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenDatetimeCompareConditionNotSatisfied() {
+        createFlag(toRuntimeRule(signupBeforeJul16));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("signup", "2026-07-16T00:00:00Z"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
+    @Test
+    public void testReturnFallbackWhenDatetimeCompareValueNotStrictRfc3339() {
+        createFlag(toRuntimeRule(signupBeforeJul16));
+
+        String result = evaluateFlagsWithRuntimeParameters(mapOf("signup", "2026-07-15"));
+
+        assertEquals(fallbackVariantValue, result);
+    }
+
     // #endregion
     // #region Exposure Tracking Tests
 

@@ -157,6 +157,12 @@
       <version>1.1.0</version>
     </dependency>
 
+    <dependency>
+      <groupId>org.semver4j</groupId>
+      <artifactId>semver4j</artifactId>
+      <version>5.4.1</version>
+    </dependency>
+
     <!-- Jackson for high-performance JSON serialization (optional) -->
     <!-- Users can include this dependency for improved performance with large batches -->
     <dependency>
