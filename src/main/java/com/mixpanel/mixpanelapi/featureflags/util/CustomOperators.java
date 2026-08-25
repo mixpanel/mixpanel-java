@@ -4,8 +4,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.regex.Pattern;
 
-import org.semver4j.Semver;
-
 import io.github.jamsesso.jsonlogic.JsonLogic;
 
 public final class CustomOperators {
@@ -52,13 +50,104 @@ public final class CustomOperators {
         if (!SEMVER.matcher(actualVersion).matches() || !SEMVER.matcher(targetVersion).matches()) {
             return false;
         }
-        Semver actual = Semver.parse(actualVersion);
-        Semver target = Semver.parse(targetVersion);
-        if (actual == null || target == null) {
+        int cmp = compareSemver(actualVersion, targetVersion);
+        return comparatorMatches(cmp, (String) args[1]);
+    }
+
+    // Strip optional build metadata and separate the core version from pre-release identifiers
+    private static String[][] splitSemver(String version) {
+        int plus = version.indexOf('+');
+        if (plus != -1) {
+            version = version.substring(0, plus);
+        }
+        int dash = version.indexOf('-');
+        if (dash == -1) {
+            return new String[][] {version.split("\\.", -1), new String[0]};
+        }
+        return new String[][] {
+            version.substring(0, dash).split("\\.", -1),
+            version.substring(dash + 1).split("\\.", -1)
+        };
+    }
+
+    private static boolean isNumericIdentifier(String identifier) {
+        if (identifier.isEmpty()) {
             return false;
         }
-        long cmp = actual.compareTo(target);
-        return comparatorMatches(cmp, (String) args[1]);
+        for (int i = 0; i < identifier.length(); i++) {
+            char c = identifier.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Numeric identifiers carry no leading zeros, so the longer run of digits is the larger number.
+    // Comparing them as digits rather than parsing to a long keeps versions that overflow a 64-bit
+    // integer ordered correctly.
+    private static int compareNumeric(String a, String b) {
+        if (a.length() != b.length()) {
+            return a.length() < b.length() ? -1 : 1;
+        }
+        return Integer.signum(a.compareTo(b));
+    }
+
+    // SemVer 2.0.0 section 11.4: digits compare numerically, a numeric identifier ranks below an
+    // alphanumeric one, and anything else compares by ASCII order.
+    private static int comparePrereleaseIdentifier(String a, String b) {
+        boolean aNumeric = isNumericIdentifier(a);
+        boolean bNumeric = isNumericIdentifier(b);
+        if (aNumeric && bNumeric) {
+            return compareNumeric(a, b);
+        }
+        if (aNumeric) {
+            return -1;
+        }
+        if (bNumeric) {
+            return 1;
+        }
+        return Integer.signum(a.compareTo(b));
+    }
+
+    // Ordering per SemVer 2.0.0 section 11. Both operands have already been normalized and matched
+    // against the official regex, so the core holds exactly three numeric identifiers and every
+    // prerelease field is well-formed; the split needs no error path.
+    private static int compareSemver(String actualVersion, String targetVersion) {
+        String[][] actual = splitSemver(actualVersion);
+        String[][] target = splitSemver(targetVersion);
+        String[] actualCore = actual[0];
+        String[] actualPrerelease = actual[1];
+        String[] targetCore = target[0];
+        String[] targetPrerelease = target[1];
+
+        for (int i = 0; i < actualCore.length; i++) {
+            int result = compareNumeric(actualCore[i], targetCore[i]);
+            if (result != 0) {
+                return result;
+            }
+        }
+
+        // A prerelease ranks below the release it belongs to (section 11.3).
+        if (actualPrerelease.length == 0 && targetPrerelease.length == 0) {
+            return 0;
+        }
+        if (actualPrerelease.length == 0) {
+            return 1;
+        }
+        if (targetPrerelease.length == 0) {
+            return -1;
+        }
+
+        int shared = Math.min(actualPrerelease.length, targetPrerelease.length);
+        for (int i = 0; i < shared; i++) {
+            int result = comparePrereleaseIdentifier(actualPrerelease[i], targetPrerelease[i]);
+            if (result != 0) {
+                return result;
+            }
+        }
+        // Every field so far is equal, so the longer list wins (section 11.4.4).
+        return Integer.compare(actualPrerelease.length, targetPrerelease.length);
     }
 
     // Implements a custom operation for datetime comparison. The target value stored on the feature
@@ -83,9 +172,9 @@ public final class CustomOperators {
 
     private static boolean comparatorMatches(long cmp, String symbol) {
         switch (symbol) {
-            case "=":
+            case "===":
                 return cmp == 0;
-            case "!=":
+            case "!==":
                 return cmp != 0;
             case "<":
                 return cmp < 0;

@@ -1,306 +1,114 @@
 package com.mixpanel.mixpanelapi.featureflags.util;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 /**
- * Golden-vector tests for the custom JsonLogic operators. Each case drives a full rule/data pair
- * through {@link JsonLogicEngine#evaluate}, exercising the same engine path used in production
- * (including case-desensitization).
+ * Golden-vector tests for the custom JsonLogic operators. The vectors are the cross-SDK contract;
+ * the canonical copy and its README live in the analytics monorepo.
+ *
+ * <p>Each case is a {@code [subject, operator, target, expected]} row that the test wraps in a rule
+ * and an event, then drives through {@link JsonLogicEngine#evaluate}. That is the same engine path
+ * used in production (including case-desensitization), so operator registration is covered
+ * alongside the comparison itself.
  */
+@RunWith(Parameterized.class)
 public class CustomOperatorsTest {
 
-    // Epoch-millisecond constants (UTC instants) used as datetime targets, matching the UI's format.
-    private static final long JUL16_MS = 1_784_160_000_000L; // 2026-07-16T00:00:00Z
-    private static final long JAN1_MS = 1_767_225_600_000L;  // 2026-01-01T00:00:00Z
-    private static final long DEC31_MS = 1_798_675_200_000L; // 2026-12-31T00:00:00Z
-    private static final long JUL16_END_MS = 1_784_246_399_999L; // 2026-07-16T23:59:59.999Z
-    private static final long LEAP_DAY_MS = 1_709_164_800_000L; // 2024-02-29T00:00:00Z
-    private static final long JUL16_INDIA_MS = 1_784_140_200_000L; // 2026-07-16T00:00:00+05:30
-    private static final long JUL16_PACIFIC_MS = 1_784_188_800_000L; // 2026-07-16T00:00:00-08:00
+    /**
+     * The property key the vectors are evaluated against. It is plumbing the test supplies, so any
+     * name works as long as the rule and the event agree on it.
+     */
+    private static final String VECTOR_KEY = "value";
 
-    private static JSONObject varNode(String key) {
-        return new JSONObject().put("var", key);
+    private final String name;
+    private final JSONObject rule;
+    private final Map<String, Object> data;
+    private final boolean want;
+
+    public CustomOperatorsTest(String name, JSONObject rule, Map<String, Object> data, boolean want) {
+        this.name = name;
+        this.rule = rule;
+        this.data = data;
+        this.want = want;
     }
 
-    private static JSONObject rule(String op, Object actualKey, String symbol, Object target) {
-        JSONArray args = new JSONArray();
-        args.put(actualKey);
-        args.put(symbol);
-        args.put(target);
-        return new JSONObject().put(op, args);
+    /** Reads a golden-vector file. String entries are headings, array entries are cases. */
+    private static void loadVectors(String operator, List<Object[]> cases) {
+        String fileName = operator + "_compare_tests.json";
+        JSONArray entries = new JSONArray(readResource(fileName));
+
+        String section = "";
+        for (int i = 0; i < entries.length(); i++) {
+            Object entry = entries.get(i);
+            if (entry instanceof String) {
+                section = (String) entry;
+                continue;
+            }
+
+            JSONArray row = (JSONArray) entry;
+            String symbol = row.getString(1);
+            Object target = row.get(2);
+
+            JSONObject rule = new JSONObject().put(
+                    operator + "_compare",
+                    new JSONArray().put(new JSONObject().put("var", VECTOR_KEY)).put(symbol).put(target));
+
+            // A null subject means the property is not set. org.json decodes JSON null to the
+            // JSONObject.NULL sentinel rather than a Java null, so isNull is the only correct test.
+            Map<String, Object> data = new HashMap<>();
+            if (!row.isNull(0)) {
+                data.put(VECTOR_KEY, row.get(0));
+            }
+
+            String name = i + " " + section + ": " + row.get(0) + " " + symbol + " " + target;
+            cases.add(new Object[] {name, rule, data, row.getBoolean(3)});
+        }
     }
 
-    private static JSONObject semverRule(String key, String symbol, String target) {
-        return rule("semver_compare", varNode(key), symbol, target);
+    private static String readResource(String fileName) {
+        InputStream stream = CustomOperatorsTest.class.getClassLoader().getResourceAsStream(fileName);
+        assertNotNull(fileName + " is missing from the test resources", stream);
+        try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8);
+             Scanner scanner = new Scanner(reader).useDelimiter("\\A")) {
+            return scanner.hasNext() ? scanner.next() : "";
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Could not read " + fileName, e);
+        }
     }
 
-    private static JSONObject datetimeRule(String key, String symbol, long targetMs) {
-        return rule("datetime_compare", varNode(key), symbol, targetMs);
-    }
-
-    private static JSONObject semverBetween(String key, String lo, String hi) {
-        JSONArray and = new JSONArray();
-        and.put(rule("semver_compare", varNode(key), ">=", lo));
-        and.put(rule("semver_compare", varNode(key), "<=", hi));
-        return new JSONObject().put("and", and);
-    }
-
-    private static JSONObject datetimeBetween(String key, long lo, long hi) {
-        JSONArray and = new JSONArray();
-        and.put(rule("datetime_compare", varNode(key), ">=", lo));
-        and.put(rule("datetime_compare", varNode(key), "<=", hi));
-        return new JSONObject().put("and", and);
-    }
-
-    private static Map<String, Object> data(String key, Object value) {
-        Map<String, Object> data = new HashMap<>();
-        data.put(key, value);
-        return data;
-    }
-
-    @Test
-    public void testSemverCompareOperator() {
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.4")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.4")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.2.3"), data("app_version", "1.2.2")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.2.3"), data("app_version", "1.2.3")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<=", "1.2.3"), data("app_version", "1.2.3")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.2.3"), data("app_version", "1.3.0")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">=", "1.2.3"), data("app_version", "1.2.3")));
-        // Double-digit ordering (numeric, not lexical).
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.9.0"), data("app_version", "1.10.0")));
-        // Prerelease precedes release.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0"), data("app_version", "1.0.0-alpha")));
-        // Lenient v-prefix.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "v1.2.3")));
-        // Lenient uppercase V-prefix.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "V1.2.3")));
-        // A v-prefix must not cost the prerelease.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0"), data("app_version", "v1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "v1.2.4")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<=", "1.2.3"), data("app_version", "v1.2.3")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.2.3"), data("app_version", "v1.2.4")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">=", "1.2.3"), data("app_version", "v1.2.3")));
-        // Lenient minor-only target.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2"), data("app_version", "1.2.0")));
-        // Every symbol is asserted in both directions.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "<=", "1.2.3"), data("app_version", "1.2.4")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.2.3"), data("app_version", "1.2.2")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", ">=", "1.2.3"), data("app_version", "1.2.2")));
-        // Prerelease precedence, SemVer 2.0.0 section 11.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-beta"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-rc1"), data("app_version", "1.0.0-beta")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-rc2"), data("app_version", "1.0.0-rc1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-alpha.1"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-alpha.beta"), data("app_version", "1.0.0-alpha.1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-alpha.beta"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-beta.11"), data("app_version", "1.0.0-beta.2")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-b.1"), data("app_version", "1.0.0-a.1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-a.2"), data("app_version", "1.0.0-a.1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.0.0-rc1"), data("app_version", "1.0.0-rc1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.0.0-rc.1"), data("app_version", "1.0.0-rc1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.9.9"), data("app_version", "2.0.0-alpha")));
-        // A release outranks its own prerelease, asserted from both sides and under every symbol.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.0.0-alpha"), data("app_version", "1.0.0")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">=", "1.0.0-rc1"), data("app_version", "1.0.0")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.0.0-alpha"), data("app_version", "1.0.0")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.0.0"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<=", "1.0.0"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "0.9.9"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.1"), data("app_version", "1.0.0-rc1")));
-        // Prerelease identifier comparison, SemVer 2.0.0 section 11.4.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-10"), data("app_version", "1.0.0-2")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-alpha"), data("app_version", "1.0.0-1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-alpha-1"), data("app_version", "1.0.0-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0-rc.1"), data("app_version", "1.0.0-beta.11")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0"), data("app_version", "1.0.0-rc.1")));
-        // Build metadata carries no precedence.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.0.0-alpha"), data("app_version", "1.0.0-alpha+build")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3+build.1-2")));
-        // Ignored means equal, so every symbol has to agree with that.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<=", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">=", "1.0.0+build2"), data("app_version", "1.0.0+build1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.1+build1"), data("app_version", "1.0.0+build9")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", ">", "1.0.0+build9"), data("app_version", "1.0.1+build1")));
-        // Partial versions keep their prerelease once zero-padded.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.0-alpha"), data("app_version", "1.2-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.3.1"), data("app_version", "1.2-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.2.0"), data("app_version", "1.2-alpha")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0"), data("app_version", "1-rc1")));
-        // An empty prerelease is invalid, so it is rejected rather than treated as the bare release.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.0.0"), data("app_version", "1.0.0-")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.0.0"), data("app_version", "1.0.0-")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.0"), data("app_version", "1.2-")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.0"), data("app_version", "1.2-")));
-        // Hyphens are legal inside a prerelease identifier, so these are NOT empty prereleases.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.0.0"), data("app_version", "1.0.0-alpha-")));
-        // SemVer 2.0.0 forbids leading zeros in the core, so these are rejected rather than normalized.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "01.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "01.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.02.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.02.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.03")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.03")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "01.02.03")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "01.02.03")));
-        // A numeric prerelease identifier may not carry a leading zero either (section 9).
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3-01")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3-01")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3-rc.01")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3-rc.01")));
-        // An alphanumeric identifier may contain digits, so this one stays valid.
-        assertEquals(true, JsonLogicEngine.evaluate(semverRule("app_version", "<", "1.2.3"), data("app_version", "1.2.3-rc01")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "1.5.0")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "1.2.3")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "2.0.0")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "1.0.0")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "2.0.1")));
-        // A prerelease sits below its own release, which decides both boundary cases.
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "1.5.0-rc1")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "2.0.0-rc1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "1.2.3-rc1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "2.0.0"), data("app_version", "not-a-version")));
-        assertEquals(true, JsonLogicEngine.evaluate(semverBetween("app_version", "1.2.3", "1.2.3"), data("app_version", "1.2.3")));
-        // Fail-closed: unparseable, wrong-type, or missing values never match.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "not-a-version")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", 123)));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), new HashMap<>()));
-        // A malformed version must never be padded or coerced into a real one. Both symbols are
-        // asserted so that "accepted at all" is observable rather than masked by a single false.
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "v")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "v")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "-1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "-1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1..2")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1..2")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3.4")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3.4")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "^1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "^1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "abc1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "abc1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3+")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3+")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3-alpha..1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3-alpha..1")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3-.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3-.")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "1.2.3-ALPHA_BETA")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "1.2.3-ALPHA_BETA")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "=", "1.2.3"), data("app_version", "vv1.2.3")));
-        assertEquals(false, JsonLogicEngine.evaluate(semverRule("app_version", "!=", "1.2.3"), data("app_version", "vv1.2.3")));
+    @Parameterized.Parameters(name = "{0}")
+    public static Collection<Object[]> cases() {
+        List<Object[]> all = new ArrayList<>();
+        loadVectors("semver", all);
+        loadVectors("datetime", all);
+        return all;
     }
 
     @Test
-    public void testDatetimeCompareOperator() {
-        // Asymmetric contract: subject (runtime var) is a strict RFC3339 string, target is epoch ms.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<", JUL16_MS), data("signup", "2026-07-15T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "<", JUL16_MS), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-17T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">=", JUL16_MS), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">", JUL16_MS), data("signup", "2026-07-17T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", ">", JUL16_MS), data("signup", "2026-07-15T00:00:00Z")));
-        // Every symbol is asserted in both directions.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<=", JUL16_MS), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "<=", JUL16_MS), data("signup", "2026-07-17T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-17T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", ">=", JUL16_MS), data("signup", "2026-07-15T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeBetween("signup", JAN1_MS, DEC31_MS), data("signup", "2026-06-15T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeBetween("signup", JAN1_MS, DEC31_MS), data("signup", "2026-01-01T00:00:00Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeBetween("signup", JAN1_MS, DEC31_MS), data("signup", "2026-12-31T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeBetween("signup", JAN1_MS, DEC31_MS), data("signup", "2025-12-31T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeBetween("signup", JAN1_MS, DEC31_MS), data("signup", "2027-01-01T00:00:00Z")));
-        // RFC3339 subject with a numeric offset normalizes to the same instant.
-        // Fractional seconds truncate to whole unix seconds.
-        // An end-of-day target drops its .999 and stays an inclusive bound.
-        // A leap day is a real date.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", LEAP_DAY_MS), data("signup", "2024-02-29T00:00:00Z")));
-        // Time-zone offsets change the instant.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_INDIA_MS), data("signup", "2026-07-16T00:00:00+05:30")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T02:00:00+02:00")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<", JUL16_MS), data("signup", "2026-07-16T00:00:00+05:30")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_PACIFIC_MS), data("signup", "2026-07-16T00:00:00-08:00")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">", JUL16_MS), data("signup", "2026-07-16T00:00:00-08:00")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00+00:00")));
-        // Sub-second precision is dropped, on both sides. The end-of-day rows are the window the UI
-        // emits for a single date, whose upper bound carries .999.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.5Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.500Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.123456Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.999999999Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.0Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">=", JUL16_MS), data("signup", "2026-07-16T00:00:00.500Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_END_MS), data("signup", "2026-07-16T23:59:59Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<=", JUL16_END_MS), data("signup", "2026-07-16T23:59:59Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_END_MS), data("signup", "2026-07-16T23:59:59.999Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<=", JUL16_END_MS), data("signup", "2026-07-16T23:59:59.999Z")));
-        // Fractional on both sides: the shape the UI actually round-trips.
-        // Trimming and lowercasing.
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16t00:00:00.500z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16t02:00:00+02:00")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", " 2026-07-16T00:00:00Z ")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16t00:00:00z")));
-        // Shape violations, asserted under both = and != so that "accepted at all" is observable.
-        // RFC 3339 also permits 24:00:00 as end-of-day. Platforms disagree on it, so no vector
-        // asserts it either way.
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-7-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-7-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16 00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16 00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00.Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00.Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00+0200")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00+0200")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00+02")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00+02")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00Zextra")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00Zextra")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "20260716T000000Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "20260716T000000Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00z00:00")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00z00:00")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00,5Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16T00:00:00,5Z")));
-        // Fail-closed: subject must be an RFC3339 string, target must be an epoch-ms number.
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", JUL16_MS)));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", -1500L), data("signup", "1969-12-31T23:59:59Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", -1500L), data("signup", "1969-12-31T23:59:59Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">=", -1500L), data("signup", "1969-12-31T23:59:59Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "<", -1500L), data("signup", "1969-12-31T23:59:58Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", ">", -2500L), data("signup", "1969-12-31T23:59:59Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "=", -2000L), data("signup", "1969-12-31T23:59:58.500Z")));
-        assertEquals(true, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", -1000L), data("signup", "1969-12-31T23:59:58.500Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(rule("datetime_compare", varNode("signup"), "=", 1e308), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(rule("datetime_compare", varNode("signup"), ">", 1e308), data("signup", "2026-07-16T00:00:00Z")));
-        assertEquals(false, JsonLogicEngine.evaluate(rule("datetime_compare", varNode("signup"), "<", 1e308), data("signup", "2026-07-16T00:00:00Z")));
-        // Fail-closed: only strict RFC3339 strings parse; bare dates, zone-less times, and junk never match.
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "!=", JUL16_MS), data("signup", "2026-07-16")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "2026-07-16T00:00:00")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), data("signup", "yesterday")));
-        assertEquals(false, JsonLogicEngine.evaluate(datetimeRule("signup", "=", JUL16_MS), new HashMap<>()));
+    public void goldenVector() {
+        // An absent property and one holding a null both fail closed, so the expectation alone
+        // cannot tell them apart; pin the spelling the vectors mean.
+        assertFalse(name + " must omit an unset property rather than store a null",
+                data.containsValue(JSONObject.NULL));
+        assertEquals(name, want, JsonLogicEngine.evaluate(rule, data));
     }
 }
