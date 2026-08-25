@@ -25,6 +25,11 @@ public final class CustomOperators {
     // SemVer 2.0.0 requires major.minor.patch; partial versions are zero-padded to this.
     private static final int SEMVER_PARTS = 3;
 
+    // Longest operand the semver regex is allowed to see. A real version never approaches this; the
+    // bound matches MAX_LENGTH in node-semver, and keeps an arbitrarily long property value off the
+    // regex regardless of how the engine schedules backtracking.
+    private static final int MAX_SEMVER_LENGTH = 256;
+
     // Epoch milliseconds are compared as a long, so anything at or beyond this is out of range.
     private static final double MAX_EPOCH_MS = (double) Long.MAX_VALUE;
 
@@ -43,6 +48,10 @@ public final class CustomOperators {
             return false;
         }
         if (!(args[0] instanceof String) || !(args[2] instanceof String)) {
+            return false;
+        }
+        if (((String) args[0]).length() > MAX_SEMVER_LENGTH
+                || ((String) args[2]).length() > MAX_SEMVER_LENGTH) {
             return false;
         }
         String actualVersion = normalizeSemver((String) args[0]);
