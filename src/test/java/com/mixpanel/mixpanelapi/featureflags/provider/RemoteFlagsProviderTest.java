@@ -287,5 +287,34 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     // #endregion
+
+    // #region Hierarchical Groups
+
+    @Test
+    public void testHierarchicalContextIsForwardedAndExposureCarriesUserAndCompany() {
+        config = RemoteFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .requestTimeoutSeconds(5)
+            .hierarchicalGroups(true)
+            .build();
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "value-a");
+        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender);
+        // Only respond when the serialized context carries $company_id
+        provider.setMockResponse("%22%24company_id%22%3A%22acme%22", response);
+
+        Map<String, Object> context = new HashMap<>();
+        context.put("$user_id", "user-123");
+        context.put("$company_id", "acme");
+        String result = provider.getVariantValue("test-flag", "fallback", context);
+
+        assertEquals("value-a", result);
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertNull(event.distinctId);
+        assertEquals("user-123", event.properties.getString("$user_id"));
+        assertEquals("acme", event.properties.getString("$company_id"));
+    }
+
+    // #endregion
 }
 

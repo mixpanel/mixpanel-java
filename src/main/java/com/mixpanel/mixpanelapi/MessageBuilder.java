@@ -2,12 +2,18 @@ package com.mixpanel.mixpanelapi;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,11 +29,75 @@ import org.json.JSONObject;
 public class MessageBuilder {
 
     private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
+    private static final Logger logger = Logger.getLogger(MessageBuilder.class.getName());
+    private static final String USER_ID_GROUP_KEY = "$user_id";
+    // /groups has no $add, $append or $merge
+    private static final Set<String> GROUP_OPERATIONS = Collections.unmodifiableSet(new LinkedHashSet<>(
+            Arrays.asList("$set", "$set_once", "$unset", "$union", "$remove", "$delete")));
 
     private final String mToken;
+    private final boolean mHierarchicalGroups;
+    private final String mCompanyId;
 
     public MessageBuilder(String token) {
+        this(token, false);
+    }
+
+    /**
+     * Creates a MessageBuilder for a project that may use hierarchical groups.
+     *
+     * When hierarchicalGroups is true, Mixpanel builds the distinct id from {@code $user_id} and
+     * {@code $company_id}. Prefer the {@link MixpanelIdentity} overloads, such as
+     * {@link #event(MixpanelIdentity, String, JSONObject)}, which send those properties.
+     * {@link #event(String, String, JSONObject)} still works, and Mixpanel accepts a distinct id
+     * it built itself, but a distinct id that is not in that form names a different user that
+     * nothing reconciles later. See {@link MixpanelIdentity.Builder#distinctId(String)}.
+     *
+     * User profiles are group profiles keyed by {@code $user_id}, so they support only what
+     * {@code /groups} supports. {@link #increment}, {@link #append} and {@link #trackCharge} have
+     * no equivalent there and throw {@link UnsupportedOperationException}; set, setOnce, unset,
+     * union, remove and delete work, and {@link #set(MixpanelIdentity, JSONObject)} and its
+     * siblings address a profile without needing a distinct id. No user profile update goes to
+     * {@code /engage}: the distinct id overloads, such as {@link #set(String, JSONObject)}, accept
+     * only a distinct id of the form {@code $company:{company}|$user:{user}}, send it to
+     * {@code /groups} as that user's profile within the company, and throw
+     * {@link IllegalArgumentException} for any other distinct id. Group profile messages require a
+     * known company, either through {@link #forCompany(String)} or a {@code $company_id} modifier.
+     *
+     * @param token the Mixpanel project token
+     * @param hierarchicalGroups true if the project uses hierarchical groups
+     */
+    public MessageBuilder(String token, boolean hierarchicalGroups) {
+        this(token, hierarchicalGroups, null);
+    }
+
+    private MessageBuilder(String token, boolean hierarchicalGroups, String companyId) {
         mToken = token;
+        mHierarchicalGroups = hierarchicalGroups;
+        mCompanyId = companyId;
+    }
+
+    /**
+     * Returns a MessageBuilder that adds {@code $company_id} to every group profile
+     * message it builds. Hierarchical group projects require {@code $company_id} on
+     * every {@code /groups} write, including the company's own profile and user profiles:
+     * <pre>
+     * {@code
+     *     MessageBuilder acme = messageBuilder.forCompany("acme");
+     *     acme.groupSet("$company_id", "acme", companyProperties);
+     *     acme.groupSet("$user_id", "user_123", userProperties);
+     *     acme.groupSet("department", "finance", departmentProperties);
+     * }
+     * </pre>
+     *
+     * @param companyId the id of the top-level company
+     * @return a new MessageBuilder bound to the given company
+     */
+    public MessageBuilder forCompany(String companyId) {
+        if (companyId == null || companyId.isEmpty()) {
+            throw new IllegalArgumentException("companyId must be non-empty");
+        }
+        return new MessageBuilder(mToken, mHierarchicalGroups, companyId);
     }
 
     /***
@@ -40,7 +110,10 @@ public class MessageBuilder {
      * to get the most out of your metrics.
      *
      * @param distinctId a string uniquely identifying the individual cause associated with this event
-     *           (for example, the user id of a signing-in user, or the hostname of a server)
+     *           (for example, the user id of a signing-in user, or the hostname of a server).
+     *           On a hierarchical groups project this must be a distinct id Mixpanel built, of the
+     *           form {@code $company:{company}|$user:{user}}, which ingestion parses back into
+     *           {@code $company_id} and {@code $user_id}. Any other value names a separate user.
      * @param eventName a human readable name for the event, for example "Purchase", or "Threw Exception"
      * @param properties a JSONObject associating properties with the event. These are useful
      *           for reporting and segmentation of events. It is often useful not only to include
@@ -79,6 +152,73 @@ public class MessageBuilder {
             envelope.put("message_type", "event");
             envelope.put("message", dataObj);
             return envelope;
+        } catch (JSONException e) {
+            throw new RuntimeException("Can't construct a Mixpanel message", e);
+        }
+    }
+
+    /**
+     * Creates a message tracking an event for the given identity. In hierarchical
+     * group mode the message carries {@code $user_id} and {@code $company_id} instead
+     * of {@code distinct_id}; Mixpanel constructs the distinct id from them.
+     * Identity keys replace any values for the same keys in properties.
+     *
+     * @param identity who the event belongs to
+     * @param eventName a human readable name for the event
+     * @param properties a JSONObject associating properties with the event, or null
+     * @return event message for consumption by MixpanelAPI
+     * @see #event(String, String, JSONObject)
+     */
+    public JSONObject event(MixpanelIdentity identity, String eventName, JSONObject properties) {
+        requireIdentityMatchesProject(identity);
+        return event(identity.getDistinctId(), eventName, withIdentity(identity, properties));
+    }
+
+    /**
+     * Creates a message importing a historical event for the given identity.
+     *
+     * @param identity who the event belongs to
+     * @param eventName a human readable name for the event
+     * @param properties a JSONObject associating properties with the event, or null
+     * @return import event message for consumption by MixpanelAPI
+     * @see #importEvent(String, String, JSONObject)
+     * @see #event(MixpanelIdentity, String, JSONObject)
+     */
+    public JSONObject importEvent(MixpanelIdentity identity, String eventName, JSONObject properties) {
+        requireIdentityMatchesProject(identity);
+        return importEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
+    }
+
+    /**
+     * Hierarchical groups is a project setting, so a hierarchical identity is only valid on a
+     * builder created for a hierarchical groups project. Ingestion accepts the keys on any
+     * project but ignores them, so a mismatch would be silently mis-attributed.
+     */
+    private void requireIdentityMatchesProject(MixpanelIdentity identity) {
+        if (identity == null) {
+            throw new IllegalArgumentException("identity must be non-null");
+        }
+        if (identity.isHierarchical() && !mHierarchicalGroups) {
+            throw new IllegalArgumentException(identity + " requires a hierarchical groups MessageBuilder: "
+                    + "new MessageBuilder(token, true)");
+        }
+        // The company is part of a hierarchical user's identity, not a one-time association. A
+        // $user_id sent without one resolves to a separate user that nothing reconciles later.
+        // A device id rescues that case: Mixpanel ignores the user id, keeps the event under the
+        // device, and links it to the company-scoped user once a later event carries all three.
+        if (mHierarchicalGroups && identity.getUserId() != null && identity.getCompanyId() == null
+                && identity.getDeviceId() == null) {
+            throw new IllegalArgumentException(identity + " needs a company on a hierarchical groups project. "
+                    + "A user id sent without one, and without a device id, names a separate user that cannot "
+                    + "be merged afterwards.");
+        }
+    }
+
+    private static JSONObject withIdentity(MixpanelIdentity identity, JSONObject properties) {
+        try {
+            JSONObject merged = properties == null ? new JSONObject() : new JSONObject(properties.toString());
+            identity.applyTo(merged);
+            return merged;
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
         }
@@ -466,6 +606,149 @@ public class MessageBuilder {
     }
 
     /**
+     * Sets properties on the user profile for the given identity. For a hierarchical
+     * groups identity the update is sent to {@code /groups} as the {@code $user_id}
+     * group profile within the identity's company; for a distinct id identity it is
+     * the same as {@link #set(String, JSONObject)}.
+     *
+     * <pre>
+     * {@code
+     *     JSONObject message = messageBuilder.set(MixpanelIdentity.builder().userId("user_123").companyId("acme").build(),
+     *             userProperties);
+     *     mixpanelApi.sendMessage(message);
+     * }
+     * </pre>
+     *
+     * Hierarchical groups projects support set, setOnce, unset, union, remove and delete.
+     * {@code $add} and {@code $append} have no group profile equivalent, so increment,
+     * append and trackCharge have no identity overload.
+     *
+     * @param identity whose profile to change
+     * @param properties a collection of properties to set on the profile
+     * @return profile set message for consumption by MixpanelAPI
+     *
+     * @throws IllegalArgumentException if the identity cannot name a user profile in this project,
+     *           for example a company-only identity, or on a hierarchical groups builder a distinct id
+     *           not of the form {@code $company:{company}|$user:{user}}
+     */
+    public JSONObject set(MixpanelIdentity identity, JSONObject properties) {
+        return set(identity, properties, null);
+    }
+
+    /**
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject set(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
+        return profileMessage(identity, "$set", properties, modifiers);
+    }
+
+    /**
+     * Sets properties on the user profile for the given identity only if they are not already set.
+     *
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject setOnce(MixpanelIdentity identity, JSONObject properties) {
+        return setOnce(identity, properties, null);
+    }
+
+    /**
+     * @see #setOnce(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject setOnce(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
+        return profileMessage(identity, "$set_once", properties, modifiers);
+    }
+
+    /**
+     * Deletes the user profile for the given identity.
+     *
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject delete(MixpanelIdentity identity) {
+        return delete(identity, null);
+    }
+
+    /**
+     * @see #delete(MixpanelIdentity)
+     */
+    public JSONObject delete(MixpanelIdentity identity, JSONObject modifiers) {
+        return profileMessage(identity, "$delete", new JSONObject(), modifiers);
+    }
+
+    /**
+     * Removes values from list properties on the user profile for the given identity.
+     *
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject remove(MixpanelIdentity identity, JSONObject properties) {
+        return remove(identity, properties, null);
+    }
+
+    /**
+     * @see #remove(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject remove(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
+        return profileMessage(identity, "$remove", properties, modifiers);
+    }
+
+    /**
+     * Merges values into list properties on the user profile for the given identity,
+     * ignoring values already present.
+     *
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject union(MixpanelIdentity identity, Map<String, JSONArray> properties) {
+        return union(identity, properties, null);
+    }
+
+    /**
+     * @see #union(MixpanelIdentity, Map)
+     */
+    public JSONObject union(MixpanelIdentity identity, Map<String, JSONArray> properties, JSONObject modifiers) {
+        return profileMessage(identity, "$union", new JSONObject(properties), modifiers);
+    }
+
+    /**
+     * Removes properties from the user profile for the given identity.
+     *
+     * @see #set(MixpanelIdentity, JSONObject)
+     */
+    public JSONObject unset(MixpanelIdentity identity, Collection<String> propertyNames) {
+        return unset(identity, propertyNames, null);
+    }
+
+    /**
+     * @see #unset(MixpanelIdentity, Collection)
+     */
+    public JSONObject unset(MixpanelIdentity identity, Collection<String> propertyNames, JSONObject modifiers) {
+        return profileMessage(identity, "$unset", new JSONArray(propertyNames), modifiers);
+    }
+
+    private JSONObject profileMessage(MixpanelIdentity identity, String actionType, Object properties,
+                                      JSONObject modifiers) {
+        requireIdentityMatchesProject(identity);
+        if (identity.getDistinctId() != null) {
+            // On a hierarchical groups builder peopleMessage parses a distinct id Mixpanel built into
+            // its company and user, so this reaches the same /groups profile as the hierarchical form.
+            return peopleMessage(identity.getDistinctId(), actionType, properties, modifiers);
+        }
+        if (!mHierarchicalGroups) {
+            throw new IllegalArgumentException(identity + " cannot identify a profile on this project. "
+                    + "User profiles are addressed by distinct id unless the project uses hierarchical groups.");
+        }
+        if (identity.getUserId() == null) {
+            if (identity.getCompanyId() == null) {
+                throw new IllegalArgumentException(identity + " names no user, so it cannot identify a profile. "
+                        + "Device ids identify anonymous events, not profiles.");
+            }
+            throw new IllegalArgumentException("User profile updates require a user id, and " + identity
+                    + " has none. Use groupSet(\"$company_id\", companyId, properties) to update the company's "
+                    + "profile.");
+        }
+        return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, modifiers,
+                identity.getCompanyId());
+    }
+
+    /**
      * Tracks revenue associated with the given distinctId.
      *
      * @param distinctId an identifier associated with a profile
@@ -525,8 +808,15 @@ public class MessageBuilder {
      * The underlying API is documented at https://developer.mixpanel.com/docs/http
      *
      * @param distinctId a string uniquely identifying the individual cause associated with this event
-     *           (for example, the user id of a signing-in user, or the hostname of a server)
-     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $add)
+     *           (for example, the user id of a signing-in user, or the hostname of a server).
+     *           On a hierarchical groups builder this must be of the form
+     *           {@code $company:{company}|$user:{user}}, and the message is a {@code /groups} update of
+     *           the {@code $user_id} profile within that company, without {@code $distinct_id}. A
+     *           {@code $distinct_id} modifier replaces this argument and is held to the same rule.
+     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $add).
+     *           On a hierarchical groups builder user profiles are group profiles, so only $set, $set_once,
+     *           $unset, $union, $remove and $delete are supported; $add and $append throw
+     *           UnsupportedOperationException.
      * @param properties a payload of the operation. Will be converted to JSON, and should be of types
      *           Boolean, Double, Integer, Long, String, JSONArray, JSONObject, the JSONObject.NULL object, or null.
      *           NaN and negative/positive infinity will throw an IllegalArgumentException
@@ -534,13 +824,27 @@ public class MessageBuilder {
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
      * @return generic user profile message for consumption by MixpanelAPI
      *
-     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
+     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property, or on a
+     *           hierarchical groups builder if the distinct id does not name both a company and a user
+     * @throws UnsupportedOperationException on a hierarchical groups builder, for $add, $append or any other
+     *           operation /groups does not support
      *
      * @see MessageBuilder#set(String distinctId, JSONObject properties)
      * @see MessageBuilder#delete(String distinctId)
      * @see MessageBuilder#append(String distinctId, JSONObject properties, JSONObject modifiers)
      */
     public JSONObject peopleMessage(String distinctId, String actionType, Object properties, JSONObject modifiers) {
+        if (mHierarchicalGroups && !GROUP_OPERATIONS.contains(actionType)) {
+            // A hierarchical groups user profile is a group profile, so it supports what /groups
+            // supports. $add and $append have no equivalent there, and no other call reaches them.
+            throw new UnsupportedOperationException(actionType + " is not supported for hierarchical groups "
+                    + "projects, whose user profiles are group profiles keyed by $user_id. Supported operations "
+                    + "are " + GROUP_OPERATIONS + ", so increment, append and trackCharge have no hierarchical "
+                    + "groups equivalent.");
+        }
+        if (mHierarchicalGroups) {
+            return hierarchicalUserProfileMessage(distinctId, actionType, properties, modifiers);
+        }
         JSONObject dataObj = new JSONObject();
         if (null == properties) {
             throw new IllegalArgumentException("Cannot send null properties, use JSONObject.NULL instead");
@@ -573,6 +877,32 @@ public class MessageBuilder {
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
         }
+    }
+
+    /**
+     * A hierarchical groups user profile is the {@code $user_id} group profile within the user's
+     * company, so a user profile update never goes to {@code /engage}. The message's distinct id
+     * (a {@code $distinct_id} modifier, if given, replaces the argument just as it would in the
+     * message) must be one Mixpanel built, which names both the user and the company.
+     */
+    private JSONObject hierarchicalUserProfileMessage(String distinctId, String actionType, Object properties,
+                                                      JSONObject modifiers) {
+        JSONObject groupModifiers = modifiers;
+        if (modifiers != null && modifiers.has("$distinct_id")) {
+            Object override = modifiers.opt("$distinct_id");
+            distinctId = override instanceof String ? (String) override : null;
+            groupModifiers = new JSONObject(modifiers, JSONObject.getNames(modifiers));
+            groupModifiers.remove("$distinct_id");
+        }
+        MixpanelIdentity identity = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        if (identity == null) {
+            throw new IllegalArgumentException("User profile updates on hierarchical groups projects need a user "
+                    + "and a company, and the distinct id \"" + distinctId + "\" does not name both. Pass "
+                    + "MixpanelIdentity.builder().userId(userId).companyId(companyId).build(), or a distinct id "
+                    + "of the form $company:{company}|$user:{user}.");
+        }
+        return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, groupModifiers,
+                identity.getCompanyId());
     }
 
     /**
@@ -808,7 +1138,9 @@ public class MessageBuilder {
      *
      * @param groupKey string identifier for the type of group, e.g. 'Company'
      * @param groupId unique string identifier for the group, e.g. 'Acme Inc.'
-     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $add)
+     * @param actionType a string associated in the HTTP api with the operation (for example, $set or $union).
+     *           /groups has no $add, $append or $merge; on a hierarchical groups builder an unsupported
+     *           operation is logged and still built, since Mixpanel, not this library, decides what it accepts.
      * @param properties a payload of the operation. Will be converted to JSON, and should be of types
      *           Boolean, Double, Integer, Long, String, JSONArray, JSONObject, the JSONObject.NULL object, or null.
      *           NaN and negative/positive infinity will throw an IllegalArgumentException
@@ -817,6 +1149,7 @@ public class MessageBuilder {
      * @return generic group profile message for consumption by MixpanelAPI
      *
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
+     * @throws IllegalStateException for hierarchical groups projects when no company is known
      *
      * @see MessageBuilder#groupSet(String groupKey, String groupId, JSONObject properties)
      * @see MessageBuilder#groupSetOnce(String groupKey, String groupId, JSONObject properties)
@@ -825,6 +1158,23 @@ public class MessageBuilder {
      */
     public JSONObject groupMessage(String groupKey, String groupId, String actionType, Object properties,
                                    JSONObject modifiers) {
+        JSONObject message = buildGroupMessage(groupKey, groupId, actionType, properties, modifiers, mCompanyId);
+        // Only the generic entry point can carry an arbitrary actionType; the groupSet family passes constants.
+        // Warn once the message exists, so a call that threw or built nothing does not claim a dropped update.
+        if (mHierarchicalGroups && message != null && !GROUP_OPERATIONS.contains(actionType)) {
+            logger.log(Level.WARNING, "Group profiles do not support " + actionType + " and Mixpanel will drop "
+                    + "the update. Supported operations are " + GROUP_OPERATIONS);
+        }
+        return message;
+    }
+
+    private JSONObject buildGroupMessage(String groupKey, String groupId, String actionType, Object properties,
+                                         JSONObject modifiers, String companyId) {
+        if (mHierarchicalGroups && companyId == null && (modifiers == null || !modifiers.has("$company_id"))) {
+            throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
+                    + "company. Use forCompany(companyId) to build them. Nothing to send for group "
+                    + groupKey + "=" + groupId);
+        }
         JSONObject dataObj = new JSONObject();
         if (null == properties) {
             throw new IllegalArgumentException("Cannot send null properties, use JSONObject.NULL instead");
@@ -849,6 +1199,10 @@ public class MessageBuilder {
                       dataObj.put(key, modifiers.get(key));
                   }
                 }
+            }
+            // $company_id must be top-level, not inside the operation payload
+            if (companyId != null) {
+                dataObj.put("$company_id", companyId);
             }
             JSONObject envelope = new JSONObject();
             envelope.put("envelope_version", 1);

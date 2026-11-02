@@ -23,6 +23,7 @@ public final class ExperimentationFlag {
     private final UUID experimentId;
     private final Boolean isExperimentActive;
     private final String hashSalt;
+    private final String contextTemplate;
 
     /**
      * Creates a new ExperimentationFlag.
@@ -39,6 +40,11 @@ public final class ExperimentationFlag {
      * @param hashSalt the hash salt for this flag (may be null for legacy flags)
      */
     public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt) {
+        this(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, "");
+    }
+
+    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt, String contextTemplate) {
+        this.contextTemplate = contextTemplate == null ? "" : contextTemplate;
         this.id = id;
         this.name = name;
         this.key = key;
@@ -49,6 +55,17 @@ public final class ExperimentationFlag {
         this.experimentId = experimentId;
         this.isExperimentActive = isExperimentActive;
         this.hashSalt = hashSalt;
+    }
+
+    /**
+     * How to build this flag's assignment key when the caller's context does not carry
+     * {@link #getContext()} directly, as published by the service, for example
+     * {@code $company:{$company_id}|$user:{$user_id}}. Empty when the service sends none.
+     *
+     * @return the template, or an empty string
+     */
+    public String getContextTemplate() {
+        return contextTemplate;
     }
 
     /**
