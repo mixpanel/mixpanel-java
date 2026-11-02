@@ -12,8 +12,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -29,7 +27,6 @@ import org.json.JSONObject;
 public class MessageBuilder {
 
     private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
-    private static final Logger logger = Logger.getLogger(MessageBuilder.class.getName());
     private static final String USER_ID_GROUP_KEY = "$user_id";
     // /groups has no $add, $append or $merge
     private static final Set<String> GROUP_OPERATIONS = Collections.unmodifiableSet(new LinkedHashSet<>(
@@ -1139,8 +1136,7 @@ public class MessageBuilder {
      * @param groupKey string identifier for the type of group, e.g. 'Company'
      * @param groupId unique string identifier for the group, e.g. 'Acme Inc.'
      * @param actionType a string associated in the HTTP api with the operation (for example, $set or $union).
-     *           /groups has no $add, $append or $merge; on a hierarchical groups builder an unsupported
-     *           operation is logged and still built, since Mixpanel, not this library, decides what it accepts.
+     *           /groups has no $add, $append or $merge; a hierarchical groups builder rejects them.
      * @param properties a payload of the operation. Will be converted to JSON, and should be of types
      *           Boolean, Double, Integer, Long, String, JSONArray, JSONObject, the JSONObject.NULL object, or null.
      *           NaN and negative/positive infinity will throw an IllegalArgumentException
@@ -1150,6 +1146,8 @@ public class MessageBuilder {
      *
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
      * @throws IllegalStateException for hierarchical groups projects when no company is known
+     * @throws UnsupportedOperationException on a hierarchical groups builder, for an operation /groups lacks
+     *           ($add, $append or $merge)
      *
      * @see MessageBuilder#groupSet(String groupKey, String groupId, JSONObject properties)
      * @see MessageBuilder#groupSetOnce(String groupKey, String groupId, JSONObject properties)
@@ -1158,14 +1156,12 @@ public class MessageBuilder {
      */
     public JSONObject groupMessage(String groupKey, String groupId, String actionType, Object properties,
                                    JSONObject modifiers) {
-        JSONObject message = buildGroupMessage(groupKey, groupId, actionType, properties, modifiers, mCompanyId);
         // Only the generic entry point can carry an arbitrary actionType; the groupSet family passes constants.
-        // Warn once the message exists, so a call that threw or built nothing does not claim a dropped update.
-        if (mHierarchicalGroups && message != null && !GROUP_OPERATIONS.contains(actionType)) {
-            logger.log(Level.WARNING, "Group profiles do not support " + actionType + " and Mixpanel will drop "
-                    + "the update. Supported operations are " + GROUP_OPERATIONS);
+        if (mHierarchicalGroups && !GROUP_OPERATIONS.contains(actionType)) {
+            throw new UnsupportedOperationException(actionType + " is not supported for group profiles on "
+                    + "hierarchical groups projects. Supported operations are " + GROUP_OPERATIONS + ".");
         }
-        return message;
+        return buildGroupMessage(groupKey, groupId, actionType, properties, modifiers, mCompanyId);
     }
 
     private JSONObject buildGroupMessage(String groupKey, String groupId, String actionType, Object properties,

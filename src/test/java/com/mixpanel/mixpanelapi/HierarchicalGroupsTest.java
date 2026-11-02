@@ -7,17 +7,9 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 
 import static org.junit.Assert.*;
 
@@ -599,80 +591,33 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testUnsupportedGroupOperationWarnsAndStillBuilds() {
-        List<String> warnings = new ArrayList<>();
-        JSONObject message = captureWarnings(warnings, () -> hgBuilder.forCompany("acme")
-                .groupMessage("company", "acme", "$add", new JSONObject().put("seats", 1), null));
-
-        // Mixpanel decides what it accepts, so the message is still built, just not silently.
-        assertNotNull(message);
-        assertEquals(1, warnings.size());
-        assertTrue(warnings.get(0).contains("$add"));
-    }
-
-    @Test
-    public void testUnsupportedGroupOperationDoesNotWarnWithoutHierarchicalGroups() {
-        List<String> warnings = new ArrayList<>();
-        JSONObject message = captureWarnings(warnings,
-                () -> legacyBuilder.groupMessage("company", "acme", "$add", new JSONObject().put("seats", 1), null));
-
-        assertNotNull(message);
-        assertTrue(warnings.toString(), warnings.isEmpty());
-    }
-
-    @Test
-    public void testUnsupportedGroupOperationDoesNotWarnWhenNothingWasBuilt() {
-        List<String> warnings = new ArrayList<>();
+    public void testUnsupportedGroupOperationThrows() {
         MessageBuilder acme = hgBuilder.forCompany("acme");
-
-        // Null properties throws before a message exists, so nothing was dropped to warn about.
-        assertThrows(IllegalArgumentException.class, () -> captureWarnings(warnings,
-                () -> acme.groupMessage("company", "acme", "$add", null, null)));
-        assertTrue(warnings.toString(), warnings.isEmpty());
+        for (String operation : Arrays.asList("$add", "$append", "$merge")) {
+            UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class,
+                    () -> acme.groupMessage("company", "acme", operation, new JSONObject().put("seats", 1), null));
+            assertTrue(e.getMessage(), e.getMessage().startsWith(operation + " is not supported"));
+        }
     }
 
     @Test
-    public void testSupportedGroupOperationsDoNotWarn() {
-        List<String> warnings = new ArrayList<>();
+    public void testUnsupportedGroupOperationThrowsBeforeCompanyCheck() {
+        assertThrows(UnsupportedOperationException.class,
+                () -> hgBuilder.groupMessage("company", "acme", "$add", new JSONObject().put("seats", 1), null));
+    }
+
+    @Test
+    public void testSupportedGroupOperationsBuild() {
         JSONObject properties = new JSONObject().put("seats", 1);
         MessageBuilder acme = hgBuilder.forCompany("acme");
 
-        captureWarnings(warnings, () -> {
-            acme.groupSet("department", "finance", properties);
-            acme.groupSetOnce("department", "finance", properties);
-            acme.groupUnset("department", "finance", Arrays.asList("seats"));
-            acme.groupUnion("department", "finance", Collections.singletonMap("tags", new JSONArray().put("a")));
-            acme.groupRemove("department", "finance", properties);
-            acme.groupDelete("department", "finance");
-            return null;
-        });
-
-        assertTrue(warnings.toString(), warnings.isEmpty());
-    }
-
-    /** Runs the given builder call with MessageBuilder's warnings collected into the given list. */
-    private static JSONObject captureWarnings(List<String> warnings, Supplier<JSONObject> call) {
-        Logger logger = Logger.getLogger(MessageBuilder.class.getName());
-        SimpleFormatter formatter = new SimpleFormatter();
-        Handler handler = new Handler() {
-            public void publish(LogRecord record) {
-                if (record.getLevel().intValue() >= Level.WARNING.intValue()) {
-                    warnings.add(formatter.formatMessage(record));
-                }
-            }
-            public void flush() {}
-            public void close() {}
-        };
-        handler.setLevel(Level.ALL);
-        Level originalLevel = logger.getLevel();
-        logger.addHandler(handler);
-        logger.setLevel(Level.ALL);
-        try {
-            return call.get();
-        } finally {
-            logger.removeHandler(handler);
-            logger.setLevel(originalLevel);
-        }
+        assertNotNull(acme.groupSet("department", "finance", properties));
+        assertNotNull(acme.groupSetOnce("department", "finance", properties));
+        assertNotNull(acme.groupUnset("department", "finance", Arrays.asList("seats")));
+        assertNotNull(acme.groupUnion("department", "finance",
+                Collections.singletonMap("tags", new JSONArray().put("a"))));
+        assertNotNull(acme.groupRemove("department", "finance", properties));
+        assertNotNull(acme.groupDelete("department", "finance"));
     }
 
     // #endregion
