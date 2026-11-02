@@ -223,12 +223,6 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             for (int i = 0; i < flags.length(); i++) {
                 JSONObject flagJson = flags.getJSONObject(i);
                 ExperimentationFlag flag = parseFlag(flagJson);
-                if (flag == null) {
-                    // A definition this SDK cannot fully construct is dropped rather than
-                    // half-evaluated: a flag it does not understand would assign a variant
-                    // the service never chose.
-                    continue;
-                }
                 definitions.put(flag.getKey(), flag);
             }
         } catch (Exception e) {
@@ -238,39 +232,18 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         return definitions;
     }
 
-    /** The highest {@code context_template_version} this SDK knows how to apply. */
-    private static final int SUPPORTED_CONTEXT_TEMPLATE_VERSION = 1;
-
-    /**
-     * A template is usable when it names at least one property and every placeholder is named.
-     * An empty template means the service published none, which is not a defect.
-     */
-    private static boolean isUsableContextTemplate(String template) {
-        if (template == null || template.isEmpty()) {
-            return true;
-        }
-        Matcher matcher = CONTEXT_PLACEHOLDER.matcher(template);
-        boolean found = false;
-        while (matcher.find()) {
-            if (matcher.group(1).trim().isEmpty()) {
-                return false;
-            }
-            found = true;
-        }
-        return found;
-    }
-
-    /** A {@code {property}} placeholder in a context template. */
+    /** A {@code {key}} placeholder in a context value template. */
     private static final Pattern CONTEXT_PLACEHOLDER = Pattern.compile("\\{([^}]+)\\}");
 
     /**
-     * Fills a context template the service published with values from the evaluation context.
-     * The template names the properties it needs, so this carries no knowledge of how Mixpanel
-     * composes an identity: change the format service side and the next fetch carries it.
+     * Fills a flag's {@code context_value_template} with values from the evaluation context.
+     * Each {@code {key}} placeholder is replaced with the string value of {@code key}; text
+     * outside the braces is literal.
      *
-     * @return the resolved value, or null when the context cannot produce one
+     * @return the filled template, or null when there is no template or any placeholder key
+     *         is missing (absent or null) from the context
      */
-    private static String applyContextTemplate(String template, Map<String, Object> context) {
+    private static String applyContextValueTemplate(String template, Map<String, Object> context) {
         if (template == null || template.isEmpty()) {
             return null;
         }
@@ -278,8 +251,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         Matcher matcher = CONTEXT_PLACEHOLDER.matcher(template);
         while (matcher.find()) {
             Object value = context.get(matcher.group(1));
-            if (value == null || value.toString().isEmpty()) {
-                // The service rejects a partial identity too, so there is nothing to resolve.
+            if (value == null) {
                 return null;
             }
             matcher.appendReplacement(out, Matcher.quoteReplacement(value.toString()));
@@ -291,26 +263,14 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     /**
      * Parses a single flag from JSON.
      */
-    private ExperimentationFlag parseFlag(JSONObject json) {   // null when the definition cannot be fully constructed
+    private ExperimentationFlag parseFlag(JSONObject json) {
         String id = json.optString("id", "");
         String name = json.optString("name", "");
         String key = json.optString("key", "");
         String status = json.optString("status", "");
         int projectId = json.optInt("project_id", 0);
         String context = json.optString("context", "distinct_id");
-        String contextTemplate = json.optString("context_template", "");
-        int templateVersion = json.optInt("context_template_version", SUPPORTED_CONTEXT_TEMPLATE_VERSION);
-        if (templateVersion > SUPPORTED_CONTEXT_TEMPLATE_VERSION) {
-            logger.log(Level.WARNING, "Dropping flag ''{0}'': context_template_version {1} is newer than this "
-                    + "SDK understands ({2}). Evaluate it remotely, or upgrade the SDK.",
-                    new Object[] {key, templateVersion, SUPPORTED_CONTEXT_TEMPLATE_VERSION});
-            return null;
-        }
-        if (!isUsableContextTemplate(contextTemplate)) {
-            logger.log(Level.WARNING, "Dropping flag ''{0}'': context_template ''{1}'' has no usable "
-                    + "placeholders.", new Object[] {key, contextTemplate});
-            return null;
-        }
+        String contextValueTemplate = json.optString("context_value_template", "");
 
         // Parse experiment metadata
         UUID experimentId = null;
@@ -333,7 +293,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         RuleSet ruleset = parseRuleSet(json.optJSONObject("ruleset"));
 
-        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, contextTemplate);
+        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, contextValueTemplate);
     }
 
     /**
@@ -461,32 +421,27 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
-            // The context value is used as sent. Where the caller did not send it, the service
-            // may publish a template saying how to build it from properties they did send; this
-            // SDK never composes an identity of its own.
+            // Resolve the assignment key: the flag's context_value_template when every
+            // placeholder resolves, otherwise the raw context value, as the server does.
             String contextProperty = flag.getContext();
-            Object contextValueObj = context.get(contextProperty);
-            String contextValue = contextValueObj != null
-                    ? contextValueObj.toString()
-                    : applyContextTemplate(flag.getContextTemplate(), context);
+            String contextValue = applyContextValueTemplate(flag.getContextValueTemplate(), context);
             if (contextValue == null) {
-                logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
-                return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+                Object contextValueObj = context.get(contextProperty);
+                if (contextValueObj == null) {
+                    logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
+                    return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+                }
+                contextValue = contextValueObj.toString();
             }
 
             // Check test user overrides
             RuleSet ruleset = flag.getRuleset();
             if (ruleset.hasTestUserOverrides()) {
-                // Overrides are keyed by distinct id. When the flag assigns on distinct_id its
-                // template builds exactly that, so the same resolution serves both.
-                String distinctId = context.get("distinct_id") != null
-                        ? context.get("distinct_id").toString()
-                        : ("distinct_id".equals(contextProperty) ? contextValue : null);
-                if (distinctId == null) {
-                    logger.log(Level.WARNING, "Flag ''{0}'' has test users, but they are keyed by distinct_id "
-                            + "and this context has none. Pinned users will be assigned by rollout instead.",
-                            flagKey);
-                }
+                // Overrides are keyed by distinct id, which is the resolved assignment key
+                // when the flag assigns on distinct_id.
+                String distinctId = "distinct_id".equals(contextProperty)
+                        ? contextValue
+                        : (context.get("distinct_id") != null ? context.get("distinct_id").toString() : null);
                 if (distinctId != null) {
                     String testVariantKey = ruleset.getTestUserOverrides().get(distinctId);
                     if (testVariantKey != null) {

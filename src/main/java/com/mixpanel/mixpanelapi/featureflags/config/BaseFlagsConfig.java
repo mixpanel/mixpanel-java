@@ -148,11 +148,12 @@ public class BaseFlagsConfig {
         }
 
         /**
-         * Sets whether the project uses hierarchical groups. When true, user and group
-         * assignment keys are namespaced by the context's {@code $company_id}, and exposure
-         * events are attributed with {@code $user_id} and {@code $company_id} instead of
-         * {@code distinct_id}. When false, {@code $company_id} in the context has no effect
-         * on assignment.
+         * Sets whether the project uses hierarchical groups. When true, exposure events are
+         * attributed with {@code $user_id} and {@code $company_id} instead of
+         * {@code distinct_id}. Assignment keys do not depend on this setting: locally
+         * evaluated flags build them from the {@code context_value_template} the server
+         * publishes for each flag, falling back to the raw context value when the template
+         * is absent or the context lacks one of its placeholders.
          *
          * @param hierarchicalGroups true if the project uses hierarchical groups
          * @return this builder

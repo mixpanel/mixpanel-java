@@ -23,7 +23,7 @@ public final class ExperimentationFlag {
     private final UUID experimentId;
     private final Boolean isExperimentActive;
     private final String hashSalt;
-    private final String contextTemplate;
+    private final String contextValueTemplate;
 
     /**
      * Creates a new ExperimentationFlag.
@@ -43,8 +43,8 @@ public final class ExperimentationFlag {
         this(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, "");
     }
 
-    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt, String contextTemplate) {
-        this.contextTemplate = contextTemplate == null ? "" : contextTemplate;
+    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt, String contextValueTemplate) {
+        this.contextValueTemplate = contextValueTemplate == null ? "" : contextValueTemplate;
         this.id = id;
         this.name = name;
         this.key = key;
@@ -58,14 +58,15 @@ public final class ExperimentationFlag {
     }
 
     /**
-     * How to build this flag's assignment key when the caller's context does not carry
-     * {@link #getContext()} directly, as published by the service, for example
-     * {@code $company:{$company_id}|$user:{$user_id}}. Empty when the service sends none.
+     * The template the service publishes for building this flag's assignment key from the
+     * evaluation context, for example {@code $company:{$company_id}|$user:{$user_id}}. Each
+     * {@code {key}} placeholder is replaced with that context value; when the template is
+     * empty or a placeholder is missing, the raw {@link #getContext()} value is used instead.
      *
-     * @return the template, or an empty string
+     * @return the template, or an empty string when the service sends none
      */
-    public String getContextTemplate() {
-        return contextTemplate;
+    public String getContextValueTemplate() {
+        return contextValueTemplate;
     }
 
     /**

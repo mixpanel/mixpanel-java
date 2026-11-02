@@ -54,7 +54,7 @@ public final class FlagContext {
             return this;
         }
 
-        /** Device ids are a valid assignment key and are never namespaced by company. */
+        /** Sets the device id, used as the assignment key by flags that assign on {@code device_id}. */
         public Builder deviceId(String deviceId) {
             mContext.put("device_id", deviceId);
             return this;
@@ -72,7 +72,9 @@ public final class FlagContext {
 
         /**
          * Sets a group the evaluation is for. Flags whose assignment key is this group
-         * key are assigned on its value, namespaced by company when one is set.
+         * key are assigned on the key their server-published {@code context_value_template}
+         * builds from the context (for example {@code $company:{$company_id}|department:{department}}),
+         * or on the raw group value when the template is absent or cannot be filled.
          */
         public Builder group(String groupKey, Object groupValue) {
             mContext.put(groupKey, groupValue);
