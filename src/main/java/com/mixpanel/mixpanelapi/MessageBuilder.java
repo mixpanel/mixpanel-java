@@ -77,11 +77,13 @@ public class MessageBuilder {
     /**
      * Returns a MessageBuilder that adds {@code $company_id} to every group profile
      * message it builds. Hierarchical group projects require {@code $company_id} on
-     * every {@code /groups} write, including the company's own profile and user profiles:
+     * every {@code /groups} write, including the company's own profile and user profiles. The
+     * company methods, such as {@link #companySet(JSONObject)}, build messages for the bound
+     * company's own profile:
      * <pre>
      * {@code
      *     MessageBuilder acme = messageBuilder.forCompany("acme");
-     *     acme.groupSet("$company_id", "acme", companyProperties);
+     *     acme.companySet(companyProperties);
      *     acme.groupSet("$user_id", "user_123", userProperties);
      *     acme.groupSet("department", "finance", departmentProperties);
      * }
@@ -1122,6 +1124,194 @@ public class MessageBuilder {
                                  JSONObject modifiers) {
         JSONArray propNamesArray = new JSONArray(propertyNames);
         return groupMessage(groupKey, groupId, "$unset", propNamesArray, modifiers);
+    }
+
+    /**
+     * Sets properties on the profile of the company bound with {@link #forCompany(String)},
+     * creating the profile if needed. Existing values for the given properties are replaced.
+     * Builds the same message as {@code groupSet("$company_id", companyId, properties)} on this builder.
+     *
+     * @param properties a collection of properties to set on the company profile. Each key
+     *            in the properties argument will be updated on the profile.
+     * @return company profile set message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companySet(JSONObject properties) {
+        return companySet(properties, null);
+    }
+
+    /**
+     * Sets properties on the profile of the company bound with {@link #forCompany(String)},
+     * creating the profile if needed. Existing values for the given properties are replaced.
+     * Builds the same message as {@code groupSet("$company_id", companyId, properties, modifiers)}
+     * on this builder.
+     *
+     * @param properties a collection of properties to set on the company profile. Each key
+     *            in the properties argument will be updated on the profile.
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile set message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companySet(JSONObject properties, JSONObject modifiers) {
+        return groupSet("$company_id", requireBoundCompanyId("companySet"), properties, modifiers);
+    }
+
+    /**
+     * Sets properties if they do not already exist on the profile of the company bound with
+     * {@link #forCompany(String)}.
+     * Builds the same message as {@code groupSetOnce("$company_id", companyId, properties)} on this builder.
+     *
+     * @param properties a collection of properties to set on the company profile. Each key
+     *            in the properties argument will be updated on the profile.
+     * @return company profile setOnce message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companySetOnce(JSONObject properties) {
+        return companySetOnce(properties, null);
+    }
+
+    /**
+     * Sets properties if they do not already exist on the profile of the company bound with
+     * {@link #forCompany(String)}.
+     * Builds the same message as {@code groupSetOnce("$company_id", companyId, properties, modifiers)}
+     * on this builder.
+     *
+     * @param properties a collection of properties to set on the company profile. Each key
+     *            in the properties argument will be updated on the profile.
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile setOnce message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companySetOnce(JSONObject properties, JSONObject modifiers) {
+        return groupSetOnce("$company_id", requireBoundCompanyId("companySetOnce"), properties, modifiers);
+    }
+
+    /**
+     * Deletes the profile of the company bound with {@link #forCompany(String)}.
+     * Builds the same message as {@code groupDelete("$company_id", companyId)} on this builder.
+     *
+     * @return company profile delete message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyDelete() {
+        return companyDelete(null);
+    }
+
+    /**
+     * Deletes the profile of the company bound with {@link #forCompany(String)}.
+     * Builds the same message as {@code groupDelete("$company_id", companyId, modifiers)} on this builder.
+     *
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile delete message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyDelete(JSONObject modifiers) {
+        return groupDelete("$company_id", requireBoundCompanyId("companyDelete"), modifiers);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove that value from a list
+     * associated with the key in the profile of the company bound with {@link #forCompany(String)}.
+     * Builds the same message as {@code groupRemove("$company_id", companyId, properties)} on this builder.
+     *
+     * @param properties properties for the remove operation
+     * @return company profile remove message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyRemove(JSONObject properties) {
+        return companyRemove(properties, null);
+    }
+
+    /**
+     * For each key and value in the properties argument, attempts to remove that value from a list
+     * associated with the key in the profile of the company bound with {@link #forCompany(String)}.
+     * Builds the same message as {@code groupRemove("$company_id", companyId, properties, modifiers)}
+     * on this builder.
+     *
+     * @param properties properties for the remove operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile remove message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyRemove(JSONObject properties, JSONObject modifiers) {
+        return groupRemove("$company_id", requireBoundCompanyId("companyRemove"), properties, modifiers);
+    }
+
+    /**
+     * Merges list-valued properties into the profile of the company bound with
+     * {@link #forCompany(String)}, ignoring duplicate list values.
+     * Builds the same message as {@code groupUnion("$company_id", companyId, properties)} on this builder.
+     *
+     * @param properties properties for the union operation
+     * @return company profile union message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyUnion(Map<String, JSONArray> properties) {
+        return companyUnion(properties, null);
+    }
+
+    /**
+     * Merges list-valued properties into the profile of the company bound with
+     * {@link #forCompany(String)}, ignoring duplicate list values.
+     * Builds the same message as {@code groupUnion("$company_id", companyId, properties, modifiers)}
+     * on this builder.
+     *
+     * @param properties properties for the union operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile union message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyUnion(Map<String, JSONArray> properties, JSONObject modifiers) {
+        return groupUnion("$company_id", requireBoundCompanyId("companyUnion"), properties, modifiers);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile of the company bound with
+     * {@link #forCompany(String)}.
+     * Builds the same message as {@code groupUnset("$company_id", companyId, propertyNames)} on this builder.
+     *
+     * @param propertyNames properties for the unset operation
+     * @return company profile unset message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyUnset(Collection<String> propertyNames) {
+        return companyUnset(propertyNames, null);
+    }
+
+    /**
+     * Removes the properties named in propertyNames from the profile of the company bound with
+     * {@link #forCompany(String)}.
+     * Builds the same message as {@code groupUnset("$company_id", companyId, propertyNames, modifiers)}
+     * on this builder.
+     *
+     * @param propertyNames properties for the unset operation
+     * @param modifiers Modifiers associated with the update message. (for example "$time" or "$ignore_time").
+     *            this can be null- if non-null, the keys and values in the modifiers
+     *            object will be associated directly with the update.
+     * @return company profile unset message for consumption by MixpanelAPI
+     * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
+     */
+    public JSONObject companyUnset(Collection<String> propertyNames, JSONObject modifiers) {
+        return groupUnset("$company_id", requireBoundCompanyId("companyUnset"), propertyNames, modifiers);
+    }
+
+    private String requireBoundCompanyId(String method) {
+        if (mCompanyId == null) {
+            throw new IllegalStateException(method + " builds a message for the profile of the company bound with "
+                    + "forCompany, and this builder has none. Use forCompany(companyId)." + method
+                    + ". Nothing to send");
+        }
+        return mCompanyId;
     }
 
     /**
