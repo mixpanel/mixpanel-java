@@ -6,12 +6,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.function.ThrowingRunnable;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.junit.Assert.*;
 
@@ -478,7 +478,7 @@ public class HierarchicalGroupsTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> hgBuilder.set(MixpanelIdentity.builder().companyId("acme").build(), new JSONObject().put("tier", "ent")));
 
-        assertTrue(e.getMessage(), e.getMessage().contains("groupSet"));
+        assertTrue(e.getMessage(), e.getMessage().contains("companySet"));
     }
 
     @Test
@@ -542,98 +542,6 @@ public class HierarchicalGroupsTest {
                 () -> hgBuilder.groupSet("department", "finance", new JSONObject().put("plan", "enterprise")));
 
         assertTrue(e.getMessage(), e.getMessage().contains("forCompany"));
-    }
-
-    private static JSONObject[] companyProfileMessages(MessageBuilder builder, String companyId, JSONObject modifiers) {
-        JSONObject props = new JSONObject().put("plan", "enterprise");
-        return new JSONObject[] {
-            builder.groupSet("$company_id", companyId, props, modifiers),
-            builder.groupSetOnce("$company_id", companyId, props, modifiers),
-            builder.groupDelete("$company_id", companyId, modifiers),
-            builder.groupRemove("$company_id", companyId, props, modifiers),
-            builder.groupUnion("$company_id", companyId, Collections.singletonMap("tags", new JSONArray().put("a")),
-                    modifiers),
-            builder.groupUnset("$company_id", companyId, Arrays.asList("plan"), modifiers),
-            builder.groupMessage("$company_id", companyId, "$set", props, modifiers),
-        };
-    }
-
-    private static void assertCompanyProfileMessages(JSONObject[] envelopes) {
-        assertEquals(7, envelopes.length);
-        for (JSONObject envelope : envelopes) {
-            JSONObject message = envelope.getJSONObject("message");
-            assertEquals("$company_id", message.getString("$group_key"));
-            assertEquals("acme", message.getString("$group_id"));
-            assertEquals("acme", message.getString("$company_id"));
-        }
-    }
-
-    private static void assertEveryCompanyProfileOperationThrows(Class<? extends Throwable> expected,
-                                                                 MessageBuilder builder, String companyId,
-                                                                 JSONObject modifiers, String messageText) {
-        JSONObject props = new JSONObject().put("plan", "enterprise");
-        List<ThrowingRunnable> calls = Arrays.asList(
-            () -> builder.groupSet("$company_id", companyId, props, modifiers),
-            () -> builder.groupSetOnce("$company_id", companyId, props, modifiers),
-            () -> builder.groupDelete("$company_id", companyId, modifiers),
-            () -> builder.groupRemove("$company_id", companyId, props, modifiers),
-            () -> builder.groupUnion("$company_id", companyId,
-                    Collections.singletonMap("tags", new JSONArray().put("a")), modifiers),
-            () -> builder.groupUnset("$company_id", companyId, Arrays.asList("plan"), modifiers),
-            () -> builder.groupMessage("$company_id", companyId, "$set", props, modifiers));
-        for (ThrowingRunnable call : calls) {
-            Throwable e = assertThrows(expected, call);
-            assertTrue(e.getMessage(), e.getMessage().contains(messageText));
-        }
-    }
-
-    @Test
-    public void testCompanyProfileInfersItsCompanyFromGroupId() {
-        assertCompanyProfileMessages(companyProfileMessages(hgBuilder, "acme", null));
-    }
-
-    @Test
-    public void testCompanyProfileWithMatchingCompany() {
-        assertCompanyProfileMessages(companyProfileMessages(hgBuilder.forCompany("acme"), "acme", null));
-        assertCompanyProfileMessages(
-                companyProfileMessages(hgBuilder, "acme", new JSONObject().put("$company_id", "acme")));
-        assertCompanyProfileMessages(companyProfileMessages(hgBuilder.forCompany("acme"), "acme",
-                new JSONObject().put("$company_id", "acme")));
-    }
-
-    @Test
-    public void testCompanyProfileWithDifferentBoundCompanyIsRejected() {
-        assertEveryCompanyProfileOperationThrows(IllegalArgumentException.class, hgBuilder.forCompany("other"),
-                "acme", null, "company profile's company is its own id");
-    }
-
-    @Test
-    public void testCompanyProfileWithDifferentModifierCompanyIsRejected() {
-        assertEveryCompanyProfileOperationThrows(IllegalArgumentException.class, hgBuilder, "acme",
-                new JSONObject().put("$company_id", "other"), "company profile's company is its own id");
-        assertEveryCompanyProfileOperationThrows(IllegalArgumentException.class, hgBuilder.forCompany("acme"),
-                "acme", new JSONObject().put("$company_id", "other"), "company profile's company is its own id");
-    }
-
-    @Test
-    public void testCompanyProfileWithEmptyIdStillNeedsCompany() {
-        assertEveryCompanyProfileOperationThrows(IllegalStateException.class, hgBuilder, "", null, "forCompany");
-    }
-
-    @Test
-    public void testLegacyCompanyProfileUnchanged() {
-        JSONObject message = legacyBuilder.groupSet("$company_id", "acme", new JSONObject().put("plan", "x"))
-            .getJSONObject("message");
-        assertFalse(message.has("$company_id"));
-
-        JSONObject bound = legacyBuilder.forCompany("other")
-            .groupSet("$company_id", "acme", new JSONObject().put("plan", "x"))
-            .getJSONObject("message");
-        assertEquals("other", bound.getString("$company_id"));
-
-        JSONObject modified = legacyBuilder.groupSet("$company_id", "acme", new JSONObject().put("plan", "x"),
-                new JSONObject().put("$company_id", "other")).getJSONObject("message");
-        assertEquals("other", modified.getString("$company_id"));
     }
 
     @Test
@@ -712,6 +620,78 @@ public class HierarchicalGroupsTest {
                 Collections.singletonMap("tags", new JSONArray().put("a"))));
         assertNotNull(acme.groupRemove("department", "finance", properties));
         assertNotNull(acme.groupDelete("department", "finance"));
+    }
+
+    /** A company method call, followed by the equivalent group method call with the company named twice. */
+    private static List<Function<MessageBuilder, JSONObject>> companyAndGroupCalls(JSONObject modifiers) {
+        JSONObject props = new JSONObject().put("plan", "enterprise");
+        Map<String, JSONArray> union = Collections.singletonMap("tags", new JSONArray().put("a"));
+        List<String> unset = Arrays.asList("plan");
+        if (modifiers == null) {
+            return Arrays.asList(
+                b -> b.companySet(props), b -> b.groupSet("$company_id", "acme", props),
+                b -> b.companySetOnce(props), b -> b.groupSetOnce("$company_id", "acme", props),
+                b -> b.companyDelete(), b -> b.groupDelete("$company_id", "acme"),
+                b -> b.companyRemove(props), b -> b.groupRemove("$company_id", "acme", props),
+                b -> b.companyUnion(union), b -> b.groupUnion("$company_id", "acme", union),
+                b -> b.companyUnset(unset), b -> b.groupUnset("$company_id", "acme", unset));
+        }
+        return Arrays.asList(
+            b -> b.companySet(props, modifiers), b -> b.groupSet("$company_id", "acme", props, modifiers),
+            b -> b.companySetOnce(props, modifiers), b -> b.groupSetOnce("$company_id", "acme", props, modifiers),
+            b -> b.companyDelete(modifiers), b -> b.groupDelete("$company_id", "acme", modifiers),
+            b -> b.companyRemove(props, modifiers), b -> b.groupRemove("$company_id", "acme", props, modifiers),
+            b -> b.companyUnion(union, modifiers), b -> b.groupUnion("$company_id", "acme", union, modifiers),
+            b -> b.companyUnset(unset, modifiers), b -> b.groupUnset("$company_id", "acme", unset, modifiers));
+    }
+
+    private static void assertCompanyMethodsMatchGroupMethods(MessageBuilder acme, JSONObject modifiers) {
+        List<Function<MessageBuilder, JSONObject>> calls = companyAndGroupCalls(modifiers);
+        for (int i = 0; i < calls.size(); i += 2) {
+            JSONObject company = calls.get(i).apply(acme);
+            JSONObject group = calls.get(i + 1).apply(acme);
+            if (modifiers == null) {
+                // $time is the build time, so it can differ between the two calls.
+                company.getJSONObject("message").remove("$time");
+                group.getJSONObject("message").remove("$time");
+            }
+            assertEquals(group.toString(), company.toString());
+
+            JSONObject message = company.getJSONObject("message");
+            assertEquals("$company_id", message.getString("$group_key"));
+            assertEquals("acme", message.getString("$group_id"));
+            assertEquals("acme", message.getString("$company_id"));
+        }
+    }
+
+    @Test
+    public void testCompanyMethodsMatchGroupMethodsWithBoundCompany() {
+        assertCompanyMethodsMatchGroupMethods(hgBuilder.forCompany("acme"), null);
+        assertCompanyMethodsMatchGroupMethods(legacyBuilder.forCompany("acme"), null);
+    }
+
+    @Test
+    public void testCompanyMethodsWithModifiersMatchGroupMethodsWithBoundCompany() {
+        JSONObject modifiers = new JSONObject().put("$time", 1234567890L).put("$ignore_time", true);
+        assertCompanyMethodsMatchGroupMethods(hgBuilder.forCompany("acme"), modifiers);
+        assertCompanyMethodsMatchGroupMethods(legacyBuilder.forCompany("acme"), modifiers);
+    }
+
+    @Test
+    public void testCompanyMethodsWithoutBoundCompanyAreRejected() {
+        String[] names = {"companySet", "companySetOnce", "companyDelete", "companyRemove", "companyUnion",
+            "companyUnset"};
+        for (JSONObject modifiers : Arrays.asList(null, new JSONObject().put("$company_id", "acme"))) {
+            List<Function<MessageBuilder, JSONObject>> calls = companyAndGroupCalls(modifiers);
+            for (MessageBuilder unbound : Arrays.asList(hgBuilder, legacyBuilder)) {
+                for (int i = 0; i < calls.size(); i += 2) {
+                    Function<MessageBuilder, JSONObject> call = calls.get(i);
+                    IllegalStateException e = assertThrows(IllegalStateException.class, () -> call.apply(unbound));
+                    assertTrue(e.getMessage(), e.getMessage().contains("forCompany"));
+                    assertTrue(e.getMessage(), e.getMessage().startsWith(names[i / 2]));
+                }
+            }
+        }
     }
 
     // #endregion

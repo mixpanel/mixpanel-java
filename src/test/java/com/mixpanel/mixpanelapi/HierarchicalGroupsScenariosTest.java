@@ -575,13 +575,13 @@ public class HierarchicalGroupsScenariosTest {
         assertNothingSent();
     }
 
-    // Set Company Property Without Company (the company profile is its own company)
+    // Set Company Property Without Company (Unsupported)
 
     @Test
-    public void testSetCompanyPropertyWithoutCompany() {
-        send(mBuilder.groupSet("$company_id", COMPANY_ID, json("tier", "enterprise")));
-
-        assertJsonEquals(json("tier", "enterprise"), onlyCompanyUpdate("$set"));
+    public void testSetCompanyPropertyWithoutCompanyIsUnsupported() {
+        assertThrows(IllegalStateException.class,
+                () -> mBuilder.groupSet("$company_id", COMPANY_ID, json("tier", "enterprise")));
+        assertNothingSent();
     }
 
     // Set Custom Group Property Without Company (Unsupported)
