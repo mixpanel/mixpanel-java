@@ -553,16 +553,19 @@ public class HierarchicalGroupsScenariosTest {
         assertJsonEquals(new JSONObject(), onlyCustomGroupUpdate("$delete"));
     }
 
-    // Identify Without Company (Unsupported)
+    // Identify Without Company
 
     @Test
-    public void testIdentifyWithoutCompanyIsUnsupported() {
+    public void testIdentifyWithoutCompany() {
         MixpanelIdentity userOnly = MixpanelIdentity.builder().userId(USER_ID).build();
 
-        assertThrows(IllegalArgumentException.class, () -> mBuilder.event(userOnly, "Signup", null));
-        assertThrows(IllegalArgumentException.class, () -> mBuilder.importEvent(userOnly, "Signup", null));
-        assertThrows(IllegalArgumentException.class, () -> mBuilder.set(userOnly, json("plan", "pro")));
+        // The event is sent as given; a user profile needs the company.
+        assertThrows(IllegalStateException.class, () -> mBuilder.set(userOnly, json("plan", "pro")));
         assertNothingSent();
+
+        send(mBuilder.event(userOnly, "Signup", null));
+        JSONObject props = onlyTrack("Signup", "$user_id");
+        assertEquals(USER_ID, props.getString("$user_id"));
     }
 
     // Set User Property Without User (Unsupported)

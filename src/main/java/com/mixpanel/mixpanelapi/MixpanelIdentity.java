@@ -22,9 +22,10 @@ import org.json.JSONObject;
  *
  * Which combinations are valid depends on the project, so {@link MessageBuilder} rather than
  * this type decides. On a hierarchical groups project the company is part of the user's
- * identity: a {@code $user_id} sent without a {@code $company_id} resolves to a different
- * user that nothing reconciles later, so the builder rejects it. A user who belongs to two
- * companies is two users, by design.
+ * identity: a {@code $user_id} sent without a {@code $company_id} resolves to a different user
+ * that nothing reconciles later, so include the company whenever the user has one. Events still
+ * send a user id without one as given; user profile updates need the company. A user who
+ * belongs to two companies is two users, by design.
  *
  * Instances are immutable.
  */

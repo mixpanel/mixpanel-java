@@ -134,11 +134,12 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testUserWithoutCompanyOrDeviceIsRejectedForHierarchicalGroups() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> hgBuilder.event(MixpanelIdentity.builder().userId("user_123").build(), "Signup", null));
+    public void testUserWithoutCompanyIsSentAsGivenForHierarchicalGroups() {
+        JSONObject props = eventProperties(hgBuilder.event(
+                MixpanelIdentity.builder().userId("user_123").build(), "Signup", null));
 
-        assertTrue(e.getMessage(), e.getMessage().contains("cannot be merged"));
+        assertEquals("user_123", props.getString("$user_id"));
+        assertFalse(props.has("$company_id"));
     }
 
     @Test

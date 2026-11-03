@@ -205,16 +205,6 @@ public class MessageBuilder {
             throw new IllegalArgumentException(identity + " requires a hierarchical groups MessageBuilder: "
                     + "new MessageBuilder(token, true)");
         }
-        // The company is part of a hierarchical user's identity, not a one-time association. A
-        // $user_id sent without one resolves to a separate user that nothing reconciles later.
-        // A device id rescues that case: Mixpanel ignores the user id, keeps the event under the
-        // device, and links it to the company-scoped user once a later event carries all three.
-        if (mHierarchicalGroups && identity.getUserId() != null && identity.getCompanyId() == null
-                && identity.getDeviceId() == null) {
-            throw new IllegalArgumentException(identity + " needs a company on a hierarchical groups project. "
-                    + "A user id sent without one, and without a device id, names a separate user that cannot "
-                    + "be merged afterwards.");
-        }
     }
 
     private static JSONObject withIdentity(MixpanelIdentity identity, JSONObject properties) {
