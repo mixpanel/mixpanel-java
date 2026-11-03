@@ -59,7 +59,8 @@ public class MessageBuilder {
      * only a distinct id of the form {@code $company:{company}|$user:{user}}, send it to
      * {@code /groups} as that user's profile within the company, and throw
      * {@link IllegalArgumentException} for any other distinct id. Group profile messages require a
-     * known company, either through {@link #forCompany(String)} or a {@code $company_id} modifier.
+     * known company, either through {@link #forCompany(String)} or a {@code $company_id} modifier;
+     * a {@code $company_id} group profile is its own company and needs neither.
      *
      * @param token the Mixpanel project token
      * @param hierarchicalGroups true if the project uses hierarchical groups
@@ -77,11 +78,12 @@ public class MessageBuilder {
     /**
      * Returns a MessageBuilder that adds {@code $company_id} to every group profile
      * message it builds. Hierarchical group projects require {@code $company_id} on
-     * every {@code /groups} write, including the company's own profile and user profiles:
+     * every {@code /groups} write, including user profiles. The company's own profile needs no
+     * binding, since its group id is the company:
      * <pre>
      * {@code
+     *     messageBuilder.groupSet("$company_id", "acme", companyProperties);
      *     MessageBuilder acme = messageBuilder.forCompany("acme");
-     *     acme.groupSet("$company_id", "acme", companyProperties);
      *     acme.groupSet("$user_id", "user_123", userProperties);
      *     acme.groupSet("department", "finance", departmentProperties);
      * }
@@ -1144,8 +1146,10 @@ public class MessageBuilder {
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
      * @return generic group profile message for consumption by MixpanelAPI
      *
-     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
-     * @throws IllegalStateException for hierarchical groups projects when no company is known
+     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property, or, for
+     *           hierarchical groups projects, when a {@code $company_id} group profile is given a different company
+     * @throws IllegalStateException for hierarchical groups projects when no company is known. A
+     *           {@code $company_id} group profile is its own company.
      * @throws UnsupportedOperationException on a hierarchical groups builder, for an operation /groups lacks
      *           ($add, $append or $merge)
      *
@@ -1166,7 +1170,25 @@ public class MessageBuilder {
 
     private JSONObject buildGroupMessage(String groupKey, String groupId, String actionType, Object properties,
                                          JSONObject modifiers, String companyId) {
-        if (mHierarchicalGroups && companyId == null && (modifiers == null || !modifiers.has("$company_id"))) {
+        boolean hasCompanyModifier = modifiers != null && modifiers.has("$company_id");
+        if (mHierarchicalGroups && "$company_id".equals(groupKey)) {
+            // The company's own profile: its group id is the company
+            Object conflicting = null;
+            if (companyId != null && !companyId.equals(groupId)) {
+                conflicting = companyId;
+            } else if (hasCompanyModifier && (groupId == null || !groupId.equals(modifiers.opt("$company_id")))) {
+                conflicting = modifiers.opt("$company_id");
+            }
+            if (conflicting != null) {
+                throw new IllegalArgumentException("The company profile's company is its own id, so group "
+                        + groupKey + "=" + groupId + " cannot be updated for company " + conflicting
+                        + ". Nothing to send.");
+            }
+            if (companyId == null && !hasCompanyModifier && groupId != null && !groupId.isEmpty()) {
+                companyId = groupId;
+            }
+        }
+        if (mHierarchicalGroups && companyId == null && !hasCompanyModifier) {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
                     + "company. Use forCompany(companyId) to build them. Nothing to send for group "
                     + groupKey + "=" + groupId);
