@@ -89,6 +89,10 @@ public class MessageBuilder {
      * }
      * </pre>
      *
+     * User profile updates made with a {@link MixpanelIdentity} use the identity's own company and do
+     * not need a bound company; a bound builder throws {@link IllegalArgumentException} for a user
+     * from another company.
+     *
      * @param companyId the id of the top-level company
      * @return a new MessageBuilder bound to the given company
      */
@@ -743,6 +747,7 @@ public class MessageBuilder {
                     + " has none. Use forCompany(companyId).companySet(properties) to update the company's "
                     + "profile.");
         }
+        requireBoundCompany(identity.getCompanyId(), identity.toString());
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, modifiers,
                 identity.getCompanyId());
     }
@@ -900,8 +905,21 @@ public class MessageBuilder {
                     + "MixpanelIdentity.builder().userId(userId).companyId(companyId).build(), or a distinct id "
                     + "of the form $company:{company}|$user:{user}.");
         }
+        requireBoundCompany(identity.getCompanyId(), "\"" + distinctId + "\"");
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, groupModifiers,
                 identity.getCompanyId());
+    }
+
+    /**
+     * A builder bound with {@link #forCompany(String)} refuses a user from another company rather
+     * than silently building an update of that company's user profile.
+     */
+    private void requireBoundCompany(String companyId, String described) {
+        if (companyId != null && mCompanyId != null && !companyId.equals(mCompanyId)) {
+            throw new IllegalArgumentException("This builder is bound to company \"" + mCompanyId + "\", but "
+                    + described + " belongs to company \"" + companyId + "\". Update the user through a builder "
+                    + "for that company, or one without forCompany.");
+        }
     }
 
     /**

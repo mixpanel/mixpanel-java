@@ -313,11 +313,11 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testCombinedDistinctIdCompanyWinsOverForCompany() {
-        JSONObject envelope = hgBuilder.forCompany("other").set("$company:acme|$user:user_123",
-                new JSONObject().put("a", 1));
+    public void testForCompanyRefusesACombinedDistinctIdFromAnotherCompany() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> hgBuilder.forCompany("other").set("$company:acme|$user:user_123", new JSONObject().put("a", 1)));
 
-        assertUserGroupMessage(envelope, "acme", "user_123");
+        assertTrue(e.getMessage().contains("belongs to company \"acme\""));
     }
 
     @Test
@@ -449,11 +449,21 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testIdentityCompanyWinsOverForCompany() {
-        JSONObject envelope = hgBuilder.forCompany("other")
+    public void testForCompanyAcceptsAUserFromTheBoundCompany() {
+        JSONObject envelope = hgBuilder.forCompany("acme")
             .set(MixpanelIdentity.builder().userId("user_123").companyId("acme").build(), new JSONObject().put("role", "admin"));
 
         assertEquals("acme", envelope.getJSONObject("message").getString("$company_id"));
+    }
+
+    @Test
+    public void testForCompanyRefusesAUserFromAnotherCompany() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> hgBuilder.forCompany("other").set(user, new JSONObject().put("role", "admin")));
+
+        assertTrue(e.getMessage().contains("bound to company \"other\""));
     }
 
     @Test
