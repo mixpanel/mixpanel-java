@@ -478,7 +478,7 @@ public class HierarchicalGroupsTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> hgBuilder.set(MixpanelIdentity.builder().companyId("acme").build(), new JSONObject().put("tier", "ent")));
 
-        assertTrue(e.getMessage(), e.getMessage().contains("groupSet"));
+        assertTrue(e.getMessage(), e.getMessage().contains("companySet"));
     }
 
     @Test

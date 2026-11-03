@@ -740,7 +740,7 @@ public class MessageBuilder {
                         + "Device ids identify anonymous events, not profiles.");
             }
             throw new IllegalArgumentException("User profile updates require a user id, and " + identity
-                    + " has none. Use groupSet(\"$company_id\", companyId, properties) to update the company's "
+                    + " has none. Use forCompany(companyId).companySet(properties) to update the company's "
                     + "profile.");
         }
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, modifiers,
