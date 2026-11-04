@@ -233,7 +233,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     }
 
     /** A {@code {key}} placeholder in a context value template. */
-    private static final Pattern CONTEXT_PLACEHOLDER = Pattern.compile("\\{([^}]+)\\}");
+    private static final Pattern CONTEXT_PLACEHOLDER = Pattern.compile("\\{([^{}]+)\\}");
 
     /**
      * Fills a flag's {@code context_value_template} with values from the evaluation context.
