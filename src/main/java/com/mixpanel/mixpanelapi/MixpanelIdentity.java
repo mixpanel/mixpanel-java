@@ -164,13 +164,15 @@ public final class MixpanelIdentity {
 
     /**
      * Writes this identity's keys into the given event properties, replacing any
-     * caller-supplied values for the same keys.
+     * caller-supplied values for the same keys. A key this identity leaves unset is
+     * removed, since JSONObject.put with a null value removes the key, so the
+     * properties never carry a stale id.
      */
     /* package */ void applyTo(JSONObject properties) throws JSONException {
-        if (mDistinctId != null) properties.put("distinct_id", mDistinctId);
-        if (mUserId != null) properties.put("$user_id", mUserId);
-        if (mCompanyId != null) properties.put("$company_id", mCompanyId);
-        if (mDeviceId != null) properties.put("$device_id", mDeviceId);
+        properties.put("distinct_id", mDistinctId);
+        properties.put("$user_id", mUserId);
+        properties.put("$company_id", mCompanyId);
+        properties.put("$device_id", mDeviceId);
     }
 
     @Override

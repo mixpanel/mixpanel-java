@@ -86,6 +86,24 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
+    public void testIdentityDropsCallerSuppliedKeysItLeavesUnset() {
+        JSONObject caller = new JSONObject();
+        caller.put("distinct_id", "stale");
+        caller.put("$device_id", "stale_device");
+        caller.put("$user_id", "stale_user");
+        caller.put("plan", "enterprise");
+
+        JSONObject props = eventProperties(hgBuilder.event(MixpanelIdentity.builder().companyId("acme").build(), "Renewed", caller));
+
+        assertEquals("acme", props.getString("$company_id"));
+        assertFalse(props.has("distinct_id"));
+        assertFalse(props.has("$device_id"));
+        assertFalse(props.has("$user_id"));
+        assertEquals("enterprise", props.getString("plan"));
+        assertEquals("stale", caller.getString("distinct_id"));
+    }
+
+    @Test
     public void testHierarchicalImportEvent() {
         JSONObject envelope = hgBuilder.importEvent(MixpanelIdentity.builder().userId("user_123").companyId("acme").build(), "Signup", null);
 
