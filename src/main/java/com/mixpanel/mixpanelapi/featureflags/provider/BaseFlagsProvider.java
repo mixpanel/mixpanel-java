@@ -212,12 +212,12 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * from which Mixpanel constructs the distinct id.
      */
     protected boolean canAttributeExposure(Map<String, Object> context) {
-        if (config.isHierarchicalGroups() && isPresent(context.get("$company_id"))) {
-            return true;
+        if (!config.isHierarchicalGroups()) {
+            return context.get("distinct_id") != null;
         }
         // A distinct id attributes on any project, including one Mixpanel built from a
         // company and user, which ingestion parses back into its parts.
-        return isPresent(context.get("distinct_id"));
+        return isPresent(context.get("$company_id")) || isPresent(context.get("distinct_id"));
     }
 
     private static boolean isPresent(Object value) {
@@ -246,7 +246,9 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
                 }
             }
             Object distinctIdObj = context.get("distinct_id");
-            String distinctId = isPresent(distinctIdObj) ? distinctIdObj.toString() : null;
+            // Without hierarchical groups any distinct id is sent as given, as before
+            boolean hasDistinctId = config.isHierarchicalGroups() ? isPresent(distinctIdObj) : distinctIdObj != null;
+            String distinctId = hasDistinctId ? distinctIdObj.toString() : null;
             properties.put("Experiment name", flagKey);
             properties.put("Variant name", variantKey);
             properties.put("$experiment_type", "feature_flag");

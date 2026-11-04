@@ -1026,6 +1026,23 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         }
     }
 
+    @Test
+    public void testTracksExposureForEmptyDistinctIdWithoutHierarchicalGroups() throws Exception {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse("device-flag", "device_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = new HashMap<>();
+        context.put("device_id", "device-abc");
+        context.put("distinct_id", "");
+
+        assertEquals("value-a", provider.getVariantValue("device-flag", fallbackVariantValue, context));
+        assertEquals(1, eventSender.getEvents().size());
+    }
+
     // #endregion
     // #region Polling Lifecycle Thread Safety (SDK-81)
 
