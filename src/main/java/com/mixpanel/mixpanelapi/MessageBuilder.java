@@ -91,7 +91,7 @@ public class MessageBuilder {
      *
      * User profile updates made with a {@link MixpanelIdentity} use the identity's own company and do
      * not need a bound company; a bound builder throws {@link IllegalArgumentException} for a user
-     * from another company.
+     * from another company, and updates a user-only identity's profile within the bound company.
      *
      * @param companyId the id of the top-level company
      * @return a new MessageBuilder bound to the given company
@@ -738,8 +738,10 @@ public class MessageBuilder {
                     + "profile.");
         }
         requireBoundCompany(identity.getCompanyId(), identity.toString());
+        // A user-only identity takes the bound company, which then wins over a $company_id modifier.
+        String companyId = identity.getCompanyId() != null ? identity.getCompanyId() : mCompanyId;
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, modifiers,
-                identity.getCompanyId());
+                companyId);
     }
 
     /**
@@ -1364,7 +1366,7 @@ public class MessageBuilder {
 
     private JSONObject buildGroupMessage(String groupKey, String groupId, String actionType, Object properties,
                                          JSONObject modifiers, String companyId) {
-        if (mHierarchicalGroups && companyId == null && (modifiers == null || !modifiers.has("$company_id"))) {
+        if (mHierarchicalGroups && companyId == null && !hasCompanyIdModifier(modifiers)) {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
                     + "company. Use forCompany(companyId) to build them. Nothing to send for group "
                     + groupKey + "=" + groupId);
@@ -1406,6 +1408,18 @@ public class MessageBuilder {
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
         }
+    }
+
+    /**
+     * An empty or JSONObject.NULL {@code $company_id} modifier names no company, just as
+     * {@link #forCompany(String)} rejects a null or empty id.
+     */
+    private static boolean hasCompanyIdModifier(JSONObject modifiers) {
+        if (modifiers == null) {
+            return false;
+        }
+        Object companyId = modifiers.opt("$company_id");
+        return companyId != null && !JSONObject.NULL.equals(companyId) && !"".equals(companyId);
     }
 
 }

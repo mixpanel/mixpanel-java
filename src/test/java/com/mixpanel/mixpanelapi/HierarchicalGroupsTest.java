@@ -468,6 +468,47 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
+    public void testForCompanyUpdatesAUserOnlyIdentityWithinTheBoundCompany() {
+        MixpanelIdentity userOnly = MixpanelIdentity.builder().userId("user_123").build();
+        MessageBuilder acme = hgBuilder.forCompany("acme");
+        JSONObject props = new JSONObject().put("role", "admin");
+
+        assertUserGroupMessage(acme.set(userOnly, props), "acme", "user_123");
+        assertUserGroupMessage(acme.set(userOnly, props, new JSONObject().put("$company_id", "globex")),
+                "acme", "user_123");
+    }
+
+    @Test
+    public void testUserOnlyIdentityUsesCompanyIdModifierWithoutBoundCompany() {
+        MixpanelIdentity userOnly = MixpanelIdentity.builder().userId("user_123").build();
+        JSONObject props = new JSONObject().put("role", "admin");
+
+        assertUserGroupMessage(hgBuilder.set(userOnly, props, new JSONObject().put("$company_id", "acme")),
+                "acme", "user_123");
+        assertThrows(IllegalStateException.class, () -> hgBuilder.set(userOnly, props));
+    }
+
+    @Test
+    public void testIdentityCompanyWinsOverCompanyIdModifier() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+
+        assertUserGroupMessage(hgBuilder.set(user, new JSONObject().put("role", "admin"),
+                new JSONObject().put("$company_id", "globex")), "acme", "user_123");
+    }
+
+    @Test
+    public void testEmptyCompanyIdModifierIsNotACompany() {
+        MixpanelIdentity userOnly = MixpanelIdentity.builder().userId("user_123").build();
+        JSONObject props = new JSONObject().put("role", "admin");
+
+        for (Object empty : Arrays.asList("", JSONObject.NULL)) {
+            JSONObject modifiers = new JSONObject().put("$company_id", empty);
+            assertThrows(IllegalStateException.class, () -> hgBuilder.set(userOnly, props, modifiers));
+            assertThrows(IllegalStateException.class, () -> hgBuilder.groupSet("department", "finance", props, modifiers));
+        }
+    }
+
+    @Test
     public void testLegacyIdentityUsesEngage() {
         JSONObject envelope = legacyBuilder.set(MixpanelIdentity.builder().distinctId("user_123").build(), new JSONObject().put("role", "admin"));
 
