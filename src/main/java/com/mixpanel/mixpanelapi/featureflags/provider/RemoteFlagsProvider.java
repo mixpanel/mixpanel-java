@@ -185,12 +185,11 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
             return;
         }
 
-        Object distinctIdObj = context.get("distinct_id");
-        if (distinctIdObj == null) {
+        if (!canAttributeExposure(context)) {
             return;
         }
 
-        trackExposure(distinctIdObj.toString(), flagKey, variantKey, "remote", properties -> {
+        trackExposure(context, flagKey, variantKey, "remote", properties -> {
             properties.put("Variant fetch start time", startTime);
             properties.put("Variant fetch complete time", completeTime);
         }, experimentId, isExperimentActive, isQaTester);

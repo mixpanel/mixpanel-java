@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.logging.Logger;
 
 
@@ -230,6 +232,34 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         return definitions;
     }
 
+    /** A {@code {key}} placeholder in a context value template. */
+    private static final Pattern CONTEXT_PLACEHOLDER = Pattern.compile("\\{([^{}]+)\\}");
+
+    /**
+     * Fills a flag's {@code context_value_template} with values from the evaluation context.
+     * Each {@code {key}} placeholder is replaced with the string value of {@code key}; text
+     * outside the braces is literal.
+     *
+     * @return the filled template, or null when there is no template or any placeholder key
+     *         is missing (absent or null) from the context
+     */
+    private static String applyContextValueTemplate(String template, Map<String, Object> context) {
+        if (template == null || template.isEmpty()) {
+            return null;
+        }
+        StringBuffer out = new StringBuffer();
+        Matcher matcher = CONTEXT_PLACEHOLDER.matcher(template);
+        while (matcher.find()) {
+            Object value = context.get(matcher.group(1));
+            if (value == null) {
+                return null;
+            }
+            matcher.appendReplacement(out, Matcher.quoteReplacement(value.toString()));
+        }
+        matcher.appendTail(out);
+        return out.toString();
+    }
+
     /**
      * Parses a single flag from JSON.
      */
@@ -240,6 +270,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         String status = json.optString("status", "");
         int projectId = json.optInt("project_id", 0);
         String context = json.optString("context", "distinct_id");
+        String contextValueTemplate = json.optString("context_value_template", "");
 
         // Parse experiment metadata
         UUID experimentId = null;
@@ -262,7 +293,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         RuleSet ruleset = parseRuleSet(json.optJSONObject("ruleset"));
 
-        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt);
+        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, contextValueTemplate);
     }
 
     /**
@@ -390,19 +421,27 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
-            // Extract context value
+            // Resolve the assignment key: the flag's context_value_template when every
+            // placeholder resolves, otherwise the raw context value, as the server does.
             String contextProperty = flag.getContext();
-            Object contextValueObj = context.get(contextProperty);
-            if (contextValueObj == null) {
-                logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
-                return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+            String contextValue = applyContextValueTemplate(flag.getContextValueTemplate(), context);
+            if (contextValue == null) {
+                Object contextValueObj = context.get(contextProperty);
+                if (contextValueObj == null) {
+                    logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
+                    return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+                }
+                contextValue = contextValueObj.toString();
             }
-            String contextValue = contextValueObj.toString();
 
             // Check test user overrides
             RuleSet ruleset = flag.getRuleset();
             if (ruleset.hasTestUserOverrides()) {
-                String distinctId = context.get("distinct_id") != null ? context.get("distinct_id").toString() : null;
+                // Overrides are keyed by distinct id, which is the resolved assignment key
+                // when the flag assigns on distinct_id.
+                String distinctId = "distinct_id".equals(contextProperty)
+                        ? contextValue
+                        : (context.get("distinct_id") != null ? context.get("distinct_id").toString() : null);
                 if (distinctId != null) {
                     String testVariantKey = ruleset.getTestUserOverrides().get(distinctId);
                     if (testVariantKey != null) {
@@ -713,20 +752,19 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return;
         }
 
-        Object distinctIdObj = context.get("distinct_id");
-        if (distinctIdObj == null) {
+        if (!canAttributeExposure(context)) {
             // Local eval succeeds when the flag's Variant Assignment Key is
             // something other than distinct_id (e.g., device_id), but the
-            // exposure event still needs distinct_id to attribute the user.
-            // Surface the drop instead of silently returning so callers can
-            // see they need to include distinct_id in the context.
+            // exposure event still needs distinct_id ($company_id for hierarchical
+            // groups) to attribute the user. Surface the drop instead of silently
+            // returning so callers can see what to include in the context.
             logger.log(Level.WARNING,
-                "Cannot track exposure event for flag ''{0}'' without a distinct_id in the context",
-                flagKey);
+                "Cannot track exposure event for flag ''{0}'' without a {1} in the context",
+                new Object[] {flagKey, config.isHierarchicalGroups() ? "$company_id" : "distinct_id"});
             return;
         }
 
-        trackExposure(distinctIdObj.toString(), flagKey, variantKey, "local", properties -> {
+        trackExposure(context, flagKey, variantKey, "local", properties -> {
             properties.put("Variant fetch latency (ms)", latencyMs);
         }, experimentId, isExperimentActive, isQaTester);
     }

@@ -23,6 +23,7 @@ public final class ExperimentationFlag {
     private final UUID experimentId;
     private final Boolean isExperimentActive;
     private final String hashSalt;
+    private final String contextValueTemplate;
 
     /**
      * Creates a new ExperimentationFlag.
@@ -39,6 +40,11 @@ public final class ExperimentationFlag {
      * @param hashSalt the hash salt for this flag (may be null for legacy flags)
      */
     public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt) {
+        this(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, "");
+    }
+
+    public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt, String contextValueTemplate) {
+        this.contextValueTemplate = contextValueTemplate == null ? "" : contextValueTemplate;
         this.id = id;
         this.name = name;
         this.key = key;
@@ -49,6 +55,18 @@ public final class ExperimentationFlag {
         this.experimentId = experimentId;
         this.isExperimentActive = isExperimentActive;
         this.hashSalt = hashSalt;
+    }
+
+    /**
+     * The template the service publishes for building this flag's assignment key from the
+     * evaluation context, for example {@code $company:{$company_id}|$user:{$user_id}}. Each
+     * {@code {key}} placeholder is replaced with that context value; when the template is
+     * empty or a placeholder is missing, the raw {@link #getContext()} value is used instead.
+     *
+     * @return the template, or an empty string when the service sends none
+     */
+    public String getContextValueTemplate() {
+        return contextValueTemplate;
     }
 
     /**
