@@ -71,7 +71,7 @@ public class ClientDelivery {
                     ret = false;
                 }
             }
-        } catch (JSONException e) {
+        } catch (Exception e) {
             ret = false;
         }
 

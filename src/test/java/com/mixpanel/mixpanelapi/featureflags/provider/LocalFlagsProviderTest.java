@@ -1026,6 +1026,23 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         }
     }
 
+    @Test
+    public void testTracksExposureForEmptyDistinctIdWithoutHierarchicalGroups() throws Exception {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse("device-flag", "device_id", variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        Map<String, Object> context = new HashMap<>();
+        context.put("device_id", "device-abc");
+        context.put("distinct_id", "");
+
+        assertEquals("value-a", provider.getVariantValue("device-flag", fallbackVariantValue, context));
+        assertEquals(1, eventSender.getEvents().size());
+    }
+
     // #endregion
     // #region Polling Lifecycle Thread Safety (SDK-81)
 
@@ -1862,6 +1879,374 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     // #endregion
+
+    // #endregion
+
+    // #region Hierarchical Groups
+
+    private void useHierarchicalGroupsConfig() {
+        config = LocalFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .enablePolling(false)
+            .hierarchicalGroups(true)
+            .build();
+    }
+
+    private Map<String, Object> hierarchicalContext(String userId, String companyId) {
+        Map<String, Object> context = new HashMap<>();
+        context.put("$user_id", userId);
+        context.put("$company_id", companyId);
+        return context;
+    }
+
+    private String hashedContextValue(TestableHashingLocalFlagsProvider hashingProvider) {
+        for (TestableHashingLocalFlagsProvider.HashCall call : hashingProvider.getHashCalls()) {
+            if ("rollout".equals(call.type)) {
+                return call.contextValue;
+            }
+        }
+        return null;
+    }
+
+    @Test
+    public void testHierarchicalContextWithoutDistinctIdCannotEvaluateLocally() {
+        // Mixpanel derives a hierarchical distinct id service side, so a context carrying only
+        // $user_id and $company_id has nothing for a distinct_id keyed flag to hash on.
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        Object result = hashingProvider.getVariantValue(flagKey, fallbackVariantValue, hierarchicalContext("user-123", "acme"));
+
+        assertEquals(fallbackVariantValue, result);
+        assertNull(hashedContextValue(hashingProvider));
+    }
+
+    private String buildTemplatedFlagsResponse(String flagKey, String context, List<Variant> variants,
+                                               Map<String, String> testUsers, String contextValueTemplate) {
+        return buildFlagsResponse(flagKey, context, variants, Arrays.asList(new Rollout(1.0f)), testUsers)
+                .replace("\"context\":", "\"context_value_template\":" + JSONObject.quote(contextValueTemplate) + ",\"context\":");
+    }
+
+    /** The evaluation context from the spec's examples. */
+    private Map<String, Object> specContext() {
+        Map<String, Object> context = new HashMap<>();
+        context.put("distinct_id", "user_123");
+        context.put("device_id", "device_abc");
+        context.put("$user_id", "user_123");
+        context.put("$company_id", "company_123");
+        context.put("department", "finance");
+        return context;
+    }
+
+    private String hashedAssignmentKey(String response, Map<String, Object> context) {
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+        assertEquals("value-a", hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context));
+        return hashedContextValue(hashingProvider);
+    }
+
+    private String hashedTemplatedAssignmentKey(String contextKey, String template, Map<String, Object> context) {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        return hashedAssignmentKey(buildTemplatedFlagsResponse(flagKey, contextKey, variants, null, template), context);
+    }
+
+    @Test
+    public void testContextValueTemplateForDistinctIdFlag() {
+        useHierarchicalGroupsConfig();
+        assertEquals("$company:company_123|$user:user_123",
+                hashedTemplatedAssignmentKey("distinct_id", "$company:{$company_id}|$user:{$user_id}", specContext()));
+    }
+
+    @Test
+    public void testContextValueTemplateForDeviceIdFlag() {
+        useHierarchicalGroupsConfig();
+        assertEquals("device_abc",
+                hashedTemplatedAssignmentKey("device_id", "{device_id}", specContext()));
+    }
+
+    @Test
+    public void testContextValueTemplateForUserIdFlag() {
+        useHierarchicalGroupsConfig();
+        assertEquals("$company:company_123|$user:user_123",
+                hashedTemplatedAssignmentKey("$user_id", "$company:{$company_id}|$user:{$user_id}", specContext()));
+    }
+
+    @Test
+    public void testContextValueTemplateForCompanyIdFlag() {
+        useHierarchicalGroupsConfig();
+        assertEquals("$company:company_123",
+                hashedTemplatedAssignmentKey("$company_id", "$company:{$company_id}", specContext()));
+    }
+
+    @Test
+    public void testContextValueTemplateForGroupFlag() {
+        useHierarchicalGroupsConfig();
+        assertEquals("$company:company_123|department:finance",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", specContext()));
+    }
+
+    @Test
+    public void testContextValueTemplateKeepsLiteralTextOutsideBraces() {
+        useHierarchicalGroupsConfig();
+        assertEquals("org=company_123;dept=finance!",
+                hashedTemplatedAssignmentKey("department", "org={$company_id};dept={department}!", specContext()));
+    }
+
+    @Test
+    public void testMissingPlaceholderFallsBackToRawContextValue() {
+        useHierarchicalGroupsConfig();
+        Map<String, Object> context = specContext();
+        context.remove("$company_id");
+
+        assertEquals("finance",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", context));
+        assertEquals("user_123",
+                hashedTemplatedAssignmentKey("distinct_id", "$company:{$company_id}|$user:{$user_id}", context));
+    }
+
+    @Test
+    public void testNullPlaceholderValueFallsBackToRawContextValue() {
+        useHierarchicalGroupsConfig();
+        Map<String, Object> context = specContext();
+        context.put("$company_id", null);
+
+        assertEquals("finance",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", context));
+    }
+
+    @Test
+    public void testNoTemplateFallsBackToRawContextValue() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "department", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        assertEquals("finance", hashedAssignmentKey(response, specContext()));
+    }
+
+    @Test
+    public void testMissingPlaceholderAndMissingRawValueReturnsFallback() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildTemplatedFlagsResponse(flagKey, "department", variants, null,
+                "$company:{$company_id}|department:{department}");
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+        Map<String, Object> context = specContext();
+        context.remove("department");
+        SelectedVariant<String> result = hashingProvider.getVariant(flagKey, new SelectedVariant<>(fallbackVariantValue), context, true);
+
+        assertEquals(fallbackVariantValue, result.getVariantValue());
+        assertEquals(Source.Fallback.Reason.MISSING_CONTEXT_KEY, ((Source.Fallback) result.getSource()).reason);
+        assertNull(hashedContextValue(hashingProvider));
+    }
+
+    @Test
+    public void testTestUserOverrideUsesResolvedKeyForDistinctIdFlag() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "control-value", false, 1.0f),
+            new Variant("treatment", "treatment-value", false, 0.0f)
+        );
+        Map<String, String> resolvedKeyUsers = new HashMap<>();
+        resolvedKeyUsers.put("$company:company_123|$user:user_123", "treatment");
+        provider = createProviderWithResponse(buildTemplatedFlagsResponse(flagKey, "distinct_id", variants, resolvedKeyUsers,
+                "$company:{$company_id}|$user:{$user_id}"));
+        provider.startPollingForDefinitions();
+        assertEquals("treatment-value", provider.getVariantValue(flagKey, fallbackVariantValue, specContext()));
+
+        // The raw distinct_id is not the override key once the template resolves.
+        Map<String, String> rawKeyUsers = new HashMap<>();
+        rawKeyUsers.put("user_123", "treatment");
+        provider = createProviderWithResponse(buildTemplatedFlagsResponse(flagKey, "distinct_id", variants, rawKeyUsers,
+                "$company:{$company_id}|$user:{$user_id}"));
+        provider.startPollingForDefinitions();
+        assertEquals("control-value", provider.getVariantValue(flagKey, fallbackVariantValue, specContext()));
+    }
+
+    @Test
+    public void testTestUserOverrideUsesRawDistinctIdForOtherFlags() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "control-value", false, 1.0f),
+            new Variant("treatment", "treatment-value", false, 0.0f)
+        );
+        Map<String, String> testUsers = new HashMap<>();
+        testUsers.put("user_123", "treatment");
+        provider = createProviderWithResponse(buildTemplatedFlagsResponse(flagKey, "department", variants, testUsers,
+                "$company:{$company_id}|department:{department}"));
+        provider.startPollingForDefinitions();
+
+        assertEquals("treatment-value", provider.getVariantValue(flagKey, fallbackVariantValue, specContext()));
+    }
+
+    @Test
+    public void testNonHierarchicalContextMatchesMasterForTemplatedFlag() {
+        // Without $company_id the template cannot resolve, so the flag assigns on the raw
+        // distinct_id exactly as a flag without a template does.
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "control-value", false, 0.5f),
+            new Variant("treatment", "treatment-value", false, 0.5f)
+        );
+        String templated = buildTemplatedFlagsResponse(flagKey, "distinct_id", variants, null,
+                "$company:{$company_id}|$user:{$user_id}");
+        String untemplated = buildFlagsResponse(flagKey, "distinct_id", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider templatedProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        templatedProvider.setMockResponse("/flags/definitions", templated);
+        templatedProvider.startPollingForDefinitions();
+        LocalFlagsProvider untemplatedProvider = createProviderWithResponse(untemplated);
+        untemplatedProvider.startPollingForDefinitions();
+
+        Set<Object> seen = new HashSet<>();
+        for (int i = 0; i < 50; i++) {
+            Map<String, Object> context = new HashMap<>();
+            context.put("distinct_id", "user-" + i);
+            context.put("$user_id", "user-" + i);
+            Object expected = untemplatedProvider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(expected, templatedProvider.getVariantValue(flagKey, fallbackVariantValue, context));
+            seen.add(expected);
+        }
+        for (TestableHashingLocalFlagsProvider.HashCall call : templatedProvider.getHashCalls()) {
+            assertTrue(call.contextValue.startsWith("user-"));
+        }
+        // Both variants were exercised, so the comparison covers the split.
+        assertEquals(2, seen.size());
+    }
+
+    @Test
+    public void testHierarchicalDistinctIdIsHashedAsSent() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("distinct_id", "$company:acme|$user:user-123");
+        Object result = hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("value-a", result);
+        assertEquals("$company:acme|$user:user-123", hashedContextValue(hashingProvider));
+    }
+
+    @Test
+    public void testHierarchicalGroupFlagHashesOnRawGroupValue() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "department", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("department", "finance");
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("finance", hashedContextValue(hashingProvider));
+    }
+
+    @Test
+    public void testHierarchicalDeviceFlagHashesOnRawDeviceId() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "device_id", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("device_id", "device-abc");
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("device-abc", hashedContextValue(hashingProvider));
+    }
+
+    @Test
+    public void testHierarchicalExposureCarriesUserAndCompanyWithoutDistinctId() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("distinct_id", "$company:acme|$user:user-123");
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertEquals("user-123", event.properties.getString("$user_id"));
+        assertEquals("acme", event.properties.getString("$company_id"));
+    }
+
+    @Test
+    public void testHierarchicalTestUserOverrideMatchesDistinctIdAsSent() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(
+            new Variant("control", "control-value", false, 1.0f),
+            new Variant("treatment", "treatment-value", false, 0.0f)
+        );
+        Map<String, String> testUsers = new HashMap<>();
+        testUsers.put("$company:acme|$user:user-123", "treatment");
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), testUsers);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("distinct_id", "$company:acme|$user:user-123");
+        Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("treatment-value", result);
+    }
+
+    @Test
+    public void testHierarchicalProjectEvaluatesOnDistinctIdAlone() {
+        // The company no longer changes what is hashed, so a distinct id on its own evaluates
+        // the same way it does on any other project.
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        Map<String, Object> context = new HashMap<>();
+        context.put("distinct_id", "user-123");
+        Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("value-a", result);
+    }
+
+    @Test
+    public void testLegacyProjectIgnoresCompanyIdInContext() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        TestableHashingLocalFlagsProvider hashingProvider = new TestableHashingLocalFlagsProvider(config, SDK_VERSION, eventSender);
+        hashingProvider.setMockResponse("/flags/definitions", response);
+        hashingProvider.startPollingForDefinitions();
+
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        context.put("distinct_id", "user-123");
+        hashingProvider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("user-123", hashedContextValue(hashingProvider));
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertEquals("user-123", event.distinctId);
+        assertFalse(event.properties.has("$company_id"));
+        assertFalse(event.properties.has("$user_id"));
+    }
 
     // #endregion
 }
