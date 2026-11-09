@@ -168,9 +168,9 @@ public class MessageBuilder {
      * Creates a message tracking an event for the given identity. In hierarchical
      * group mode the message carries {@code $user_id} and {@code $company_id} instead
      * of {@code distinct_id}; Mixpanel constructs the distinct id from them.
-     * The identity decides {@code distinct_id}, {@code $user_id}, {@code $company_id}
-     * and {@code $device_id}: it replaces any values for those keys in properties,
-     * and drops the keys it leaves unset.
+     * Each of {@code distinct_id}, {@code $user_id}, {@code $company_id} and
+     * {@code $device_id} that the identity sets replaces any value for that key in
+     * properties; a key the identity leaves unset is kept as given in properties.
      *
      * @param identity who the event belongs to
      * @param eventName a human readable name for the event
@@ -185,6 +185,9 @@ public class MessageBuilder {
 
     /**
      * Creates a message importing a historical event for the given identity.
+     * The identity's keys replace those in properties as in
+     * {@link #event(MixpanelIdentity, String, JSONObject)}; a key the identity leaves
+     * unset is kept as given in properties.
      *
      * @param identity who the event belongs to
      * @param eventName a human readable name for the event
