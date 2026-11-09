@@ -758,9 +758,15 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             // exposure event still needs distinct_id ($company_id for hierarchical
             // groups) to attribute the user. Surface the drop instead of silently
             // returning so callers can see what to include in the context.
-            logger.log(Level.WARNING,
-                "Cannot track exposure event for flag ''{0}'' without a {1} in the context",
-                new Object[] {flagKey, config.isHierarchicalGroups() ? "$company_id" : "distinct_id"});
+            if (config.isHierarchicalGroups()) {
+                logger.log(Level.WARNING,
+                    "Cannot track exposure event for flag ''{0}'' without a {1} in the context",
+                    new Object[] {flagKey, "$company_id"});
+            } else {
+                logger.log(Level.WARNING,
+                    "Cannot track exposure event for flag ''{0}'' without a distinct_id in the context",
+                    flagKey);
+            }
             return;
         }
 
