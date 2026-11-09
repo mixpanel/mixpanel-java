@@ -86,21 +86,28 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testIdentityDropsCallerSuppliedKeysItLeavesUnset() {
+    public void testIdentityKeepsCallerSuppliedKeysItLeavesUnset() {
         JSONObject caller = new JSONObject();
-        caller.put("distinct_id", "stale");
-        caller.put("$device_id", "stale_device");
-        caller.put("$user_id", "stale_user");
+        caller.put("distinct_id", "caller");
+        caller.put("$device_id", "caller_device");
+        caller.put("$user_id", "caller_user");
+        caller.put("$company_id", "wrong");
         caller.put("plan", "enterprise");
 
         JSONObject props = eventProperties(hgBuilder.event(MixpanelIdentity.builder().companyId("acme").build(), "Renewed", caller));
 
         assertEquals("acme", props.getString("$company_id"));
-        assertFalse(props.has("distinct_id"));
-        assertFalse(props.has("$device_id"));
-        assertFalse(props.has("$user_id"));
+        assertEquals("caller", props.getString("distinct_id"));
+        assertEquals("caller_device", props.getString("$device_id"));
+        assertEquals("caller_user", props.getString("$user_id"));
         assertEquals("enterprise", props.getString("plan"));
-        assertEquals("stale", caller.getString("distinct_id"));
+        assertEquals("wrong", caller.getString("$company_id"));
+
+        JSONObject imported = eventProperties(hgBuilder.importEvent(
+                MixpanelIdentity.builder().userId("user_123").companyId("acme").build(), "Renewed",
+                new JSONObject().put("distinct_id", "caller")));
+        assertEquals("caller", imported.getString("distinct_id"));
+        assertEquals("user_123", imported.getString("$user_id"));
     }
 
     @Test
@@ -375,6 +382,50 @@ public class HierarchicalGroupsTest {
                 () -> hgBuilder.peopleMessage("$company:acme|$user:user_123", "$add", props, null));
         assertThrows(UnsupportedOperationException.class,
                 () -> hgBuilder.peopleMessage("not_combined", "$append", props, null));
+    }
+
+    @Test
+    public void testUnsupportedModifierOperationThrowsOnHierarchicalUserProfile() {
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (String operation : Arrays.asList("$add", "$append", "$merge", "$foo")) {
+            JSONObject modifiers = new JSONObject().put(operation, new JSONObject().put("logins", 1));
+            UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class,
+                    () -> hgBuilder.peopleMessage("$company:acme|$user:user_123", "$set", props, modifiers));
+            assertTrue(e.getMessage(), e.getMessage().startsWith(operation + " is not supported"));
+            // Before the distinct id is checked, as for the actionType
+            assertThrows(UnsupportedOperationException.class,
+                    () -> hgBuilder.peopleMessage("not_combined", "$set", props, modifiers));
+            assertThrows(UnsupportedOperationException.class,
+                    () -> hgBuilder.set(MixpanelIdentity.builder().userId("user_123").companyId("acme").build(),
+                            props, modifiers));
+        }
+    }
+
+    @Test
+    public void testNonOperationAndSupportedModifiersBuildOnHierarchicalUserProfile() {
+        JSONObject modifiers = new JSONObject()
+                .put("$token", TOKEN).put("$time", 1L).put("$ip", "1.2.3.4").put("$ignore_time", true)
+                .put("$ignore_alias", true).put("$mp_metadata", new JSONObject()).put("$company_id", "acme")
+                .put("$group_key", "$user_id").put("$group_id", "user_123")
+                .put("$unset", new JSONArray().put("old")).put("custom", 1);
+        JSONObject envelope = hgBuilder.peopleMessage("$company:acme|$user:user_123", "$set",
+                new JSONObject().put("plan", "pro"), modifiers);
+
+        assertUserGroupMessage(envelope, "acme", "user_123");
+        JSONObject message = envelope.getJSONObject("message");
+        assertEquals("pro", message.getJSONObject("$set").getString("plan"));
+        assertEquals("old", message.getJSONArray("$unset").getString(0));
+    }
+
+    @Test
+    public void testLegacyPeopleMessageCopiesAnyModifier() {
+        JSONObject envelope = legacyBuilder.peopleMessage("user_123", "$set", new JSONObject().put("plan", "pro"),
+                new JSONObject().put("$add", new JSONObject().put("logins", 1)).put("$foo", 1));
+
+        JSONObject message = envelope.getJSONObject("message");
+        assertEquals("people", envelope.getString("message_type"));
+        assertEquals(1, message.getJSONObject("$add").getInt("logins"));
+        assertEquals(1, message.getInt("$foo"));
     }
 
     @Test
@@ -673,6 +724,48 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
+    public void testUnsupportedGroupModifierOperationThrows() {
+        MessageBuilder acme = hgBuilder.forCompany("acme");
+        JSONObject properties = new JSONObject().put("seats", 1);
+        for (String operation : Arrays.asList("$add", "$append", "$merge", "$foo")) {
+            JSONObject modifiers = new JSONObject().put(operation, properties);
+            UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class,
+                    () -> acme.groupMessage("company", "acme", "$set", properties, modifiers));
+            assertTrue(e.getMessage(), e.getMessage().startsWith(operation + " is not supported"));
+            assertThrows(UnsupportedOperationException.class,
+                    () -> acme.groupSet("company", "acme", properties, modifiers));
+            // Before the company check, as for the actionType
+            assertThrows(UnsupportedOperationException.class,
+                    () -> hgBuilder.groupMessage("company", "acme", "$set", properties, modifiers));
+        }
+    }
+
+    @Test
+    public void testNonOperationGroupModifiersBuild() {
+        JSONObject modifiers = new JSONObject()
+                .put("$token", TOKEN).put("$time", 1L).put("$ip", "1.2.3.4").put("$ignore_time", true)
+                .put("$ignore_alias", true).put("$mp_metadata", new JSONObject()).put("$distinct_id", "x")
+                .put("$company_id", "acme").put("$remove", new JSONObject().put("tags", "a"));
+        JSONObject envelope = hgBuilder.groupMessage("company", "acme", "$set", new JSONObject().put("seats", 1),
+                modifiers);
+
+        JSONObject message = envelope.getJSONObject("message");
+        assertEquals("acme", message.getString("$company_id"));
+        assertEquals(1, message.getJSONObject("$set").getInt("seats"));
+        assertEquals("a", message.getJSONObject("$remove").getString("tags"));
+    }
+
+    @Test
+    public void testLegacyGroupMessageCopiesAnyModifier() {
+        JSONObject envelope = legacyBuilder.groupMessage("company", "acme", "$set", new JSONObject().put("seats", 1),
+                new JSONObject().put("$add", new JSONObject().put("seats", 1)).put("$foo", 1));
+
+        JSONObject message = envelope.getJSONObject("message");
+        assertEquals(1, message.getJSONObject("$add").getInt("seats"));
+        assertEquals(1, message.getInt("$foo"));
+    }
+
+    @Test
     public void testUnsupportedGroupOperationThrowsBeforeCompanyCheck() {
         assertThrows(UnsupportedOperationException.class,
                 () -> hgBuilder.groupMessage("company", "acme", "$add", new JSONObject().put("seats", 1), null));
@@ -781,6 +874,69 @@ public class HierarchicalGroupsTest {
         assertEquals("finance", context.get("department"));
         assertFalse(context.containsKey("distinct_id"));
         assertEquals("enterprise", ((Map<?, ?>) context.get("custom_properties")).get("plan"));
+    }
+
+    @Test
+    public void testFlagContextIdentityWinsOverGroupsWhateverTheOrder() {
+        MixpanelIdentity identity = MixpanelIdentity.builder().distinctId("d1").userId("user_123")
+                .companyId("acme").deviceId("device_abc").build();
+
+        Map<String, Object> groupsFirst = FlagContext.builder()
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .group("custom_properties", "g")
+            .customProperty("plan", "enterprise")
+            .identity(identity)
+            .build();
+        Map<String, Object> identityFirst = FlagContext.builder()
+            .identity(identity)
+            .customProperty("plan", "enterprise")
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .build();
+
+        for (Map<String, Object> context : Arrays.asList(groupsFirst, identityFirst)) {
+            assertEquals("d1", context.get("distinct_id"));
+            assertEquals("user_123", context.get("$user_id"));
+            assertEquals("acme", context.get("$company_id"));
+            assertEquals("device_abc", context.get("device_id"));
+            assertEquals("enterprise", ((Map<?, ?>) context.get("custom_properties")).get("plan"));
+        }
+    }
+
+    @Test
+    public void testFlagContextExplicitSettersWinOverGroupsWhateverTheOrder() {
+        Map<String, Object> settersFirst = FlagContext.builder()
+            .distinctId("d1").userId("user_123").companyId("acme").deviceId("device_abc")
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .build();
+        Map<String, Object> groupsFirst = FlagContext.builder()
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .distinctId("d1").userId("user_123").companyId("acme").deviceId("device_abc")
+            .build();
+
+        for (Map<String, Object> context : Arrays.asList(settersFirst, groupsFirst)) {
+            assertEquals("d1", context.get("distinct_id"));
+            assertEquals("user_123", context.get("$user_id"));
+            assertEquals("acme", context.get("$company_id"));
+            assertEquals("device_abc", context.get("device_id"));
+        }
+    }
+
+    @Test
+    public void testFlagContextLaterIdentitySourceWins() {
+        Map<String, Object> setterLast = FlagContext.builder()
+            .identity(MixpanelIdentity.builder().userId("from_identity").companyId("acme").build())
+            .userId("from_setter")
+            .build();
+        assertEquals("from_setter", setterLast.get("$user_id"));
+        assertEquals("acme", setterLast.get("$company_id"));
+
+        Map<String, Object> identityLast = FlagContext.builder()
+            .userId("from_setter")
+            .companyId("other")
+            .identity(MixpanelIdentity.builder().userId("from_identity").companyId("acme").build())
+            .build();
+        assertEquals("from_identity", identityLast.get("$user_id"));
+        assertEquals("acme", identityLast.get("$company_id"));
     }
 
     @Test

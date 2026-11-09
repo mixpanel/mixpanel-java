@@ -31,6 +31,9 @@ public final class FlagContext {
 
     public static final class Builder {
         private final Map<String, Object> mContext = new HashMap<>();
+        // Identity keys are applied last in build(), so they win over group() and
+        // customProperty() whatever the call order; among them the later call wins.
+        private final Map<String, Object> mIdentity = new HashMap<>();
         private final Map<String, Object> mCustomProperties = new HashMap<>();
 
         private Builder() {
@@ -40,6 +43,11 @@ public final class FlagContext {
          * Sets the identity keys from a {@link MixpanelIdentity}: {@code distinct_id} for a
          * legacy identity, or {@code $user_id}, {@code $company_id} and {@code device_id}
          * for a hierarchical groups identity.
+         *
+         * <p>Identity keys, whether set here or with {@link #distinctId}, {@link #userId},
+         * {@link #companyId} or {@link #deviceId}, win over the same keys set with
+         * {@link #group} or {@link #customProperty}, whatever the call order. Among the
+         * identity setters, the later call wins.
          */
         public Builder identity(MixpanelIdentity identity) {
             if (identity.getDistinctId() != null) distinctId(identity.getDistinctId());
@@ -50,23 +58,23 @@ public final class FlagContext {
         }
 
         public Builder distinctId(String distinctId) {
-            mContext.put("distinct_id", distinctId);
+            mIdentity.put("distinct_id", distinctId);
             return this;
         }
 
         /** Sets the device id, used as the assignment key by flags that assign on {@code device_id}. */
         public Builder deviceId(String deviceId) {
-            mContext.put("device_id", deviceId);
+            mIdentity.put("device_id", deviceId);
             return this;
         }
 
         public Builder userId(String userId) {
-            mContext.put("$user_id", userId);
+            mIdentity.put("$user_id", userId);
             return this;
         }
 
         public Builder companyId(String companyId) {
-            mContext.put("$company_id", companyId);
+            mIdentity.put("$company_id", companyId);
             return this;
         }
 
@@ -92,6 +100,7 @@ public final class FlagContext {
             if (!mCustomProperties.isEmpty()) {
                 context.put("custom_properties", new HashMap<>(mCustomProperties));
             }
+            context.putAll(mIdentity);
             return context;
         }
     }

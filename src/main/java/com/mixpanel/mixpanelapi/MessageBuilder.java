@@ -31,6 +31,10 @@ public class MessageBuilder {
     // /groups has no $add, $append or $merge
     private static final Set<String> GROUP_OPERATIONS = Collections.unmodifiableSet(new LinkedHashSet<>(
             Arrays.asList("$set", "$set_once", "$unset", "$union", "$remove", "$delete")));
+    // Keys of a /engage or /groups message that are not operations
+    private static final Set<String> NON_OPERATION_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(
+            Arrays.asList("$token", "$distinct_id", "$group_key", "$group_id", "$company_id", "$time", "$ip",
+                    "$ignore_time", "$ignore_alias", "$mp_metadata", "$latitude", "$longitude")));
 
     private final String mToken;
     private final boolean mHierarchicalGroups;
@@ -825,7 +829,7 @@ public class MessageBuilder {
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property, or on a
      *           hierarchical groups builder if the distinct id does not name both a company and a user
      * @throws UnsupportedOperationException on a hierarchical groups builder, for $add, $append or any other
-     *           operation /groups does not support
+     *           operation /groups does not support, whether as the actionType or as a modifier key
      *
      * @see MessageBuilder#set(String distinctId, JSONObject properties)
      * @see MessageBuilder#delete(String distinctId)
@@ -841,6 +845,8 @@ public class MessageBuilder {
                     + "groups equivalent.");
         }
         if (mHierarchicalGroups) {
+            // Checked before the distinct id, as the actionType is.
+            requireSupportedModifiers(modifiers);
             return hierarchicalUserProfileMessage(distinctId, actionType, properties, modifiers);
         }
         JSONObject dataObj = new JSONObject();
@@ -1349,7 +1355,8 @@ public class MessageBuilder {
      * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
      * @throws IllegalStateException for hierarchical groups projects when no company is known
      * @throws UnsupportedOperationException on a hierarchical groups builder, for an operation /groups lacks
-     *           ($add, $append or $merge)
+     *           (anything but $set, $set_once, $unset, $union, $remove or $delete), whether as the actionType
+     *           or as a modifier key
      *
      * @see MessageBuilder#groupSet(String groupKey, String groupId, JSONObject properties)
      * @see MessageBuilder#groupSetOnce(String groupKey, String groupId, JSONObject properties)
@@ -1368,6 +1375,9 @@ public class MessageBuilder {
 
     private JSONObject buildGroupMessage(String groupKey, String groupId, String actionType, Object properties,
                                          JSONObject modifiers, String companyId) {
+        if (mHierarchicalGroups) {
+            requireSupportedModifiers(modifiers);
+        }
         if (mHierarchicalGroups && companyId == null && !hasCompanyIdModifier(modifiers)) {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
                     + "company. Use forCompany(companyId) to build them. Nothing to send for group "
@@ -1409,6 +1419,28 @@ public class MessageBuilder {
             return envelope;
         } catch (JSONException e) {
             throw new RuntimeException("Can't construct a Mixpanel message", e);
+        }
+    }
+
+    /**
+     * Modifiers are merged into the message, so on a hierarchical groups builder a {@code $}-prefixed
+     * modifier key is an operation unless it is one of the non-operation keys such as {@code $time},
+     * and an operation /groups lacks throws just as it does as the actionType.
+     */
+    private static void requireSupportedModifiers(JSONObject modifiers) {
+        if (modifiers == null) {
+            return;
+        }
+        final String[] keys = JSONObject.getNames(modifiers);
+        if (keys == null) {
+            return;
+        }
+        for (String key : keys) {
+            if (key.startsWith("$") && !GROUP_OPERATIONS.contains(key) && !NON_OPERATION_KEYS.contains(key)) {
+                throw new UnsupportedOperationException(key + " is not supported for group profiles on "
+                        + "hierarchical groups projects, whose user profiles are group profiles keyed by $user_id. "
+                        + "Supported operations are " + GROUP_OPERATIONS + ".");
+            }
         }
     }
 
