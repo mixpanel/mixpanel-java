@@ -402,6 +402,46 @@ public class MixpanelProviderTest {
         assertEquals("user-123", captured.get("distinct_id"));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testContextIncludesOpenFeatureProviderMarker() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
+                .thenReturn(variant);
+
+        Map<String, Value> attrs = new HashMap<>();
+        attrs.put("distinct_id", new Value("user-123"));
+        provider.getBooleanEvaluation("flag", false, new ImmutableContext(attrs));
+
+        Map<String, Object> captured = contextCaptor.getValue();
+        assertEquals(Boolean.TRUE, captured.get("$openfeature_provider"));
+        assertEquals("user-123", captured.get("distinct_id"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testOpenFeatureProviderMarkerCannotBeOverriddenByCustomerAttribute() {
+        SelectedVariant<Object> variant = new SelectedVariant<>("on", true, null, null, null);
+        ArgumentCaptor<Map<String, Object>> contextCaptor = ArgumentCaptor.forClass(Map.class);
+        when(mockFlagsProvider.getVariant(eq("flag"), any(SelectedVariant.class), contextCaptor.capture(), eq(true)))
+                .thenReturn(variant);
+
+        Map<String, Value> attrs = new HashMap<>();
+        attrs.put("distinct_id", new Value("user-123"));
+        attrs.put("$openfeature_provider", new Value(false));
+        provider.getBooleanEvaluation("flag", false, new ImmutableContext(attrs));
+
+        Map<String, Object> captured = contextCaptor.getValue();
+        assertEquals(Boolean.TRUE, captured.get("$openfeature_provider"));
+    }
+
+    @Test
+    public void testConvertContextIncludesMarkerForNullContext() {
+        Map<String, Object> context = MixpanelProvider.convertContext(null);
+        assertEquals(Boolean.TRUE, context.get("$openfeature_provider"));
+    }
+
     // PROVIDER_NOT_READY
 
     @Test

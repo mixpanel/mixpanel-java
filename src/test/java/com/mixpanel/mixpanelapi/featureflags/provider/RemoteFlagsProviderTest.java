@@ -245,6 +245,34 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testExposureIncludesOpenFeatureProviderPropertyWhenContextMarkerSet() {
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "test-value");
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        context.put("$openfeature_provider", true);
+        provider.getVariantValue("test-flag", "fallback", context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
+        assertEquals("variant-a", event.properties.getString("Variant name"));
+        assertTrue(event.properties.getBoolean("$openfeature_provider"));
+    }
+
+    @Test
+    public void testExposureOmitsOpenFeatureProviderPropertyWithoutContextMarker() {
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "test-value");
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        provider.getVariantValue("test-flag", "fallback", context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
+        assertFalse(event.properties.has("$openfeature_provider"));
+    }
+
+    @Test
     public void testDoNotTrackExposureWhenReturningFallback() {
         // Create provider that will throw IOException
         provider = createProviderWithResponse(null);

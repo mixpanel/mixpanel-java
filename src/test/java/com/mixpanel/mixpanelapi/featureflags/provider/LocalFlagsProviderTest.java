@@ -945,6 +945,42 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testExposureIncludesOpenFeatureProviderPropertyWhenContextMarkerSet() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        context.put("$openfeature_provider", true);
+        provider.startPollingForDefinitions();
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
+        assertEquals("variant-a", event.properties.getString("Variant name"));
+        assertTrue(event.properties.getBoolean("$openfeature_provider"));
+    }
+
+    @Test
+    public void testExposureOmitsOpenFeatureProviderPropertyWithoutContextMarker() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        List<Rollout> rollouts = Arrays.asList(new Rollout(1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, rollouts, null);
+
+        provider = createProviderWithResponse(response);
+
+        Map<String, Object> context = buildContext("user-123");
+        provider.startPollingForDefinitions();
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(eventSender.getEvents().size() - 1);
+        assertFalse(event.properties.has("$openfeature_provider"));
+    }
+
+    @Test
     public void testDoNotTrackExposureWhenReturningFallback() {
         // Empty flags - will return fallback
         String response = "{\"flags\":[]}";

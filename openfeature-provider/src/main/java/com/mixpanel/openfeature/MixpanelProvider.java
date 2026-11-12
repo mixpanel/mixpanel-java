@@ -206,17 +206,19 @@ public class MixpanelProvider implements FeatureProvider {
 
     static Map<String, Object> convertContext(EvaluationContext ctx) {
         Map<String, Object> context = new HashMap<>();
-        if (ctx == null) {
-            return context;
+        if (ctx != null) {
+            String targetingKey = ctx.getTargetingKey();
+            if (targetingKey != null && !targetingKey.isEmpty()) {
+                context.put("targetingKey", targetingKey);
+            }
+            for (String key : ctx.keySet()) {
+                Value val = ctx.getValue(key);
+                context.put(key, unwrapValue(val));
+            }
         }
-        String targetingKey = ctx.getTargetingKey();
-        if (targetingKey != null && !targetingKey.isEmpty()) {
-            context.put("targetingKey", targetingKey);
-        }
-        for (String key : ctx.keySet()) {
-            Value val = ctx.getValue(key);
-            context.put(key, unwrapValue(val));
-        }
+        // SDK-448: marks exposures fired through this provider. Set after the
+        // customer attributes so it can't be overridden; older SDKs ignore the key.
+        context.put("$openfeature_provider", true);
         return context;
     }
 
