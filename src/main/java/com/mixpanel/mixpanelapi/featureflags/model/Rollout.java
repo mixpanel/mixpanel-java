@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi.featureflags.model;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +66,7 @@ public final class Rollout {
         this.experimentStatus = experimentStatus;
         this.isExperimentActive = isExperimentActive;
         this.allocation = allocation != null
-            ? Collections.unmodifiableList(allocation)
+            ? Collections.unmodifiableList(new ArrayList<>(allocation))
             : null;
     }
 
