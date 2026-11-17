@@ -242,6 +242,22 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         }
     }
 
+    /**
+     * Context key set by the Mixpanel OpenFeature provider (SDK-448). When present and
+     * {@code true}, exposure events are tagged with {@code "$openfeature_provider": true}.
+     */
+    static final String OPENFEATURE_PROVIDER_KEY = "$openfeature_provider";
+
+    /**
+     * Adds {@code "$openfeature_provider": true} to the exposure properties when the
+     * evaluation context was built by the Mixpanel OpenFeature provider.
+     */
+    static void addOpenFeatureProviderProperty(Map<String, Object> context, JSONObject properties) {
+        if (context != null && Boolean.TRUE.equals(context.get(OPENFEATURE_PROVIDER_KEY))) {
+            properties.put(OPENFEATURE_PROVIDER_KEY, true);
+        }
+    }
+
     // #endregion
 
     /**
