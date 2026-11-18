@@ -73,15 +73,23 @@ public final class MixpanelIdentity {
             return this;
         }
 
-        /** The user's id. On a hierarchical groups project it only needs to be unique within the company. */
+        /**
+         * The user's id. On a hierarchical groups project it only needs to be unique within the company.
+         *
+         * @throws IllegalArgumentException if the id is empty or only whitespace
+         */
         public Builder userId(String userId) {
-            mUserId = requireNonEmptyOrNull(userId, "userId");
+            mUserId = requireNonBlankOrNull(userId, "userId");
             return this;
         }
 
-        /** The id of the top-level company, on a hierarchical groups project. */
+        /**
+         * The id of the top-level company, on a hierarchical groups project.
+         *
+         * @throws IllegalArgumentException if the id is empty or only whitespace
+         */
         public Builder companyId(String companyId) {
-            mCompanyId = requireNonEmptyOrNull(companyId, "companyId");
+            mCompanyId = requireNonBlankOrNull(companyId, "companyId");
             return this;
         }
 
@@ -109,6 +117,29 @@ public final class MixpanelIdentity {
             }
             return value;
         }
+
+        /** As {@link #requireNonEmptyOrNull}, and a whitespace-only id names a junk user or company. */
+        private static String requireNonBlankOrNull(String value, String name) {
+            requireNonEmptyOrNull(value, name);
+            if (value != null && isBlank(value)) {
+                throw new IllegalArgumentException(name + " must not be only whitespace");
+            }
+            return value;
+        }
+    }
+
+    /** @return true if the string is non-empty and consists only of whitespace */
+    /* package */ static boolean isBlank(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isWhitespace(c) && !Character.isSpaceChar(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static final String COMBINED_COMPANY_PREFIX = "$company:";
@@ -121,6 +152,8 @@ public final class MixpanelIdentity {
      *
      * @return an identity with the parsed user and company, or null if the distinct id is not
      *           in that form or either part is empty
+     * @throws IllegalArgumentException if the distinct id is in that form but its company or user
+     *           is only whitespace
      */
     /* package */ static MixpanelIdentity fromCombinedDistinctId(String distinctId) {
         if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
@@ -134,6 +167,10 @@ public final class MixpanelIdentity {
         String userId = distinctId.substring(separator + COMBINED_USER_SEPARATOR.length());
         if (companyId.isEmpty() || userId.isEmpty()) {
             return null;
+        }
+        if (isBlank(companyId) || isBlank(userId)) {
+            throw new IllegalArgumentException("distinct_id " + distinctId + " names a "
+                    + (isBlank(companyId) ? "company" : "user") + " that is only whitespace. Nothing sent");
         }
         return builder().userId(userId).companyId(companyId).build();
     }

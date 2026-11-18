@@ -940,7 +940,8 @@ public class HierarchicalGroupsTest {
             new JSONObject().put("$company_id", 7)).getJSONObject("message");
 
         assertEquals("7", message.getString("$group_id"));
-        assertEquals(7, message.get("$company_id"));
+        // Written as a string, as a bound company is
+        assertEquals("7", message.get("$company_id"));
         assertThrows(IllegalArgumentException.class, () -> hgBuilder.groupSet("$company_id", "8",
             new JSONObject().put("plan", "pro"), new JSONObject().put("$company_id", 7)));
     }
@@ -951,6 +952,202 @@ public class HierarchicalGroupsTest {
             JSONObject message = call.apply(legacyBuilder.forCompany("acme")).getJSONObject("message");
             assertEquals("globex", message.getString("$group_id"));
             assertEquals("acme", message.getString("$company_id"));
+        }
+    }
+
+    // #endregion
+    // #region Id validation found by service testing
+
+    private static final String COMBINED = "$company:acme|$user:user_123";
+
+    @Test
+    public void testCompanyIdModifierOfAnotherTypeIsRejected() {
+        MixpanelIdentity userOnly = MixpanelIdentity.builder().userId("user_123").build();
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (Object bad : Arrays.asList(new JSONObject().put("x", 1), new JSONArray().put("acme"), true, 1.5)) {
+            JSONObject modifiers = new JSONObject().put("$company_id", bad);
+            assertThrows(String.valueOf(bad), IllegalArgumentException.class,
+                    () -> hgBuilder.groupSet("department", "finance", props, modifiers));
+            assertThrows(String.valueOf(bad), IllegalArgumentException.class,
+                    () -> hgBuilder.groupMessage("department", "finance", "$set", props, modifiers));
+            assertThrows(String.valueOf(bad), IllegalArgumentException.class,
+                    () -> hgBuilder.set(userOnly, props, modifiers));
+            assertThrows(String.valueOf(bad), IllegalArgumentException.class,
+                    () -> hgBuilder.set(COMBINED, props, modifiers));
+        }
+    }
+
+    @Test
+    public void testEmptyCompanyIdModifierStillMeansNoCompany() {
+        JSONObject modifiers = new JSONObject().put("$company_id", "");
+        assertThrows(IllegalStateException.class,
+                () -> hgBuilder.groupSet("department", "finance", new JSONObject().put("plan", "x"), modifiers));
+        // On a combined distinct id the parsed company is used
+        assertUserGroupMessage(hgBuilder.set(COMBINED, new JSONObject().put("plan", "x"), modifiers),
+                "acme", "user_123");
+    }
+
+    @Test
+    public void testWhitespaceCompanyIdModifierIsRejected() {
+        MixpanelIdentity userOnly = MixpanelIdentity.builder().userId("user_123").build();
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (String blank : Arrays.asList(" ", "  ", "\t\n")) {
+            JSONObject modifiers = new JSONObject().put("$company_id", blank);
+            assertThrows(IllegalArgumentException.class,
+                    () -> hgBuilder.groupSet("department", "finance", props, modifiers));
+            assertThrows(IllegalArgumentException.class, () -> hgBuilder.set(userOnly, props, modifiers));
+        }
+    }
+
+    @Test
+    public void testValidCompanyIdModifiersAreSent() {
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (Object valid : Arrays.asList("acme", " acme ", 7, 3190317L, new java.math.BigInteger("12345678901234567890"))) {
+            JSONObject message = hgBuilder.groupSet("department", "finance", props,
+                    new JSONObject().put("$company_id", valid)).getJSONObject("message");
+            assertEquals(String.valueOf(valid), message.get("$company_id"));
+            assertEquals("finance", message.getString("$group_id"));
+        }
+    }
+
+    @Test
+    public void testCompanyIdModifierIsNotValidatedForLegacy() {
+        for (Object any : Arrays.asList("", " ", new JSONObject().put("x", 1), true, 7)) {
+            JSONObject message = legacyBuilder.groupSet("company", "Acme", new JSONObject().put("plan", "x"),
+                    new JSONObject().put("$company_id", any)).getJSONObject("message");
+            assertEquals(any.toString(), message.get("$company_id").toString());
+            assertEquals(any.getClass(), message.get("$company_id").getClass());
+        }
+    }
+
+    @Test
+    public void testCombinedDistinctIdEventWithConflictingCompanyIsRejected() {
+        JSONObject props = new JSONObject().put("$company_id", "zz6");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.event(COMBINED, "Signup", props));
+        assertEquals("distinct_id " + COMBINED + " names company acme, but $company_id is zz6. Nothing sent",
+                e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.importEvent(COMBINED, "Signup", props));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.event(COMBINED, "Signup",
+                new JSONObject().put("$company_id", 7)));
+    }
+
+    @Test
+    public void testCombinedDistinctIdEventWithConflictingUserIsRejected() {
+        JSONObject props = new JSONObject().put("$user_id", "other");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.event(COMBINED, "Signup", props));
+        assertEquals("distinct_id " + COMBINED + " names user user_123, but $user_id is other. Nothing sent",
+                e.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.importEvent(COMBINED, "Signup", props));
+    }
+
+    @Test
+    public void testCombinedDistinctIdEventWithMatchingIdsIsSentUnchanged() {
+        String numeric = "$company:3190317|$user:3190316";
+        JSONObject props = new JSONObject().put("$company_id", 3190317).put("$user_id", "3190316").put("plan", "x");
+
+        for (JSONObject envelope : Arrays.asList(hgBuilder.event(numeric, "Signup", props),
+                hgBuilder.importEvent(numeric, "Signup", props))) {
+            JSONObject sent = eventProperties(envelope);
+            assertEquals(numeric, sent.getString("distinct_id"));
+            assertEquals(3190317, sent.get("$company_id"));
+            assertEquals("3190316", sent.get("$user_id"));
+            assertEquals("x", sent.get("plan"));
+        }
+    }
+
+    @Test
+    public void testNonCombinedDistinctIdEventKeepsAnyCompany() {
+        JSONObject props = new JSONObject().put("$company_id", "zz6").put("$user_id", "other");
+        for (String id : Arrays.asList("user_123", "$company:acme", "$company:acme|$user:")) {
+            JSONObject sent = eventProperties(hgBuilder.event(id, "Signup", props));
+            assertEquals(id, sent.getString("distinct_id"));
+            assertEquals("zz6", sent.getString("$company_id"));
+        }
+    }
+
+    @Test
+    public void testCombinedDistinctIdIdentityEventIsUnchanged() {
+        JSONObject sent = eventProperties(hgBuilder.event(MixpanelIdentity.builder().distinctId(COMBINED).build(),
+                "Signup", new JSONObject().put("$company_id", "zz6")));
+        assertEquals(COMBINED, sent.getString("distinct_id"));
+        assertEquals("zz6", sent.getString("$company_id"));
+    }
+
+    @Test
+    public void testCombinedDistinctIdConflictIsNotCheckedForLegacy() {
+        JSONObject props = new JSONObject().put("$company_id", "zz6").put("$user_id", "other");
+        JSONObject sent = eventProperties(legacyBuilder.event(COMBINED, "Signup", props));
+        assertEquals(COMBINED, sent.getString("distinct_id"));
+        assertEquals("zz6", sent.getString("$company_id"));
+        assertEquals("$company: |$user:u", eventProperties(legacyBuilder.event("$company: |$user:u", "Signup", null))
+                .getString("distinct_id"));
+        assertEquals("$company: |$user:u", legacyBuilder.set("$company: |$user:u", new JSONObject().put("a", 1))
+                .getJSONObject("message").getString("$distinct_id"));
+    }
+
+    @Test
+    public void testCombinedDistinctIdProfileWithConflictingCompanyModifierIsRejected() {
+        JSONObject props = new JSONObject().put("plan", "pro");
+        JSONObject modifiers = new JSONObject().put("$company_id", "zz6");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.set(COMBINED, props, modifiers));
+        assertEquals("distinct_id " + COMBINED + " names company acme, but $company_id is zz6. Nothing sent",
+                e.getMessage());
+        assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.peopleMessage(COMBINED, "$set", props, modifiers));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.peopleMessage("ignored", "$set", props,
+                new JSONObject().put("$distinct_id", COMBINED).put("$company_id", "zz6")));
+    }
+
+    @Test
+    public void testCombinedDistinctIdProfileWithMatchingCompanyModifierIsSent() {
+        assertUserGroupMessage(hgBuilder.set(COMBINED, new JSONObject().put("plan", "pro"),
+                new JSONObject().put("$company_id", "acme")), "acme", "user_123");
+        assertUserGroupMessage(hgBuilder.set("$company:7|$user:u", new JSONObject().put("plan", "pro"),
+                new JSONObject().put("$company_id", 7)), "7", "u");
+    }
+
+    @Test
+    public void testCombinedDistinctIdIdentityProfileIsUnchanged() {
+        assertUserGroupMessage(hgBuilder.set(MixpanelIdentity.builder().distinctId(COMBINED).build(),
+                new JSONObject().put("plan", "pro"), new JSONObject().put("$company_id", "zz6")),
+                "acme", "user_123");
+    }
+
+    @Test
+    public void testIdentityRejectsWhitespaceOnlyUserAndCompany() {
+        for (String blank : Arrays.asList(" ", "  ", "\t", "\u00a0")) {
+            assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().userId(blank));
+            assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().companyId(blank));
+        }
+        MixpanelIdentity padded = MixpanelIdentity.builder().userId(" u ").companyId(" c ").build();
+        assertEquals(" u ", padded.getUserId());
+        assertEquals(" c ", padded.getCompanyId());
+        assertEquals(" ", MixpanelIdentity.builder().distinctId(" ").build().getDistinctId());
+        assertEquals(" ", MixpanelIdentity.builder().deviceId(" ").build().getDeviceId());
+    }
+
+    @Test
+    public void testForCompanyRejectsWhitespaceOnly() {
+        for (MessageBuilder builder : Arrays.asList(hgBuilder, legacyBuilder)) {
+            assertThrows(IllegalArgumentException.class, () -> builder.forCompany(" "));
+            assertThrows(IllegalArgumentException.class, () -> builder.forCompany("\t "));
+        }
+        assertEquals(" acme ", hgBuilder.forCompany(" acme ")
+                .companySet(new JSONObject().put("a", 1)).getJSONObject("message").getString("$company_id"));
+    }
+
+    @Test
+    public void testCombinedDistinctIdWithWhitespaceOnlyPartIsRejected() {
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (String id : Arrays.asList("$company: |$user:u", "$company:c|$user:  ", "$company: |$user:")) {
+            if (!id.endsWith(":")) {
+                assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.event(id, "Signup", null));
+                assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.importEvent(id, "Signup", null));
+            }
+            assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.set(id, props));
         }
     }
 

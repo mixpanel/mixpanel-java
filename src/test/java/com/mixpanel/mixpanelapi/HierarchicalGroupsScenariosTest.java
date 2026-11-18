@@ -596,6 +596,52 @@ public class HierarchicalGroupsScenariosTest {
         assertNothingSent();
     }
 
+    // Track With Combined Distinct ID And Another Company (Unsupported)
+
+    @Test
+    public void testTrackWithCombinedDistinctIdAndAnotherCompanyIsUnsupported() {
+        assertThrows(IllegalArgumentException.class,
+                () -> mBuilder.event(COMBINED_DISTINCT_ID, "Signup", json("$company_id", "other_company")));
+        assertThrows(IllegalArgumentException.class,
+                () -> mBuilder.event(COMBINED_DISTINCT_ID, "Signup", json("$user_id", "other_user")));
+        assertNothingSent();
+    }
+
+    // Track With Combined Distinct ID And Matching Ids
+
+    @Test
+    public void testTrackWithCombinedDistinctIdAndMatchingIds() {
+        send(mBuilder.event(COMBINED_DISTINCT_ID, "Signup", json("$company_id", COMPANY_ID, "$user_id", USER_ID)));
+
+        JSONObject props = onlyTrack("Signup", "distinct_id", "$company_id", "$user_id");
+        assertEquals(COMBINED_DISTINCT_ID, props.getString("distinct_id"));
+        assertEquals(COMPANY_ID, props.getString("$company_id"));
+        assertEquals(USER_ID, props.getString("$user_id"));
+    }
+
+    // Set Custom Group Property With Invalid Company Modifier (Unsupported)
+
+    @Test
+    public void testSetCustomGroupPropertyWithInvalidCompanyModifierIsUnsupported() {
+        for (Object invalid : Arrays.asList(" ", json("x", 1))) {
+            assertThrows(IllegalArgumentException.class, () -> mBuilder.groupSet("team_id", TEAM_ID,
+                    json("name", "Platform"), json("$company_id", invalid)));
+        }
+        assertNothingSent();
+    }
+
+    // Whitespace-Only Ids (Unsupported)
+
+    @Test
+    public void testWhitespaceOnlyIdsAreUnsupported() {
+        assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().userId("  ").companyId(COMPANY_ID));
+        assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().userId(USER_ID).companyId(" "));
+        assertThrows(IllegalArgumentException.class, () -> mBuilder.forCompany(" "));
+        assertThrows(IllegalArgumentException.class, () -> mBuilder.event("$company: |$user:" + USER_ID, "Signup", null));
+        assertThrows(IllegalArgumentException.class, () -> mBuilder.set("$company: |$user:  ", json("plan", "pro")));
+        assertNothingSent();
+    }
+
     // Company Identity Without Hierarchical Groups (Unsupported)
 
     @Test

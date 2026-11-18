@@ -1,5 +1,6 @@
 package com.mixpanel.mixpanelapi;
 
+import java.math.BigInteger;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -103,10 +104,14 @@ public class MessageBuilder {
      *
      * @param companyId the id of the top-level company
      * @return a new MessageBuilder bound to the given company
+     * @throws IllegalArgumentException if companyId is null, empty or only whitespace
      */
     public MessageBuilder forCompany(String companyId) {
         if (companyId == null || companyId.isEmpty()) {
             throw new IllegalArgumentException("companyId must be non-empty");
+        }
+        if (MixpanelIdentity.isBlank(companyId)) {
+            throw new IllegalArgumentException("companyId must not be only whitespace");
         }
         return new MessageBuilder(mToken, mHierarchicalGroups, companyId);
     }
@@ -132,8 +137,17 @@ public class MessageBuilder {
      *           { 'ExceptionType' : 'OutOfMemory' }), but also properties associated with the
      *           identified user (for example { 'MemberSince' : '2012-01-10' } or { 'TotalMemory' : '10TB' })
      * @return event message for consumption by MixpanelAPI
+     * @throws IllegalArgumentException on a hierarchical groups project, if the distinct id is of the
+     *           form {@code $company:{company}|$user:{user}} and properties carry a {@code $company_id}
+     *           or {@code $user_id} that names a different company or user, or if its company or user
+     *           is only whitespace
      */
     public JSONObject event(String distinctId, String eventName, JSONObject properties) {
+        requireCombinedDistinctIdMatchesProperties(distinctId, properties);
+        return buildEvent(distinctId, eventName, properties);
+    }
+
+    private JSONObject buildEvent(String distinctId, String eventName, JSONObject properties) {
         long time = System.currentTimeMillis();
 
         // Nothing below should EVER throw a JSONException.
@@ -184,7 +198,7 @@ public class MessageBuilder {
      */
     public JSONObject event(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
-        return event(identity.getDistinctId(), eventName, withIdentity(identity, properties));
+        return buildEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
     /**
@@ -202,7 +216,7 @@ public class MessageBuilder {
      */
     public JSONObject importEvent(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
-        return importEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
+        return buildImportEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
     /**
@@ -217,6 +231,33 @@ public class MessageBuilder {
         if (identity.isHierarchical() && !mHierarchicalGroups) {
             throw new IllegalArgumentException(identity + " requires a hierarchical groups MessageBuilder: "
                     + "new MessageBuilder(token, true)");
+        }
+    }
+
+    /**
+     * Ingestion resolves an event with a combined distinct id and a {@code $company_id} property to
+     * that company alone, silently dropping the user, so a combined distinct id must agree with the
+     * {@code $company_id} and {@code $user_id} sent beside it. Any other distinct id is sent as given.
+     */
+    private void requireCombinedDistinctIdMatchesProperties(String distinctId, JSONObject properties) {
+        if (!mHierarchicalGroups) {
+            return;
+        }
+        MixpanelIdentity combined = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        if (combined == null || properties == null) {
+            return;
+        }
+        requireCombinedPartMatches(distinctId, "company", combined.getCompanyId(), "$company_id",
+                properties.opt("$company_id"));
+        requireCombinedPartMatches(distinctId, "user", combined.getUserId(), "$user_id",
+                properties.opt("$user_id"));
+    }
+
+    private static void requireCombinedPartMatches(String distinctId, String part, String expected, String key,
+                                                   Object value) {
+        if (value != null && !JSONObject.NULL.equals(value) && !expected.equals(String.valueOf(value))) {
+            throw new IllegalArgumentException("distinct_id " + distinctId + " names " + part + " " + expected
+                    + ", but " + key + " is " + value + ". Nothing sent");
         }
     }
 
@@ -246,8 +287,15 @@ public class MessageBuilder {
      *           - "time": timestamp in milliseconds since epoch (defaults to current time)
      *           - "$insert_id": unique identifier for deduplication (auto-generated if not provided)
      * @return import event message for consumption by MixpanelAPI
+     * @throws IllegalArgumentException on a hierarchical groups project, as for
+     *           {@link #event(String, String, JSONObject)}
      */
     public JSONObject importEvent(String distinctId, String eventName, JSONObject properties) {
+        requireCombinedDistinctIdMatchesProperties(distinctId, properties);
+        return buildImportEvent(distinctId, eventName, properties);
+    }
+
+    private JSONObject buildImportEvent(String distinctId, String eventName, JSONObject properties) {
         long time = System.currentTimeMillis();
         
         // Nothing below should EVER throw a JSONException.
@@ -735,7 +783,7 @@ public class MessageBuilder {
         if (identity.getDistinctId() != null) {
             // On a hierarchical groups builder peopleMessage parses a distinct id Mixpanel built into
             // its company and user, so this reaches the same /groups profile as the hierarchical form.
-            return peopleMessage(identity.getDistinctId(), actionType, properties, modifiers);
+            return peopleMessage(identity.getDistinctId(), actionType, properties, modifiers, false);
         }
         if (!mHierarchicalGroups) {
             throw new IllegalArgumentException(identity + " cannot identify a profile on this project. "
@@ -843,6 +891,15 @@ public class MessageBuilder {
      * @see MessageBuilder#append(String distinctId, JSONObject properties, JSONObject modifiers)
      */
     public JSONObject peopleMessage(String distinctId, String actionType, Object properties, JSONObject modifiers) {
+        return peopleMessage(distinctId, actionType, properties, modifiers, true);
+    }
+
+    /**
+     * @param checkCombinedConflicts false for a {@link MixpanelIdentity} distinct id, whose company and
+     *           user win over modifiers as the identity's keys do
+     */
+    private JSONObject peopleMessage(String distinctId, String actionType, Object properties, JSONObject modifiers,
+                                     boolean checkCombinedConflicts) {
         if (mHierarchicalGroups && !GROUP_OPERATIONS.contains(actionType)) {
             // A hierarchical groups user profile is a group profile, so it supports what /groups
             // supports. $add and $append have no equivalent there, and no other call reaches them.
@@ -854,7 +911,8 @@ public class MessageBuilder {
         if (mHierarchicalGroups) {
             // Checked before the distinct id, as the actionType is.
             requireSupportedModifiers(modifiers);
-            return hierarchicalUserProfileMessage(distinctId, actionType, properties, modifiers);
+            return hierarchicalUserProfileMessage(distinctId, actionType, properties, modifiers,
+                    checkCombinedConflicts);
         }
         JSONObject dataObj = new JSONObject();
         if (null == properties) {
@@ -894,10 +952,12 @@ public class MessageBuilder {
      * A hierarchical groups user profile is the {@code $user_id} group profile within the user's
      * company, so a user profile update never goes to {@code /engage}. The message's distinct id
      * (a {@code $distinct_id} modifier, if given, replaces the argument just as it would in the
-     * message) must be one Mixpanel built, which names both the user and the company.
+     * message) must be one Mixpanel built, which names both the user and the company. A
+     * {@code $company_id} modifier that names a different company is refused rather than silently
+     * overwritten. ({@code $user_id} is not a modifier: requireSupportedModifiers refuses it.)
      */
     private JSONObject hierarchicalUserProfileMessage(String distinctId, String actionType, Object properties,
-                                                      JSONObject modifiers) {
+                                                      JSONObject modifiers, boolean checkCombinedConflicts) {
         JSONObject groupModifiers = modifiers;
         if (modifiers != null && modifiers.has("$distinct_id")) {
             Object override = modifiers.opt("$distinct_id");
@@ -911,6 +971,11 @@ public class MessageBuilder {
                     + "and a company, and the distinct id \"" + distinctId + "\" does not name both. Pass "
                     + "MixpanelIdentity.builder().userId(userId).companyId(companyId).build(), or a distinct id "
                     + "of the form $company:{company}|$user:{user}.");
+        }
+        if (checkCombinedConflicts && groupModifiers != null) {
+            requireCompanyIdModifierIsValid(groupModifiers);
+            requireCombinedPartMatches(distinctId, "company", identity.getCompanyId(), "$company_id",
+                    hasCompanyIdModifier(groupModifiers) ? groupModifiers.opt("$company_id") : null);
         }
         requireBoundCompany(identity.getCompanyId(), "\"" + distinctId + "\"");
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, groupModifiers,
@@ -1386,6 +1451,7 @@ public class MessageBuilder {
                                          JSONObject modifiers, String companyId) {
         if (mHierarchicalGroups) {
             requireSupportedModifiers(modifiers);
+            requireCompanyIdModifierIsValid(modifiers);
         }
         if (mHierarchicalGroups && companyId == null && !hasCompanyIdModifier(modifiers)) {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
@@ -1420,6 +1486,10 @@ public class MessageBuilder {
                       dataObj.put(key, modifiers.get(key));
                   }
                 }
+            }
+            // A numeric $company_id modifier is written as a string, as a bound company is.
+            if (mHierarchicalGroups && companyId == null && hasCompanyIdModifier(modifiers)) {
+                dataObj.put("$company_id", String.valueOf(modifiers.get("$company_id")));
             }
             // $company_id must be top-level, not inside the operation payload
             if (companyId != null) {
@@ -1466,6 +1536,34 @@ public class MessageBuilder {
             throw new IllegalArgumentException("Group $company_id=" + groupId + " does not match company "
                     + company + ". A company profile is updated through forCompany(" + groupId
                     + ").companySet and the other company methods. Nothing sent");
+        }
+    }
+
+    /**
+     * A {@code $company_id} modifier names a company with a string or an integer id. Ingestion
+     * accepts any value without validation, so anything else, or a whitespace-only string, is
+     * refused rather than creating a junk company. An empty string or JSONObject.NULL names no
+     * company (see {@link #hasCompanyIdModifier}).
+     */
+    private static void requireCompanyIdModifierIsValid(JSONObject modifiers) {
+        if (modifiers == null) {
+            return;
+        }
+        Object companyId = modifiers.opt("$company_id");
+        if (companyId == null || JSONObject.NULL.equals(companyId)) {
+            return;
+        }
+        if (companyId instanceof String) {
+            if (MixpanelIdentity.isBlank((String) companyId)) {
+                throw new IllegalArgumentException("$company_id modifier \"" + companyId
+                        + "\" is only whitespace. Nothing sent");
+            }
+            return;
+        }
+        if (!(companyId instanceof Integer || companyId instanceof Long || companyId instanceof Short
+                || companyId instanceof Byte || companyId instanceof BigInteger)) {
+            throw new IllegalArgumentException("$company_id modifier must be a string or an integer, not "
+                    + companyId.getClass().getSimpleName() + " " + companyId + ". Nothing sent");
         }
     }
 
