@@ -14,7 +14,9 @@ public interface EventSender {
     /**
      * Sends an event with the specified properties.
      *
-     * @param distinctId the user's distinct ID
+     * @param distinctId the user's distinct ID; on a hierarchical groups provider this can be
+     *                   null when the exposure is attributed by {@code $user_id}/{@code $company_id}
+     *                   in the properties
      * @param eventName the name of the event (e.g., "$experiment_started")
      * @param properties the event properties as a JSONObject
      */

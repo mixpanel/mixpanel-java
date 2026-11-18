@@ -286,6 +286,33 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         assertFalse(result);
     }
 
+    @Test
+    public void testSubclassOverridingStringTrackExposureIsInvokedWithoutHierarchicalGroups() {
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "test-value");
+        final List<String> overrideCalls = new ArrayList<>();
+        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender) {
+            @Override
+            protected void trackExposure(String distinctId, String flagKey, String variantKey,
+                                         String evaluationMode, java.util.function.Consumer<JSONObject> addTimingProperties,
+                                         UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+                overrideCalls.add(distinctId + ":" + flagKey + ":" + variantKey + ":" + evaluationMode);
+                super.trackExposure(distinctId, flagKey, variantKey, evaluationMode,
+                    addTimingProperties, experimentId, isExperimentActive, isQaTester);
+            }
+        };
+        provider.setMockResponse("/flags", response);
+
+        provider.getVariantValue("test-flag", "fallback", buildContext("user-123"));
+
+        assertEquals(Collections.singletonList("user-123:test-flag:variant-a:remote"), overrideCalls);
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertEquals("user-123", event.distinctId);
+        assertEquals("test-flag", event.properties.getString("Experiment name"));
+        assertFalse(event.properties.has("$user_id"));
+        assertFalse(event.properties.has("$company_id"));
+    }
+
     // #endregion
 
     // #region Hierarchical Groups

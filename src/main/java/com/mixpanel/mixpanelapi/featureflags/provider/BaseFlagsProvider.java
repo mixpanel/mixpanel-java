@@ -225,30 +225,57 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     }
 
     /**
-     * Common helper method for tracking exposure events. For hierarchical groups the
-     * event carries $user_id and $company_id instead of distinct_id.
+     * Common helper method for tracking exposure events.
+     */
+    protected void trackExposure(String distinctId, String flagKey, String variantKey,
+                                 String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                                 UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        sendExposure(distinctId, new JSONObject(), flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    /**
+     * Tracks an exposure event for a flag context. For hierarchical groups the event carries
+     * $user_id and $company_id instead of distinct_id. Without hierarchical groups this calls
+     * {@link #trackExposure(String, String, String, String, Consumer, UUID, Boolean, Boolean)}
+     * with the context's distinct_id, so subclasses overriding that method still take effect.
      */
     protected void trackExposure(Map<String, Object> context, String flagKey, String variantKey,
                                  String evaluationMode, Consumer<JSONObject> addTimingProperties,
                                  UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        if (!config.isHierarchicalGroups()) {
+            Object distinctIdObj = context.get("distinct_id");
+            trackExposure(distinctIdObj != null ? distinctIdObj.toString() : null, flagKey, variantKey,
+                evaluationMode, addTimingProperties, experimentId, isExperimentActive, isQaTester);
+            return;
+        }
+        JSONObject identity = new JSONObject();
+        String distinctId;
         try {
-            JSONObject properties = new JSONObject();
-            if (config.isHierarchicalGroups()) {
-                // Carry whichever identity keys the caller sent; Mixpanel resolves the user
-                // from the pair, or from a distinct id it built itself.
-                Object userId = context.get("$user_id");
-                if (isPresent(userId)) {
-                    properties.put("$user_id", userId.toString());
-                }
-                Object companyId = context.get("$company_id");
-                if (isPresent(companyId)) {
-                    properties.put("$company_id", companyId.toString());
-                }
+            // Carry whichever identity keys the caller sent; Mixpanel resolves the user
+            // from the pair, or from a distinct id it built itself.
+            Object userId = context.get("$user_id");
+            if (isPresent(userId)) {
+                identity.put("$user_id", userId.toString());
+            }
+            Object companyId = context.get("$company_id");
+            if (isPresent(companyId)) {
+                identity.put("$company_id", companyId.toString());
             }
             Object distinctIdObj = context.get("distinct_id");
-            // Without hierarchical groups any distinct id is sent as given, as before
-            boolean hasDistinctId = config.isHierarchicalGroups() ? isPresent(distinctIdObj) : distinctIdObj != null;
-            String distinctId = hasDistinctId ? distinctIdObj.toString() : null;
+            distinctId = isPresent(distinctIdObj) ? distinctIdObj.toString() : null;
+        } catch (Exception e) {
+            getLogger().log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
+            return;
+        }
+        sendExposure(distinctId, identity, flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    private void sendExposure(String distinctId, JSONObject properties, String flagKey, String variantKey,
+                              String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                              UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        try {
             properties.put("Experiment name", flagKey);
             properties.put("Variant name", variantKey);
             properties.put("$experiment_type", "feature_flag");
