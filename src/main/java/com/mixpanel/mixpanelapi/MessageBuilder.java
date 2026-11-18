@@ -28,6 +28,7 @@ public class MessageBuilder {
 
     private static final String ENGAGE_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
     private static final String USER_ID_GROUP_KEY = "$user_id";
+    private static final String COMPANY_ID_GROUP_KEY = "$company_id";
     // /groups has no $add, $append or $merge
     private static final Set<String> GROUP_OPERATIONS = Collections.unmodifiableSet(new LinkedHashSet<>(
             Arrays.asList("$set", "$set_once", "$unset", "$union", "$remove", "$delete")));
@@ -96,6 +97,9 @@ public class MessageBuilder {
      * User profile updates made with a {@link MixpanelIdentity} use the identity's own company and do
      * not need a bound company; a bound builder throws {@link IllegalArgumentException} for a user
      * from another company, and updates a user-only identity's profile within the bound company.
+     * A bound builder also throws {@link IllegalArgumentException} for a {@code $company_id} group
+     * whose group id is not the bound company, since the top-level {@code $company_id} decides which
+     * company profile is written.
      *
      * @param companyId the id of the top-level company
      * @return a new MessageBuilder bound to the given company
@@ -1355,7 +1359,9 @@ public class MessageBuilder {
      *           be merged as modifiers associated with the update message (for example, "$time" or "$ignore_time")
      * @return generic group profile message for consumption by MixpanelAPI
      *
-     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property
+     * @throws IllegalArgumentException if properties is not intelligible as a JSONObject property, or on a
+     *           hierarchical groups builder when groupKey is {@code $company_id} and groupId differs from the
+     *           company (the bound company, else the {@code $company_id} modifier)
      * @throws IllegalStateException for hierarchical groups projects when no company is known
      * @throws UnsupportedOperationException on a hierarchical groups builder, for an operation /groups lacks
      *           (anything but $set, $set_once, $unset, $union, $remove or $delete), whether as the actionType
@@ -1385,6 +1391,10 @@ public class MessageBuilder {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
                     + "company. Use forCompany(companyId) to build them. Nothing to send for group "
                     + groupKey + "=" + groupId);
+        }
+        if (mHierarchicalGroups && COMPANY_ID_GROUP_KEY.equals(groupKey)) {
+            requireCompanyGroupMatchesCompany(groupId, companyId != null ? companyId
+                    : hasCompanyIdModifier(modifiers) ? modifiers.opt("$company_id") : null);
         }
         JSONObject dataObj = new JSONObject();
         if (null == properties) {
@@ -1444,6 +1454,18 @@ public class MessageBuilder {
                         + "hierarchical groups projects, whose user profiles are group profiles keyed by $user_id. "
                         + "Supported operations are " + GROUP_OPERATIONS + ".");
             }
+        }
+    }
+
+    /**
+     * The service writes a {@code $company_id} group update to the profile of the top-level
+     * {@code $company_id}, not the group id, so a mismatch would silently update the wrong company.
+     */
+    private static void requireCompanyGroupMatchesCompany(String groupId, Object company) {
+        if (company != null && !String.valueOf(company).equals(groupId)) {
+            throw new IllegalArgumentException("Group $company_id=" + groupId + " does not match company "
+                    + company + ". A company profile is updated through forCompany(" + groupId
+                    + ").companySet and the other company methods. Nothing sent");
         }
     }
 

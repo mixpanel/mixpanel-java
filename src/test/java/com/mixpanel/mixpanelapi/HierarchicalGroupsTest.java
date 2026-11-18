@@ -857,6 +857,103 @@ public class HierarchicalGroupsTest {
         }
     }
 
+    /** Every group method with key $company_id and group id globex, in the order set, setOnce, delete,
+     *  remove, union, unset, then the generic groupMessage. */
+    private static List<Function<MessageBuilder, JSONObject>> globexCompanyGroupCalls(JSONObject modifiers) {
+        JSONObject props = new JSONObject().put("plan", "pro");
+        Map<String, JSONArray> union = Collections.singletonMap("tags", new JSONArray().put("a"));
+        List<String> unset = Arrays.asList("plan");
+        return Arrays.asList(
+            b -> b.groupSet("$company_id", "globex", props, modifiers),
+            b -> b.groupSetOnce("$company_id", "globex", props, modifiers),
+            b -> b.groupDelete("$company_id", "globex", modifiers),
+            b -> b.groupRemove("$company_id", "globex", props, modifiers),
+            b -> b.groupUnion("$company_id", "globex", union, modifiers),
+            b -> b.groupUnset("$company_id", "globex", unset, modifiers),
+            b -> b.groupMessage("$company_id", "globex", "$set", props, modifiers));
+    }
+
+    private static void assertCompanyGroupMismatchRejected(MessageBuilder builder, JSONObject modifiers,
+                                                           String company) {
+        for (Function<MessageBuilder, JSONObject> call : globexCompanyGroupCalls(modifiers)) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> call.apply(builder));
+            assertTrue(e.getMessage(), e.getMessage().contains("$company_id=globex"));
+            assertTrue(e.getMessage(), e.getMessage().contains("company " + company));
+            assertTrue(e.getMessage(), e.getMessage().contains("forCompany(globex)"));
+            assertTrue(e.getMessage(), e.getMessage().endsWith("Nothing sent"));
+        }
+    }
+
+    @Test
+    public void testCompanyGroupWithAnotherBoundCompanyIsRejected() {
+        // The service writes a $company_id group update to the top-level $company_id's profile.
+        assertCompanyGroupMismatchRejected(hgBuilder.forCompany("acme"), null, "acme");
+        assertCompanyGroupMismatchRejected(hgBuilder.forCompany("acme"),
+            new JSONObject().put("$company_id", "globex"), "acme");
+    }
+
+    @Test
+    public void testCompanyGroupWithAnotherCompanyIdModifierIsRejected() {
+        assertCompanyGroupMismatchRejected(hgBuilder, new JSONObject().put("$company_id", "acme"), "acme");
+    }
+
+    @Test
+    public void testGenericCompanyGroupMessageWithAnotherCompanyIsRejected() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+            () -> hgBuilder.forCompany("acme").groupMessage("$company_id", "globex", "$set_once",
+                new JSONObject().put("plan", "pro"), null));
+        assertEquals("Group $company_id=globex does not match company acme. A company profile is updated "
+            + "through forCompany(globex).companySet and the other company methods. Nothing sent", e.getMessage());
+    }
+
+    @Test
+    public void testCompanyGroupMatchingBoundCompanyIsSentUnchanged() {
+        JSONObject modifiers = new JSONObject().put("$time", 1234567890L);
+        JSONObject envelope = hgBuilder.forCompany("globex")
+            .groupSet("$company_id", "globex", new JSONObject().put("plan", "pro"), modifiers);
+
+        JSONObject expected = new JSONObject()
+            .put("envelope_version", 1)
+            .put("message_type", "group")
+            .put("message", new JSONObject()
+                .put("$set", new JSONObject().put("plan", "pro"))
+                .put("$token", TOKEN)
+                .put("$group_key", "$company_id")
+                .put("$group_id", "globex")
+                .put("$time", 1234567890L)
+                .put("$company_id", "globex"));
+        assertTrue(envelope.toString(), expected.similar(envelope));
+    }
+
+    @Test
+    public void testCompanyGroupMatchingCompanyIdModifierIsSent() {
+        JSONObject message = hgBuilder.groupSet("$company_id", "globex", new JSONObject().put("plan", "pro"),
+            new JSONObject().put("$company_id", "globex")).getJSONObject("message");
+
+        assertEquals("globex", message.getString("$group_id"));
+        assertEquals("globex", message.getString("$company_id"));
+    }
+
+    @Test
+    public void testCompanyGroupComparesNumericCompanyIdModifierAsString() {
+        JSONObject message = hgBuilder.groupSet("$company_id", "7", new JSONObject().put("plan", "pro"),
+            new JSONObject().put("$company_id", 7)).getJSONObject("message");
+
+        assertEquals("7", message.getString("$group_id"));
+        assertEquals(7, message.get("$company_id"));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.groupSet("$company_id", "8",
+            new JSONObject().put("plan", "pro"), new JSONObject().put("$company_id", 7)));
+    }
+
+    @Test
+    public void testCompanyGroupMismatchUnchangedForLegacy() {
+        for (Function<MessageBuilder, JSONObject> call : globexCompanyGroupCalls(null)) {
+            JSONObject message = call.apply(legacyBuilder.forCompany("acme")).getJSONObject("message");
+            assertEquals("globex", message.getString("$group_id"));
+            assertEquals("acme", message.getString("$company_id"));
+        }
+    }
+
     // #endregion
     // #region Flag context
 
