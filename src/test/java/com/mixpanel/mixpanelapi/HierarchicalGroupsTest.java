@@ -1284,6 +1284,76 @@ public class HierarchicalGroupsTest {
         }
     }
 
+    @Test
+    public void testIdentityWithCombinedDistinctIdNamingAnotherUserIsRejected() {
+        String id = "$company:acme|$user:old";
+        MixpanelIdentity identity = MixpanelIdentity.builder().distinctId(id).userId("new").companyId("acme").build();
+        String expected = "distinct_id " + id + " names user old, but user_id is new. Nothing sent";
+        JSONObject props = new JSONObject().put("plan", "pro");
+        List<ThrowingRunnable> calls = Arrays.asList(
+            () -> hgBuilder.set(identity, props),
+            () -> hgBuilder.setOnce(identity, props),
+            () -> hgBuilder.unset(identity, Collections.singletonList("plan")),
+            () -> hgBuilder.remove(identity, props),
+            () -> hgBuilder.union(identity, Collections.singletonMap("tags", new JSONArray().put("a"))),
+            () -> hgBuilder.delete(identity),
+            () -> hgBuilder.event(identity, "Signup", null),
+            () -> hgBuilder.importEvent(identity, "Signup", null));
+        for (ThrowingRunnable call : calls) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, call);
+            assertEquals(expected, e.getMessage());
+        }
+    }
+
+    @Test
+    public void testIdentityWithCombinedDistinctIdNamingAnotherCompanyIsRejected() {
+        String expected = "distinct_id " + COMBINED + " names company acme, but company_id is zz6. Nothing sent";
+        for (MixpanelIdentity identity : Arrays.asList(
+                MixpanelIdentity.builder().distinctId(COMBINED).userId("user_123").companyId("zz6").build(),
+                MixpanelIdentity.builder().distinctId(COMBINED).companyId("zz6").build())) {
+            List<ThrowingRunnable> calls = Arrays.asList(
+                () -> hgBuilder.set(identity, new JSONObject().put("plan", "pro")),
+                () -> hgBuilder.delete(identity),
+                () -> hgBuilder.event(identity, "Signup", null),
+                () -> hgBuilder.importEvent(identity, "Signup", null));
+            for (ThrowingRunnable call : calls) {
+                IllegalArgumentException e = assertThrows(IllegalArgumentException.class, call);
+                assertEquals(expected, e.getMessage());
+            }
+        }
+    }
+
+    @Test
+    public void testIdentityWithAgreeingCombinedDistinctIdIsSent() {
+        String numeric = "$company:3190317|$user:3190316";
+        for (MixpanelIdentity identity : Arrays.asList(
+                MixpanelIdentity.builder().distinctId(numeric).userId("3190316").companyId("3190317").build(),
+                MixpanelIdentity.builder().distinctId(numeric).userId("3190316").build(),
+                MixpanelIdentity.builder().distinctId(numeric).companyId("3190317").build())) {
+            assertUserGroupMessage(hgBuilder.set(identity, new JSONObject().put("plan", "pro")), "3190317", "3190316");
+            assertUserGroupMessage(hgBuilder.delete(identity), "3190317", "3190316");
+            JSONObject sent = eventProperties(hgBuilder.event(identity, "Signup", null));
+            assertEquals(numeric, sent.getString("distinct_id"));
+            assertEquals(numeric, eventProperties(hgBuilder.importEvent(identity, "Signup", null))
+                    .getString("distinct_id"));
+        }
+        // A plain distinct id beside a user and company is not a combined id, so nothing is compared.
+        MixpanelIdentity plain = MixpanelIdentity.builder().distinctId("old").userId("new").companyId("acme").build();
+        assertEquals("old", eventProperties(hgBuilder.event(plain, "Signup", null)).getString("distinct_id"));
+    }
+
+    @Test
+    public void testIdentityDistinctIdConflictIsNotCheckedForLegacy() {
+        String id = "$company:acme|$user:old";
+        MixpanelIdentity identity = MixpanelIdentity.builder().distinctId(id).userId("new").build();
+        assertEquals(id, legacyBuilder.set(identity, new JSONObject().put("plan", "pro"))
+                .getJSONObject("message").getString("$distinct_id"));
+        assertEquals(id, legacyBuilder.delete(identity).getJSONObject("message").getString("$distinct_id"));
+        JSONObject sent = eventProperties(legacyBuilder.event(identity, "Signup", null));
+        assertEquals(id, sent.getString("distinct_id"));
+        assertEquals("new", sent.getString("$user_id"));
+    }
+
     // #endregion
     // #region Flag context
 

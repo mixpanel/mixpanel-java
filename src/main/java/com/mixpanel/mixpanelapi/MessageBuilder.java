@@ -198,7 +198,7 @@ public class MessageBuilder {
      */
     public JSONObject event(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
-        requireCombinedDistinctIdHasNoBlankPart(identity.getDistinctId());
+        requireIdentityDistinctIdAgrees(identity);
         return buildEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
@@ -217,7 +217,7 @@ public class MessageBuilder {
      */
     public JSONObject importEvent(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
-        requireCombinedDistinctIdHasNoBlankPart(identity.getDistinctId());
+        requireIdentityDistinctIdAgrees(identity);
         return buildImportEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
@@ -238,12 +238,23 @@ public class MessageBuilder {
 
     /**
      * A distinct id of the form {@code $company:{company}|$user:{user}} with an empty or
-     * whitespace-only part becomes a junk user, so it is refused rather than sent.
+     * whitespace-only part becomes a junk user, so it is refused rather than sent. Profile
+     * messages target the identity's distinct id while events resolve to its {@code $user_id}
+     * and {@code $company_id}, so a combined distinct id that names a different user or company
+     * than the identity's own ids is refused too.
      */
-    private void requireCombinedDistinctIdHasNoBlankPart(String distinctId) {
-        if (mHierarchicalGroups) {
-            MixpanelIdentity.fromCombinedDistinctId(distinctId);
+    private void requireIdentityDistinctIdAgrees(MixpanelIdentity identity) {
+        if (!mHierarchicalGroups) {
+            return;
         }
+        String distinctId = identity.getDistinctId();
+        MixpanelIdentity combined = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        if (combined == null) {
+            return;
+        }
+        requireCombinedPartMatches(distinctId, "user", combined.getUserId(), "user_id", identity.getUserId());
+        requireCombinedPartMatches(distinctId, "company", combined.getCompanyId(), "company_id",
+                identity.getCompanyId());
     }
 
     /**
@@ -792,6 +803,7 @@ public class MessageBuilder {
     private JSONObject profileMessage(MixpanelIdentity identity, String actionType, Object properties,
                                       JSONObject modifiers) {
         requireIdentityMatchesProject(identity);
+        requireIdentityDistinctIdAgrees(identity);
         if (mHierarchicalGroups) {
             // The identity names the profile, so a $distinct_id modifier may not name another one.
             requireModifierMatches(modifiers, "$distinct_id", identity.getDistinctId());
