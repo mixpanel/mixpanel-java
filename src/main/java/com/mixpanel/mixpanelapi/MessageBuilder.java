@@ -792,6 +792,10 @@ public class MessageBuilder {
     private JSONObject profileMessage(MixpanelIdentity identity, String actionType, Object properties,
                                       JSONObject modifiers) {
         requireIdentityMatchesProject(identity);
+        if (mHierarchicalGroups) {
+            // The identity names the profile, so a $distinct_id modifier may not name another one.
+            requireModifierMatches(modifiers, "$distinct_id", identity.getDistinctId());
+        }
         if (identity.getDistinctId() != null) {
             // On a hierarchical groups builder peopleMessage parses a distinct id Mixpanel built into
             // its company and user, so this reaches the same /groups profile as the hierarchical form.
@@ -1463,6 +1467,9 @@ public class MessageBuilder {
                                          JSONObject modifiers, String companyId) {
         if (mHierarchicalGroups) {
             requireSupportedModifiers(modifiers);
+            requireModifierMatches(modifiers, "$token", mToken);
+            requireModifierMatches(modifiers, "$group_key", groupKey);
+            requireModifierMatches(modifiers, "$group_id", groupId);
             requireCompanyIdModifierIsValid(modifiers);
         }
         if (mHierarchicalGroups && companyId == null && !hasCompanyIdModifier(modifiers)) {
@@ -1536,6 +1543,24 @@ public class MessageBuilder {
                         + "hierarchical groups projects, whose user profiles are group profiles keyed by $user_id. "
                         + "Supported operations are " + GROUP_OPERATIONS + ".");
             }
+        }
+    }
+
+    /**
+     * Modifiers are copied over the message's own keys, so on a hierarchical groups builder a
+     * modifier naming a different token, group key, group id or distinct id than the message's would
+     * silently send the update to another profile. Such a modifier is refused; one that repeats the
+     * message's value changes nothing and is allowed.
+     */
+    private static void requireModifierMatches(JSONObject modifiers, String key, String expected) {
+        if (modifiers == null || !modifiers.has(key)) {
+            return;
+        }
+        Object value = modifiers.opt(key);
+        if (expected == null || !expected.equals(value)) {
+            throw new IllegalArgumentException(key + " modifier " + value + " does not match the message's "
+                    + key + " " + expected + ", and would send the update to a different profile. "
+                    + "Nothing sent");
         }
     }
 

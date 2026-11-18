@@ -963,6 +963,91 @@ public class HierarchicalGroupsTest {
     }
 
     // #endregion
+    // #region Retargeting modifiers
+
+    @Test
+    public void testGroupKeyModifierCannotRetargetUserProfileDeletion() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.delete(user, new JSONObject().put("$group_key", "$company_id")));
+        assertTrue(e.getMessage(), e.getMessage().startsWith("$group_key modifier"));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.forCompany("acme")
+                .delete(MixpanelIdentity.builder().userId("user_123").build(),
+                        new JSONObject().put("$group_key", "$company_id")));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.delete(COMBINED,
+                new JSONObject().put("$group_key", "$company_id")));
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.peopleMessage(COMBINED, "$delete",
+                new JSONObject(), new JSONObject().put("$group_key", "$company_id")));
+    }
+
+    @Test
+    public void testRetargetingModifiersAreRefusedOnEveryHierarchicalProfilePath() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+        MessageBuilder acme = hgBuilder.forCompany("acme");
+        JSONObject props = new JSONObject().put("plan", "pro");
+        List<JSONObject> retargets = Arrays.asList(
+                new JSONObject().put("$group_id", "user_456"),
+                new JSONObject().put("$group_key", "team"),
+                new JSONObject().put("$token", "other-token"));
+        for (JSONObject modifiers : retargets) {
+            String key = JSONObject.getNames(modifiers)[0];
+            List<ThrowingRunnable> calls = Arrays.asList(
+                    () -> hgBuilder.set(user, props, modifiers),
+                    () -> hgBuilder.set(COMBINED, props, modifiers),
+                    () -> hgBuilder.peopleMessage(COMBINED, "$set", props, modifiers),
+                    () -> acme.groupSet("department", "finance", props, modifiers),
+                    () -> acme.groupMessage("department", "finance", "$set", props, modifiers),
+                    () -> acme.companySet(props, modifiers),
+                    () -> acme.companyDelete(modifiers));
+            for (ThrowingRunnable call : calls) {
+                IllegalArgumentException e = assertThrows(key + " call " + calls.indexOf(call),
+                        IllegalArgumentException.class, call);
+                assertTrue(e.getMessage(), e.getMessage().startsWith(key + " modifier"));
+            }
+        }
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.set(user, props, new JSONObject().put("$distinct_id", COMBINED)));
+        assertTrue(e.getMessage(), e.getMessage().startsWith("$distinct_id modifier"));
+        MixpanelIdentity combined = MixpanelIdentity.builder().distinctId(COMBINED).build();
+        assertThrows(IllegalArgumentException.class, () -> hgBuilder.set(combined, props,
+                new JSONObject().put("$distinct_id", "$company:acme|$user:user_456")));
+    }
+
+    @Test
+    public void testOrdinaryModifiersStillBuildOnHierarchicalProfiles() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+        JSONObject modifiers = new JSONObject().put("$ip", "1.2.3.4").put("$time", 1L).put("$ignore_time", true)
+                .put("$company_id", "acme");
+        JSONObject envelope = hgBuilder.delete(user, modifiers);
+        assertUserGroupMessage(envelope, "acme", "user_123");
+        JSONObject message = envelope.getJSONObject("message");
+        assertEquals("1.2.3.4", message.getString("$ip"));
+        assertEquals(1L, message.getLong("$time"));
+        assertTrue(message.getBoolean("$ignore_time"));
+        assertUserGroupMessage(hgBuilder.set(COMBINED, new JSONObject().put("plan", "pro"), modifiers),
+                "acme", "user_123");
+
+        JSONObject company = hgBuilder.forCompany("acme").companySet(new JSONObject().put("plan", "pro"),
+                modifiers).getJSONObject("message");
+        assertEquals("$company_id", company.getString("$group_key"));
+        assertEquals("acme", company.getString("$group_id"));
+        assertEquals("1.2.3.4", company.getString("$ip"));
+    }
+
+    @Test
+    public void testRetargetingModifiersUnchangedForLegacy() {
+        JSONObject message = legacyBuilder.groupSet("company", "acme", new JSONObject().put("plan", "pro"),
+                new JSONObject().put("$group_key", "other").put("$group_id", "globex").put("$token", "t2"))
+                .getJSONObject("message");
+        assertEquals("other", message.getString("$group_key"));
+        assertEquals("globex", message.getString("$group_id"));
+        assertEquals("t2", message.getString("$token"));
+        JSONObject people = legacyBuilder.delete("user_123", new JSONObject().put("$distinct_id", "user_456"))
+                .getJSONObject("message");
+        assertEquals("user_456", people.getString("$distinct_id"));
+    }
+
+    // #endregion
     // #region Id validation found by service testing
 
     private static final String COMBINED = "$company:acme|$user:user_123";
