@@ -207,13 +207,120 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     // #region Exposure Tracking
 
     /**
+     * Returns true if an exposure event for this context can be attributed: by distinct_id,
+     * or on a hierarchical groups project by $company_id as well (plus $user_id when present),
+     * from which Mixpanel constructs the distinct id.
+     */
+    protected boolean canAttributeExposure(Map<String, Object> context) {
+        if (!config.isHierarchicalGroups()) {
+            return context.get("distinct_id") != null;
+        }
+        // A distinct id attributes on any project, including one Mixpanel built from a
+        // company and user, which ingestion parses back into its parts.
+        return isPresent(context.get("$company_id")) || isPresent(context.get("distinct_id"));
+    }
+
+    private static boolean isPresent(Object value) {
+        return value != null && !value.toString().isEmpty();
+    }
+
+    /**
      * Common helper method for tracking exposure events.
      */
     protected void trackExposure(String distinctId, String flagKey, String variantKey,
                                  String evaluationMode, Consumer<JSONObject> addTimingProperties,
                                  UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        sendExposure(distinctId, new JSONObject(), flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    /**
+     * Tracks an exposure event for a flag context. For hierarchical groups the event carries
+     * $user_id and $company_id instead of distinct_id. Without hierarchical groups this calls
+     * {@link #trackExposure(String, String, String, String, Consumer, UUID, Boolean, Boolean)}
+     * with the context's distinct_id, so subclasses overriding that method still take effect.
+     */
+    protected void trackExposure(Map<String, Object> context, String flagKey, String variantKey,
+                                 String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                                 UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        if (!config.isHierarchicalGroups()) {
+            Object distinctIdObj = context.get("distinct_id");
+            trackExposure(distinctIdObj != null ? distinctIdObj.toString() : null, flagKey, variantKey,
+                evaluationMode, addTimingProperties, experimentId, isExperimentActive, isQaTester);
+            return;
+        }
+        JSONObject identity = new JSONObject();
+        String distinctId;
         try {
-            JSONObject properties = new JSONObject();
+            // Carry whichever identity keys the caller sent; Mixpanel resolves the user
+            // from the pair, or from a distinct id it built itself.
+            Object userId = context.get("$user_id");
+            if (isPresent(userId)) {
+                identity.put("$user_id", userId.toString());
+            }
+            Object companyId = context.get("$company_id");
+            if (isPresent(companyId)) {
+                identity.put("$company_id", companyId.toString());
+            }
+            Object distinctIdObj = context.get("distinct_id");
+            distinctId = isPresent(distinctIdObj) ? distinctIdObj.toString() : null;
+        } catch (Exception e) {
+            getLogger().log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
+            return;
+        }
+        String blankPart = blankCombinedDistinctIdPart(distinctId);
+        if (blankPart != null) {
+            getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
+                + " dropped - distinct_id " + distinctId + " names a " + blankPart
+                + " that is empty or only whitespace. Nothing sent");
+            return;
+        }
+        sendExposure(distinctId, identity, flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    private static final String COMBINED_COMPANY_PREFIX = "$company:";
+    private static final String COMBINED_USER_SEPARATOR = "|$user:";
+
+    /**
+     * For a distinct id of the form {@code $company:{company}|$user:{user}}, split as
+     * MixpanelIdentity splits it (the company is the text before the first {@code |$user:}),
+     * returns "company" or "user" if that part is empty or only whitespace. Such an id becomes a
+     * junk user, so its exposure is not sent.
+     *
+     * @return the blank part, or null if the id is not in that form or names both parts
+     */
+    private static String blankCombinedDistinctIdPart(String distinctId) {
+        if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
+            return null;
+        }
+        int separator = distinctId.indexOf(COMBINED_USER_SEPARATOR, COMBINED_COMPANY_PREFIX.length());
+        if (separator < 0) {
+            return null;
+        }
+        if (isBlankOrEmpty(distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator))) {
+            return "company";
+        }
+        if (isBlankOrEmpty(distinctId.substring(separator + COMBINED_USER_SEPARATOR.length()))) {
+            return "user";
+        }
+        return null;
+    }
+
+    private static boolean isBlankOrEmpty(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isWhitespace(c) && !Character.isSpaceChar(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void sendExposure(String distinctId, JSONObject properties, String flagKey, String variantKey,
+                              String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                              UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        try {
             properties.put("Experiment name", flagKey);
             properties.put("Variant name", variantKey);
             properties.put("$experiment_type", "feature_flag");

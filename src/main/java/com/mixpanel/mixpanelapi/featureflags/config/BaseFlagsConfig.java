@@ -13,6 +13,7 @@ public class BaseFlagsConfig {
     private final String apiHost;
     private final int requestTimeoutSeconds;
     private final Executor exposureExecutor;
+    private final boolean hierarchicalGroups;
 
     /**
      * Creates a new BaseFlagsConfig with specified settings.
@@ -23,10 +24,25 @@ public class BaseFlagsConfig {
      * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
      */
     protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor) {
+        this(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, false);
+    }
+
+    /**
+     * Creates a new BaseFlagsConfig with specified settings.
+     *
+     * @param projectToken the Mixpanel project token
+     * @param apiHost the API endpoint host
+     * @param requestTimeoutSeconds HTTP request timeout in seconds
+     * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
+     * @param hierarchicalGroups true if the project uses hierarchical groups
+     */
+    protected BaseFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor,
+                              boolean hierarchicalGroups) {
         this.projectToken = projectToken;
         this.apiHost = apiHost;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
         this.exposureExecutor = exposureExecutor;
+        this.hierarchicalGroups = hierarchicalGroups;
     }
 
     /**
@@ -58,6 +74,13 @@ public class BaseFlagsConfig {
     }
 
     /**
+     * @return true if the project uses hierarchical groups
+     */
+    public boolean isHierarchicalGroups() {
+        return hierarchicalGroups;
+    }
+
+    /**
      * Builder for BaseFlagsConfig.
      *
      * @param <T> the type of builder (for subclass builders)
@@ -68,6 +91,7 @@ public class BaseFlagsConfig {
         protected String apiHost = "api.mixpanel.com";
         protected int requestTimeoutSeconds = 10;
         protected Executor exposureExecutor;
+        protected boolean hierarchicalGroups;
 
         /**
          * Sets the project token.
@@ -124,12 +148,28 @@ public class BaseFlagsConfig {
         }
 
         /**
+         * Sets whether the project uses hierarchical groups. When true, exposure events are
+         * attributed with {@code $user_id} and {@code $company_id} instead of
+         * {@code distinct_id}. Assignment keys do not depend on this setting: locally
+         * evaluated flags build them from the {@code context_value_template} the server
+         * publishes for each flag, falling back to the raw context value when the template
+         * is absent or the context lacks one of its placeholders.
+         *
+         * @param hierarchicalGroups true if the project uses hierarchical groups
+         * @return this builder
+         */
+        public T hierarchicalGroups(boolean hierarchicalGroups) {
+            this.hierarchicalGroups = hierarchicalGroups;
+            return (T) this;
+        }
+
+        /**
          * Builds the BaseFlagsConfig instance.
          *
          * @return a new BaseFlagsConfig
          */
         public BaseFlagsConfig build() {
-            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
+            return new BaseFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, hierarchicalGroups);
         }
     }
 
