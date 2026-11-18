@@ -1,6 +1,10 @@
 package com.mixpanel.mixpanelapi;
 
+import com.mixpanel.mixpanelapi.featureflags.EventSender;
 import com.mixpanel.mixpanelapi.featureflags.FlagContext;
+import com.mixpanel.mixpanelapi.featureflags.config.RemoteFlagsConfig;
+import com.mixpanel.mixpanelapi.featureflags.provider.BaseFlagsProvider;
+import com.mixpanel.mixpanelapi.featureflags.provider.RemoteFlagsProvider;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -8,8 +12,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.function.ThrowingRunnable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -1284,6 +1290,54 @@ public class HierarchicalGroupsTest {
         assertEquals("user_123", context.get("distinct_id"));
         assertFalse(context.containsKey("$company_id"));
         assertFalse(context.containsKey("custom_properties"));
+    }
+
+    // #endregion
+
+    // #region Flag exposures
+
+    @Test
+    public void testHierarchicalExposureWithoutDistinctIdIsSentWithUserAndCompany() throws Exception {
+        // Drives a flag exposure through the event sender MixpanelAPI wires up, so the message
+        // is built by MessageBuilder.event with a null distinct id and handed to sendData.
+        RemoteFlagsConfig config = RemoteFlagsConfig.builder()
+            .projectToken(TOKEN)
+            .hierarchicalGroups(true)
+            .build();
+        final List<String> sent = new ArrayList<>();
+        MixpanelAPI api = new MixpanelAPI(config) {
+            @Override
+            boolean sendData(String dataString, String endpointUrl) {
+                sent.add(dataString);
+                return true;
+            }
+        };
+        java.lang.reflect.Field senderField = BaseFlagsProvider.class.getDeclaredField("eventSender");
+        senderField.setAccessible(true);
+        EventSender apiSender = (EventSender) senderField.get(api.mRemoteFlags);
+
+        RemoteFlagsProvider provider = new RemoteFlagsProvider(config, "test", apiSender) {
+            @Override
+            protected String httpGet(String urlString) {
+                return "{\"flags\":{\"test-flag\":{\"variant_key\":\"variant-a\",\"variant_value\":\"value-a\"}}}";
+            }
+        };
+        Map<String, Object> context = new HashMap<>();
+        context.put("$user_id", "user_123");
+        context.put("$company_id", "acme");
+
+        assertEquals("value-a", provider.getVariantValue("test-flag", "fallback", context));
+
+        assertEquals(1, sent.size());
+        JSONArray messages = new JSONArray(sent.get(0));
+        assertEquals(1, messages.length());
+        JSONObject event = messages.getJSONObject(0);
+        assertEquals("$experiment_started", event.getString("event"));
+        JSONObject props = event.getJSONObject("properties");
+        assertFalse(props.has("distinct_id"));
+        assertEquals("user_123", props.getString("$user_id"));
+        assertEquals("acme", props.getString("$company_id"));
+        assertEquals("test-flag", props.getString("Experiment name"));
     }
 
     // #endregion

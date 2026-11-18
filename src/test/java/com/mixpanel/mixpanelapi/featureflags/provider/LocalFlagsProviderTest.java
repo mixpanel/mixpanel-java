@@ -2175,6 +2175,27 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
     @Test
     public void testHierarchicalExposureCarriesUserAndCompanyWithoutDistinctId() {
+        // A flag assigned on $user_id evaluates locally without a distinct_id in the context.
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "$user_id", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        Map<String, Object> context = hierarchicalContext("user-123", "acme");
+        assertFalse(context.containsKey("distinct_id"));
+        Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals("value-a", result);
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertNull(event.distinctId);
+        assertEquals("user-123", event.properties.getString("$user_id"));
+        assertEquals("acme", event.properties.getString("$company_id"));
+    }
+
+    @Test
+    public void testHierarchicalExposureCarriesDistinctIdAlongsideUserAndCompany() {
         useHierarchicalGroupsConfig();
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
@@ -2187,6 +2208,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
         assertEquals(1, eventSender.getEvents().size());
         MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertEquals("$company:acme|$user:user-123", event.distinctId);
         assertEquals("user-123", event.properties.getString("$user_id"));
         assertEquals("acme", event.properties.getString("$company_id"));
     }
