@@ -49,6 +49,22 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify ref is on the default branch
+        id: verify_ref
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          SHA=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$SHA" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::Ref '${INPUT_REF:-<default>}' ($SHA) is not on ${DEFAULT_BRANCH}. Only commits already merged to ${DEFAULT_BRANCH} can be published."
+            exit 1
+          fi
+          echo "Publishing $SHA (on ${DEFAULT_BRANCH})"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Resolve module config
         id: module
@@ -166,7 +182,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.module.outputs.tag }}
           CHANGELOG: ${{ steps.module.outputs.changelog }}
-          TARGET_REF: ${{ inputs.ref }}
+          TARGET_REF: ${{ steps.verify_ref.outputs.sha }}
         run: |
           NOTES=$(sed -n "/^## \[${TAG}\]/,/^## \[/{/^## \[${TAG}\]/d;/^## \[/d;p;}" "$CHANGELOG")
 
