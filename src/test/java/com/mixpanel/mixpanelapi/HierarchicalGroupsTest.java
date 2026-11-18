@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.function.ThrowingRunnable;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -1060,7 +1061,7 @@ public class HierarchicalGroupsTest {
     @Test
     public void testNonCombinedDistinctIdEventKeepsAnyCompany() {
         JSONObject props = new JSONObject().put("$company_id", "zz6").put("$user_id", "other");
-        for (String id : Arrays.asList("user_123", "$company:acme", "$company:acme|$user:")) {
+        for (String id : Arrays.asList("user_123", "$company:acme")) {
             JSONObject sent = eventProperties(hgBuilder.event(id, "Signup", props));
             assertEquals(id, sent.getString("distinct_id"));
             assertEquals("zz6", sent.getString("$company_id"));
@@ -1140,14 +1141,55 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testCombinedDistinctIdWithWhitespaceOnlyPartIsRejected() {
+    public void testCombinedDistinctIdWithBlankPartIsRejected() {
         JSONObject props = new JSONObject().put("plan", "pro");
-        for (String id : Arrays.asList("$company: |$user:u", "$company:c|$user:  ", "$company: |$user:")) {
-            if (!id.endsWith(":")) {
-                assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.event(id, "Signup", null));
-                assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.importEvent(id, "Signup", null));
+        String[][] cases = {
+            {"$company:|$user:u", "company"},
+            {"$company:c|$user:", "user"},
+            {"$company:|$user:", "company"},
+            {"$company: |$user:", "company"},
+            {"$company: |$user:u", "company"},
+            {"$company:c|$user:  ", "user"},
+        };
+        for (String[] c : cases) {
+            String id = c[0];
+            String expected = "distinct_id " + id + " names a " + c[1]
+                    + " that is empty or only whitespace. Nothing sent";
+            MixpanelIdentity identity = MixpanelIdentity.builder().distinctId(id).build();
+            List<ThrowingRunnable> calls = Arrays.asList(
+                () -> hgBuilder.event(id, "Signup", null),
+                () -> hgBuilder.event(id, "Signup", new JSONObject().put("plan", "pro")),
+                () -> hgBuilder.importEvent(id, "Signup", null),
+                () -> hgBuilder.event(identity, "Signup", null),
+                () -> hgBuilder.importEvent(identity, "Signup", null),
+                () -> hgBuilder.set(id, props),
+                () -> hgBuilder.peopleMessage(id, "$set", props, null),
+                () -> hgBuilder.set(identity, props));
+            for (ThrowingRunnable call : calls) {
+                IllegalArgumentException e = assertThrows(id, IllegalArgumentException.class, call);
+                assertEquals(expected, e.getMessage());
             }
-            assertThrows(id, IllegalArgumentException.class, () -> hgBuilder.set(id, props));
+        }
+    }
+
+    @Test
+    public void testBlankPartCheckLeavesOtherDistinctIdsAlone() {
+        // A valid combined id and a non-combined id are still sent as given.
+        for (String id : Arrays.asList("$company:acme|$user:user_123", "user_123", "$device:abc", "$company:acme")) {
+            assertEquals(id, eventProperties(hgBuilder.event(id, "Signup", null)).getString("distinct_id"));
+            assertEquals(id, eventProperties(hgBuilder.event(MixpanelIdentity.builder().distinctId(id).build(),
+                    "Signup", null)).getString("distinct_id"));
+        }
+        // Non-blank parts are not trimmed.
+        assertEquals("$company: acme |$user: u ", eventProperties(hgBuilder.event("$company: acme |$user: u ",
+                "Signup", null)).getString("distinct_id"));
+        // Without hierarchical groups a blank part is sent as given.
+        for (String id : Arrays.asList("$company:|$user:", "$company: |$user:u", "$company:c|$user:  ")) {
+            assertEquals(id, eventProperties(legacyBuilder.event(id, "Signup", null)).getString("distinct_id"));
+            assertEquals(id, eventProperties(legacyBuilder.event(MixpanelIdentity.builder().distinctId(id).build(),
+                    "Signup", null)).getString("distinct_id"));
+            assertEquals(id, legacyBuilder.set(id, new JSONObject().put("plan", "pro"))
+                    .getJSONObject("message").getString("$distinct_id"));
         }
     }
 

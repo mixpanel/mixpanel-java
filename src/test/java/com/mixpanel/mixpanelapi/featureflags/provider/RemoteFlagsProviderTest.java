@@ -342,6 +342,33 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("acme", event.properties.getString("$company_id"));
     }
 
+    @Test
+    public void testHierarchicalExposureWithBlankCombinedDistinctIdPartIsDropped() {
+        config = RemoteFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .requestTimeoutSeconds(5)
+            .hierarchicalGroups(true)
+            .build();
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "value-a");
+        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender);
+        provider.setMockResponse("/flags", response);
+
+        for (String id : new String[] {"$company:|$user:u", "$company:c|$user:", "$company:|$user:", "$company: |$user:", "$company:c|$user:  "}) {
+            Map<String, Object> context = new HashMap<>();
+            context.put("distinct_id", id);
+            String result = provider.getVariantValue("test-flag", "fallback", context);
+
+            assertEquals(id, "value-a", result);
+            assertEquals(id, 0, eventSender.getEvents().size());
+        }
+
+        Map<String, Object> context = new HashMap<>();
+        context.put("distinct_id", "$company:acme|$user:user-123");
+        provider.getVariantValue("test-flag", "fallback", context);
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("$company:acme|$user:user-123", eventSender.getEvents().get(0).distinctId);
+    }
+
     // #endregion
 }
 

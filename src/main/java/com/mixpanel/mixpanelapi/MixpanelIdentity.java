@@ -151,9 +151,9 @@ public final class MixpanelIdentity {
      * {@code |$user:}; the user is everything after it.
      *
      * @return an identity with the parsed user and company, or null if the distinct id is not
-     *           in that form or either part is empty
+     *           in that form
      * @throws IllegalArgumentException if the distinct id is in that form but its company or user
-     *           is only whitespace
+     *           is empty or only whitespace
      */
     /* package */ static MixpanelIdentity fromCombinedDistinctId(String distinctId) {
         if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
@@ -165,12 +165,10 @@ public final class MixpanelIdentity {
         }
         String companyId = distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator);
         String userId = distinctId.substring(separator + COMBINED_USER_SEPARATOR.length());
-        if (companyId.isEmpty() || userId.isEmpty()) {
-            return null;
-        }
-        if (isBlank(companyId) || isBlank(userId)) {
+        boolean blankCompany = companyId.isEmpty() || isBlank(companyId);
+        if (blankCompany || userId.isEmpty() || isBlank(userId)) {
             throw new IllegalArgumentException("distinct_id " + distinctId + " names a "
-                    + (isBlank(companyId) ? "company" : "user") + " that is only whitespace. Nothing sent");
+                    + (blankCompany ? "company" : "user") + " that is empty or only whitespace. Nothing sent");
         }
         return builder().userId(userId).companyId(companyId).build();
     }

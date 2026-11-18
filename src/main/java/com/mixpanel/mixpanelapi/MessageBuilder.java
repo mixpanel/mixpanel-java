@@ -140,7 +140,7 @@ public class MessageBuilder {
      * @throws IllegalArgumentException on a hierarchical groups project, if the distinct id is of the
      *           form {@code $company:{company}|$user:{user}} and properties carry a {@code $company_id}
      *           or {@code $user_id} that names a different company or user, or if its company or user
-     *           is only whitespace
+     *           is empty or only whitespace
      */
     public JSONObject event(String distinctId, String eventName, JSONObject properties) {
         requireCombinedDistinctIdMatchesProperties(distinctId, properties);
@@ -198,6 +198,7 @@ public class MessageBuilder {
      */
     public JSONObject event(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
+        requireCombinedDistinctIdHasNoBlankPart(identity.getDistinctId());
         return buildEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
@@ -216,6 +217,7 @@ public class MessageBuilder {
      */
     public JSONObject importEvent(MixpanelIdentity identity, String eventName, JSONObject properties) {
         requireIdentityMatchesProject(identity);
+        requireCombinedDistinctIdHasNoBlankPart(identity.getDistinctId());
         return buildImportEvent(identity.getDistinctId(), eventName, withIdentity(identity, properties));
     }
 
@@ -231,6 +233,16 @@ public class MessageBuilder {
         if (identity.isHierarchical() && !mHierarchicalGroups) {
             throw new IllegalArgumentException(identity + " requires a hierarchical groups MessageBuilder: "
                     + "new MessageBuilder(token, true)");
+        }
+    }
+
+    /**
+     * A distinct id of the form {@code $company:{company}|$user:{user}} with an empty or
+     * whitespace-only part becomes a junk user, so it is refused rather than sent.
+     */
+    private void requireCombinedDistinctIdHasNoBlankPart(String distinctId) {
+        if (mHierarchicalGroups) {
+            MixpanelIdentity.fromCombinedDistinctId(distinctId);
         }
     }
 

@@ -268,8 +268,53 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
             getLogger().log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
             return;
         }
+        String blankPart = blankCombinedDistinctIdPart(distinctId);
+        if (blankPart != null) {
+            getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
+                + " dropped - distinct_id " + distinctId + " names a " + blankPart
+                + " that is empty or only whitespace. Nothing sent");
+            return;
+        }
         sendExposure(distinctId, identity, flagKey, variantKey, evaluationMode,
             addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    private static final String COMBINED_COMPANY_PREFIX = "$company:";
+    private static final String COMBINED_USER_SEPARATOR = "|$user:";
+
+    /**
+     * For a distinct id of the form {@code $company:{company}|$user:{user}}, split as
+     * MixpanelIdentity splits it (the company is the text before the first {@code |$user:}),
+     * returns "company" or "user" if that part is empty or only whitespace. Such an id becomes a
+     * junk user, so its exposure is not sent.
+     *
+     * @return the blank part, or null if the id is not in that form or names both parts
+     */
+    private static String blankCombinedDistinctIdPart(String distinctId) {
+        if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
+            return null;
+        }
+        int separator = distinctId.indexOf(COMBINED_USER_SEPARATOR, COMBINED_COMPANY_PREFIX.length());
+        if (separator < 0) {
+            return null;
+        }
+        if (isBlankOrEmpty(distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator))) {
+            return "company";
+        }
+        if (isBlankOrEmpty(distinctId.substring(separator + COMBINED_USER_SEPARATOR.length()))) {
+            return "user";
+        }
+        return null;
+    }
+
+    private static boolean isBlankOrEmpty(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isWhitespace(c) && !Character.isSpaceChar(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void sendExposure(String distinctId, JSONObject properties, String flagKey, String variantKey,

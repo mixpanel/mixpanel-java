@@ -2212,6 +2212,65 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testHierarchicalExposureWithBlankCombinedDistinctIdPartIsDropped() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LocalFlagsProvider.class.getName());
+        List<java.util.logging.LogRecord> records = new ArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            public void publish(java.util.logging.LogRecord record) { records.add(record); }
+            public void flush() {}
+            public void close() {}
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        logger.addHandler(handler);
+        try {
+            for (String id : new String[] {"$company:|$user:u", "$company:c|$user:", "$company:|$user:", "$company: |$user:", "$company:c|$user:  "}) {
+                records.clear();
+                Map<String, Object> context = new HashMap<>();
+                context.put("distinct_id", id);
+
+                Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+                assertEquals(id, "value-a", result);
+                assertEquals(id, 0, eventSender.getEvents().size());
+                assertTrue(id, records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
+                    && r.getMessage().contains("distinct_id " + id + " names a")
+                    && r.getMessage().contains("Nothing sent")));
+            }
+
+            // A valid combined id is still sent as given.
+            Map<String, Object> context = new HashMap<>();
+            context.put("distinct_id", "$company:acme|$user:user-123");
+            provider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(1, eventSender.getEvents().size());
+            assertEquals("$company:acme|$user:user-123", eventSender.getEvents().get(0).distinctId);
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    public void testExposureWithBlankCombinedDistinctIdPartIsSentWithoutHierarchicalGroups() {
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        Map<String, Object> context = new HashMap<>();
+        context.put("distinct_id", "$company: |$user:");
+        provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+        assertEquals(1, eventSender.getEvents().size());
+        assertEquals("$company: |$user:", eventSender.getEvents().get(0).distinctId);
+    }
+
+    @Test
     public void testHierarchicalProjectEvaluatesOnDistinctIdAlone() {
         // The company no longer changes what is hashed, so a distinct id on its own evaluates
         // the same way it does on any other project.
