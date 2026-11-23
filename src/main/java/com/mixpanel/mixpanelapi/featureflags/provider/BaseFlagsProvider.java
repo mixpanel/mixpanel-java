@@ -217,11 +217,19 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         }
         // A distinct id attributes on any project, including one Mixpanel built from a
         // company and user, which ingestion parses back into its parts.
-        return isPresent(context.get("$company_id")) || isPresent(context.get("distinct_id"));
+        return hasId(context.get("$company_id")) || isPresent(context.get("distinct_id"));
     }
 
     private static boolean isPresent(Object value) {
         return value != null && !value.toString().isEmpty();
+    }
+
+    /**
+     * Returns true if a $company_id or $user_id is set to something other than an empty or
+     * whitespace-only string; such an id names no one, so it is treated as absent.
+     */
+    private static boolean hasId(Object value) {
+        return value != null && !isBlankOrEmpty(value.toString());
     }
 
     /**
@@ -255,11 +263,11 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
             // Carry whichever identity keys the caller sent; Mixpanel resolves the user
             // from the pair, or from a distinct id it built itself.
             Object userId = context.get("$user_id");
-            if (isPresent(userId)) {
+            if (hasId(userId)) {
                 identity.put("$user_id", userId.toString());
             }
             Object companyId = context.get("$company_id");
-            if (isPresent(companyId)) {
+            if (hasId(companyId)) {
                 identity.put("$company_id", companyId.toString());
             }
             Object distinctIdObj = context.get("distinct_id");
@@ -273,6 +281,12 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
             getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
                 + " dropped - distinct_id " + distinctId + " names a " + blankPart
                 + " that is empty or only whitespace. Nothing sent");
+            return;
+        }
+        String conflict = combinedDistinctIdConflict(distinctId, identity);
+        if (conflict != null) {
+            getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
+                + " dropped - " + conflict);
             return;
         }
         sendExposure(distinctId, identity, flagKey, variantKey, evaluationMode,
@@ -291,6 +305,26 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
      * @return the blank part, or null if the id is not in that form or names both parts
      */
     private static String blankCombinedDistinctIdPart(String distinctId) {
+        String[] parts = splitCombinedDistinctId(distinctId);
+        if (parts == null) {
+            return null;
+        }
+        if (isBlankOrEmpty(parts[0])) {
+            return "company";
+        }
+        if (isBlankOrEmpty(parts[1])) {
+            return "user";
+        }
+        return null;
+    }
+
+    /**
+     * Splits a distinct id of the form {@code $company:{company}|$user:{user}} as
+     * MixpanelIdentity splits it (the company is the text before the first {@code |$user:}).
+     *
+     * @return {company, user}, or null if the id is not in that form
+     */
+    private static String[] splitCombinedDistinctId(String distinctId) {
         if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
             return null;
         }
@@ -298,11 +332,36 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         if (separator < 0) {
             return null;
         }
-        if (isBlankOrEmpty(distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator))) {
-            return "company";
+        return new String[] {
+            distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator),
+            distinctId.substring(separator + COMBINED_USER_SEPARATOR.length())
+        };
+    }
+
+    /**
+     * For a distinct id of the form {@code $company:{company}|$user:{user}}, describes how it names
+     * a different company or user than the $company_id or $user_id the exposure carries, compared
+     * as strings.
+     * Ingestion would resolve such an event to the company alone, dropping the user, so it is not sent.
+     *
+     * @return the conflict, or null if the id is not in that form or agrees with the exposure's ids
+     */
+    private static String combinedDistinctIdConflict(String distinctId, JSONObject identity) {
+        String[] parts = splitCombinedDistinctId(distinctId);
+        if (parts == null) {
+            return null;
         }
-        if (isBlankOrEmpty(distinctId.substring(separator + COMBINED_USER_SEPARATOR.length()))) {
-            return "user";
+        String company = parts[0];
+        String user = parts[1];
+        String companyId = identity.optString("$company_id", null);
+        if (companyId != null && !company.equals(companyId)) {
+            return "distinct_id " + distinctId + " names company " + company + ", but $company_id is "
+                + companyId + ". Nothing sent";
+        }
+        String userId = identity.optString("$user_id", null);
+        if (userId != null && !user.equals(userId)) {
+            return "distinct_id " + distinctId + " names user " + user + ", but $user_id is "
+                + userId + ". Nothing sent";
         }
         return null;
     }

@@ -2278,6 +2278,136 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testHierarchicalExposureWithConflictingCombinedDistinctIdIsDropped() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LocalFlagsProvider.class.getName());
+        List<java.util.logging.LogRecord> records = new ArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            public void publish(java.util.logging.LogRecord record) { records.add(record); }
+            public void flush() {}
+            public void close() {}
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        logger.addHandler(handler);
+        try {
+            String id = "$company:acme|$user:user-123";
+            String[][] cases = {
+                // {$user_id, $company_id, expected conflict}
+                {"user-123", "other", "names company acme, but $company_id is other"},
+                {"user-456", "acme", "names user user-123, but $user_id is user-456"},
+                {null, "other", "names company acme, but $company_id is other"},
+                {"user-456", null, "names user user-123, but $user_id is user-456"},
+            };
+            for (String[] c : cases) {
+                records.clear();
+                Map<String, Object> context = new HashMap<>();
+                context.put("distinct_id", id);
+                if (c[0] != null) {
+                    context.put("$user_id", c[0]);
+                }
+                if (c[1] != null) {
+                    context.put("$company_id", c[1]);
+                }
+
+                Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+                assertEquals(c[2], "value-a", result);
+                assertEquals(c[2], 0, eventSender.getEvents().size());
+                assertTrue(c[2], records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
+                    && r.getMessage().contains("distinct_id " + id + " " + c[2])
+                    && r.getMessage().contains("Nothing sent")));
+            }
+
+            // Matching ids, and ids that only partly accompany the combined id, are still sent.
+            String[][] matching = {{"user-123", "acme"}, {"user-123", null}, {null, "acme"}, {null, null}};
+            for (String[] m : matching) {
+                eventSender.reset();
+                Map<String, Object> context = new HashMap<>();
+                context.put("distinct_id", id);
+                if (m[0] != null) {
+                    context.put("$user_id", m[0]);
+                }
+                if (m[1] != null) {
+                    context.put("$company_id", m[1]);
+                }
+                provider.getVariantValue(flagKey, fallbackVariantValue, context);
+                assertEquals(1, eventSender.getEvents().size());
+                assertEquals(id, eventSender.getEvents().get(0).distinctId);
+            }
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    public void testHierarchicalExposureTreatsWhitespaceIdsAsMissing() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "department", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LocalFlagsProvider.class.getName());
+        List<java.util.logging.LogRecord> records = new ArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            public void publish(java.util.logging.LogRecord record) { records.add(record); }
+            public void flush() {}
+            public void close() {}
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        logger.addHandler(handler);
+        try {
+            // Only a blank company: nothing attributes the exposure, so it is dropped and logged.
+            for (String blank : new String[] {"", "   ", "\t"}) {
+                records.clear();
+                Map<String, Object> context = new HashMap<>();
+                context.put("department", "finance");
+                context.put("$company_id", blank);
+                context.put("$user_id", "user-123");
+
+                Object result = provider.getVariantValue(flagKey, fallbackVariantValue, context);
+
+                assertEquals("value-a", result);
+                assertEquals("[" + blank + "]", 0, eventSender.getEvents().size());
+                assertTrue(records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
+                    && r.getMessage().contains("Cannot track exposure event")));
+            }
+
+            // A blank $user_id is left off an exposure the company attributes.
+            Map<String, Object> context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("$company_id", "acme");
+            context.put("$user_id", "  ");
+            provider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(1, eventSender.getEvents().size());
+            MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+            assertEquals("acme", event.properties.getString("$company_id"));
+            assertFalse(event.properties.has("$user_id"));
+
+            // A blank $company_id is left off an exposure the distinct id attributes.
+            eventSender.reset();
+            context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("distinct_id", "user-123");
+            context.put("$company_id", "   ");
+            provider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(1, eventSender.getEvents().size());
+            event = eventSender.getEvents().get(0);
+            assertEquals("user-123", event.distinctId);
+            assertFalse(event.properties.has("$company_id"));
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
     public void testExposureWithBlankCombinedDistinctIdPartIsSentWithoutHierarchicalGroups() {
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
         String response = buildFlagsResponse(flagKey, distinctIdContextKey, variants, Arrays.asList(new Rollout(1.0f)), null);
