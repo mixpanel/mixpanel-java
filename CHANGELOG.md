@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.12.0](https://github.com/mixpanel/mixpanel-java/tree/v1.12.0) (2026-11-23)
+
+[Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/v1.11.0...v1.12.0)
+
 ## [v1.11.0](https://github.com/mixpanel/mixpanel-java/tree/v1.11.0) (2026-09-01)
 
 ### Features
