@@ -94,10 +94,13 @@ public class MessageBuilder {
      * {@code
      *     MessageBuilder acme = messageBuilder.forCompany("acme");
      *     acme.companySet(companyProperties);
-     *     acme.groupSet("$user_id", "user_123", userProperties);
      *     acme.groupSet("department", "finance", departmentProperties);
      * }
      * </pre>
+     *
+     * forCompany is meant for messages that carry no identity: the company's own profile and
+     * custom group profiles. Build events and user profiles with a {@link MixpanelIdentity} that
+     * names the company. Events from a bound builder don't add the bound company.
      *
      * User profile updates made with a {@link MixpanelIdentity} use the identity's own company and do
      * not need a bound company; a bound builder throws {@link IllegalArgumentException} for a user
