@@ -240,8 +240,11 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
      * Each {@code {key}} placeholder is replaced with the string value of {@code key}; text
      * outside the braces is literal.
      *
-     * @return the filled template, or null when there is no template or any placeholder key
-     *         is missing (absent or null) from the context
+     * A placeholder counts as present only when its context value is a non-empty string,
+     * as on the server.
+     *
+     * @return the filled template, or null when there is no template or any placeholder's
+     *         context value is absent, not a string, or empty
      */
     private static String applyContextValueTemplate(String template, Map<String, Object> context) {
         if (template == null || template.isEmpty()) {
@@ -251,13 +254,36 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         Matcher matcher = CONTEXT_PLACEHOLDER.matcher(template);
         while (matcher.find()) {
             Object value = context.get(matcher.group(1));
-            if (value == null) {
+            if (!isNonEmptyString(value)) {
                 return null;
             }
-            matcher.appendReplacement(out, Matcher.quoteReplacement(value.toString()));
+            matcher.appendReplacement(out, Matcher.quoteReplacement((String) value));
         }
         matcher.appendTail(out);
         return out.toString();
+    }
+
+    private static boolean isNonEmptyString(Object value) {
+        return value instanceof String && !((String) value).isEmpty();
+    }
+
+    /**
+     * Returns the distinct id test user overrides are looked up by. When the context has
+     * non-empty string {@code $user_id} and {@code $company_id}, that is the distinct id Mixpanel
+     * builds from them, {@code $company:{company}|$user:{user}}, for every flag, as the server
+     * does. Otherwise it is the resolved assignment key for a flag that assigns on
+     * {@code distinct_id}, or the context's {@code distinct_id}.
+     */
+    private static String testUserOverrideKey(Map<String, Object> context, String contextProperty,
+                                              String contextValue) {
+        Object userId = context.get("$user_id");
+        Object companyId = context.get("$company_id");
+        if (isNonEmptyString(userId) && isNonEmptyString(companyId)) {
+            return "$company:" + companyId + "|$user:" + userId;
+        }
+        return "distinct_id".equals(contextProperty)
+                ? contextValue
+                : (context.get("distinct_id") != null ? context.get("distinct_id").toString() : null);
     }
 
     /**
@@ -437,11 +463,8 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             // Check test user overrides
             RuleSet ruleset = flag.getRuleset();
             if (ruleset.hasTestUserOverrides()) {
-                // Overrides are keyed by distinct id, which is the resolved assignment key
-                // when the flag assigns on distinct_id.
-                String distinctId = "distinct_id".equals(contextProperty)
-                        ? contextValue
-                        : (context.get("distinct_id") != null ? context.get("distinct_id").toString() : null);
+                // Overrides are keyed by distinct id.
+                String distinctId = testUserOverrideKey(context, contextProperty, contextValue);
                 if (distinctId != null) {
                     String testVariantKey = ruleset.getTestUserOverrides().get(distinctId);
                     if (testVariantKey != null) {

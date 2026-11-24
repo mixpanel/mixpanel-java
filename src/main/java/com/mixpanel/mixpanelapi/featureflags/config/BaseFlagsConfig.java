@@ -155,6 +155,10 @@ public class BaseFlagsConfig {
          * publishes for each flag, falling back to the raw context value when the template
          * is absent or the context lacks one of its placeholders.
          *
+         * <p>Set this the same way as the {@code hierarchicalGroups} argument of
+         * {@link com.mixpanel.mixpanelapi.MessageBuilder#MessageBuilder(String, boolean)}; the two
+         * settings are independent.
+         *
          * @param hierarchicalGroups true if the project uses hierarchical groups
          * @return this builder
          */

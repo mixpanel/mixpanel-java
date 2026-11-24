@@ -2021,6 +2021,30 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
     }
 
     @Test
+    public void testEmptyPlaceholderValueFallsBackToRawContextValue() {
+        useHierarchicalGroupsConfig();
+        Map<String, Object> context = specContext();
+        context.put("$company_id", "");
+
+        assertEquals("finance",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", context));
+    }
+
+    @Test
+    public void testNonStringPlaceholderValueFallsBackToRawContextValue() {
+        useHierarchicalGroupsConfig();
+        Map<String, Object> context = specContext();
+        context.put("$company_id", 123);
+        assertEquals("finance",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", context));
+
+        context.put("$company_id", "company_123");
+        context.put("department", 42);
+        assertEquals("42",
+                hashedTemplatedAssignmentKey("department", "$company:{$company_id}|department:{department}", context));
+    }
+
+    @Test
     public void testNoTemplateFallsBackToRawContextValue() {
         useHierarchicalGroupsConfig();
         List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
@@ -2071,20 +2095,59 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("control-value", provider.getVariantValue(flagKey, fallbackVariantValue, specContext()));
     }
 
-    @Test
-    public void testTestUserOverrideUsesRawDistinctIdForOtherFlags() {
-        useHierarchicalGroupsConfig();
+    private String testUserVariant(String contextKey, String template, String testUser, Map<String, Object> context) {
         List<Variant> variants = Arrays.asList(
             new Variant("control", "control-value", false, 1.0f),
             new Variant("treatment", "treatment-value", false, 0.0f)
         );
         Map<String, String> testUsers = new HashMap<>();
-        testUsers.put("user_123", "treatment");
-        provider = createProviderWithResponse(buildTemplatedFlagsResponse(flagKey, "department", variants, testUsers,
-                "$company:{$company_id}|department:{department}"));
+        testUsers.put(testUser, "treatment");
+        provider = createProviderWithResponse(template == null
+                ? buildFlagsResponse(flagKey, contextKey, variants, Arrays.asList(new Rollout(1.0f)), testUsers)
+                : buildTemplatedFlagsResponse(flagKey, contextKey, variants, testUsers, template));
         provider.startPollingForDefinitions();
+        return provider.getVariantValue(flagKey, fallbackVariantValue, context);
+    }
 
-        assertEquals("treatment-value", provider.getVariantValue(flagKey, fallbackVariantValue, specContext()));
+    @Test
+    public void testTestUserOverrideUsesCombinedIdForEveryFlag() {
+        // With a user and a company in the context the server looks test users up by the
+        // distinct id it builds from them, whatever the flag's context.
+        useHierarchicalGroupsConfig();
+        String combined = "$company:company_123|$user:user_123";
+        assertEquals("treatment-value", testUserVariant("department",
+                "$company:{$company_id}|department:{department}", combined, specContext()));
+        assertEquals("treatment-value", testUserVariant("device_id", "{device_id}", combined, specContext()));
+        assertEquals("treatment-value", testUserVariant("department", null, combined, specContext()));
+        // The raw distinct_id is no longer the key
+        assertEquals("control-value", testUserVariant("department",
+                "$company:{$company_id}|department:{department}", "user_123", specContext()));
+    }
+
+    @Test
+    public void testTestUserOverrideUsesCombinedIdWithoutHierarchicalGroupsConfig() {
+        // Ungated, like the template
+        assertEquals("treatment-value", testUserVariant("department", null,
+                "$company:company_123|$user:user_123", specContext()));
+    }
+
+    @Test
+    public void testTestUserOverrideKeepsDistinctIdLookupWithoutUserAndCompany() {
+        useHierarchicalGroupsConfig();
+        Map<String, Object> noCompany = specContext();
+        noCompany.remove("$company_id");
+        assertEquals("treatment-value", testUserVariant("department", null, "user_123", noCompany));
+
+        Map<String, Object> emptyUser = specContext();
+        emptyUser.put("$user_id", "");
+        assertEquals("treatment-value", testUserVariant("department", null, "user_123", emptyUser));
+        assertEquals("control-value", testUserVariant("department", null, "$company:company_123|$user:", emptyUser));
+
+        Map<String, Object> numericCompany = specContext();
+        numericCompany.put("$company_id", 123);
+        assertEquals("treatment-value", testUserVariant("department", null, "user_123", numericCompany));
+        assertEquals("control-value", testUserVariant("department", null, "$company:123|$user:user_123",
+                numericCompany));
     }
 
     @Test

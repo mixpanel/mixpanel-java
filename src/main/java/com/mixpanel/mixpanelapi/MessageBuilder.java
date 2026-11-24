@@ -67,6 +67,10 @@ public class MessageBuilder {
      * {@link IllegalArgumentException} for any other distinct id. Group profile messages require a
      * known company, either through {@link #forCompany(String)} or a {@code $company_id} modifier.
      *
+     * On a hierarchical groups project, also set
+     * {@link com.mixpanel.mixpanelapi.featureflags.config.BaseFlagsConfig.Builder#hierarchicalGroups(boolean)}
+     * on the flags config. The two settings are independent, so set both the same way.
+     *
      * @param token the Mixpanel project token
      * @param hierarchicalGroups true if the project uses hierarchical groups
      */
@@ -104,7 +108,8 @@ public class MessageBuilder {
      *
      * @param companyId the id of the top-level company
      * @return a new MessageBuilder bound to the given company
-     * @throws IllegalArgumentException if companyId is null, empty or only whitespace
+     * @throws IllegalArgumentException if companyId is null, empty or only whitespace, or on a
+     *           hierarchical groups builder if it contains {@code |}
      */
     public MessageBuilder forCompany(String companyId) {
         if (companyId == null || companyId.isEmpty()) {
@@ -112,6 +117,9 @@ public class MessageBuilder {
         }
         if (MixpanelIdentity.isBlank(companyId)) {
             throw new IllegalArgumentException("companyId must not be only whitespace");
+        }
+        if (mHierarchicalGroups) {
+            requireNoSeparator(companyId, "companyId");
         }
         return new MessageBuilder(mToken, mHierarchicalGroups, companyId);
     }
@@ -234,6 +242,37 @@ public class MessageBuilder {
             throw new IllegalArgumentException(identity + " requires a hierarchical groups MessageBuilder: "
                     + "new MessageBuilder(token, true)");
         }
+        if (mHierarchicalGroups) {
+            requireNoSeparator(identity.getUserId(), "userId");
+            requireNoSeparator(identity.getCompanyId(), "companyId");
+        }
+    }
+
+    /**
+     * Mixpanel builds a hierarchical groups distinct id as {@code $company:{company}|$user:{user}},
+     * and {@code /groups} drops a record whose user or company id contains {@code |}, so such an id
+     * is refused on a hierarchical groups builder.
+     */
+    private static void requireNoSeparator(Object id, String name) {
+        if (id != null && String.valueOf(id).indexOf('|') >= 0) {
+            throw new IllegalArgumentException(name + " " + id + " contains '|', which hierarchical groups "
+                    + "user and company ids cannot contain. Nothing sent");
+        }
+    }
+
+    /**
+     * Parses a distinct id of the form {@code $company:{company}|$user:{user}} on a hierarchical
+     * groups builder, refusing a part that contains {@code |}.
+     *
+     * @return the parsed user and company, or null if the distinct id is not in that form
+     */
+    private static MixpanelIdentity parseCombinedDistinctId(String distinctId) {
+        MixpanelIdentity combined = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        if (combined != null) {
+            requireNoSeparator(combined.getUserId(), "distinct_id " + distinctId + " names user");
+            requireNoSeparator(combined.getCompanyId(), "distinct_id " + distinctId + " names company");
+        }
+        return combined;
     }
 
     /**
@@ -248,7 +287,7 @@ public class MessageBuilder {
             return;
         }
         String distinctId = identity.getDistinctId();
-        MixpanelIdentity combined = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        MixpanelIdentity combined = parseCombinedDistinctId(distinctId);
         if (combined == null) {
             return;
         }
@@ -266,7 +305,7 @@ public class MessageBuilder {
         if (!mHierarchicalGroups) {
             return;
         }
-        MixpanelIdentity combined = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        MixpanelIdentity combined = parseCombinedDistinctId(distinctId);
         if (combined == null || properties == null) {
             return;
         }
@@ -806,7 +845,7 @@ public class MessageBuilder {
         requireIdentityDistinctIdAgrees(identity);
         if (mHierarchicalGroups) {
             // The identity names the profile, so a $distinct_id modifier may not name another one.
-            requireModifierMatches(modifiers, "$distinct_id", identity.getDistinctId());
+            requireIdentityOrDistinctIdModifier(identity, modifiers);
         }
         if (identity.getDistinctId() != null) {
             // On a hierarchical groups builder peopleMessage parses a distinct id Mixpanel built into
@@ -831,6 +870,21 @@ public class MessageBuilder {
         String companyId = identity.getCompanyId() != null ? identity.getCompanyId() : mCompanyId;
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, modifiers,
                 companyId);
+    }
+
+    /**
+     * An identity and a {@code $distinct_id} modifier both name the profile, so the modifier is
+     * refused unless it repeats the identity's own distinct id.
+     */
+    private static void requireIdentityOrDistinctIdModifier(MixpanelIdentity identity, JSONObject modifiers) {
+        if (modifiers == null || !modifiers.has("$distinct_id")) {
+            return;
+        }
+        Object value = modifiers.opt("$distinct_id");
+        if (identity.getDistinctId() == null || !identity.getDistinctId().equals(value)) {
+            throw new IllegalArgumentException("$distinct_id modifier " + value + " names a different profile than "
+                    + identity + ". Pass either an identity or a $distinct_id, not both. Nothing sent");
+        }
     }
 
     /**
@@ -993,7 +1047,7 @@ public class MessageBuilder {
             groupModifiers = new JSONObject(modifiers, JSONObject.getNames(modifiers));
             groupModifiers.remove("$distinct_id");
         }
-        MixpanelIdentity identity = MixpanelIdentity.fromCombinedDistinctId(distinctId);
+        MixpanelIdentity identity = parseCombinedDistinctId(distinctId);
         if (identity == null) {
             throw new IllegalArgumentException("User profile updates on hierarchical groups projects need a user "
                     + "and a company, and the distinct id \"" + distinctId + "\" does not name both. Pass "
@@ -1483,6 +1537,7 @@ public class MessageBuilder {
             requireModifierMatches(modifiers, "$group_key", groupKey);
             requireModifierMatches(modifiers, "$group_id", groupId);
             requireCompanyIdModifierIsValid(modifiers);
+            requireNoGroupsRejectedModifiers(modifiers);
         }
         if (mHierarchicalGroups && companyId == null && !hasCompanyIdModifier(modifiers)) {
             throw new IllegalStateException("Group profile updates for hierarchical groups projects require a "
@@ -1577,6 +1632,24 @@ public class MessageBuilder {
     }
 
     /**
+     * {@code /groups} rejects the whole record when it carries {@code $ignore_alias} or
+     * {@code $distinct_id}, so on a hierarchical groups builder a profile update with either
+     * modifier is refused. (A user profile's {@code $distinct_id} names the profile and is removed
+     * before this point.)
+     */
+    private static void requireNoGroupsRejectedModifiers(JSONObject modifiers) {
+        if (modifiers == null) {
+            return;
+        }
+        for (String key : new String[] {"$ignore_alias", "$distinct_id"}) {
+            if (modifiers.has(key)) {
+                throw new IllegalArgumentException(key + " modifier is not supported on hierarchical groups "
+                        + "profile updates, which /groups rejects. Nothing sent");
+            }
+        }
+    }
+
+    /**
      * The service writes a {@code $company_id} group update to the profile of the top-level
      * {@code $company_id}, not the group id, so a mismatch would silently update the wrong company.
      */
@@ -1607,6 +1680,7 @@ public class MessageBuilder {
                 throw new IllegalArgumentException("$company_id modifier \"" + companyId
                         + "\" is only whitespace. Nothing sent");
             }
+            requireNoSeparator(companyId, "$company_id modifier");
             return;
         }
         if (!(companyId instanceof Integer || companyId instanceof Long || companyId instanceof Short

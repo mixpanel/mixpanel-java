@@ -340,9 +340,12 @@ public class HierarchicalGroupsTest {
 
     @Test
     public void testCombinedDistinctIdSplitsOnFirstUserSeparator() {
-        JSONObject envelope = hgBuilder.set("$company:acme|$user:user|$user:123", new JSONObject().put("a", 1));
-
-        assertUserGroupMessage(envelope, "acme", "user|$user:123");
+        MixpanelIdentity parsed = MixpanelIdentity.fromCombinedDistinctId("$company:acme|$user:user|$user:123");
+        assertEquals("acme", parsed.getCompanyId());
+        assertEquals("user|$user:123", parsed.getUserId());
+        // A hierarchical groups user id cannot contain '|', so the builder refuses it
+        assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.set("$company:acme|$user:user|$user:123", new JSONObject().put("a", 1)));
     }
 
     @Test
@@ -412,7 +415,7 @@ public class HierarchicalGroupsTest {
     public void testNonOperationAndSupportedModifiersBuildOnHierarchicalUserProfile() {
         JSONObject modifiers = new JSONObject()
                 .put("$token", TOKEN).put("$time", 1L).put("$ip", "1.2.3.4").put("$ignore_time", true)
-                .put("$ignore_alias", true).put("$mp_metadata", new JSONObject()).put("$company_id", "acme")
+                .put("$mp_metadata", new JSONObject()).put("$company_id", "acme")
                 .put("$group_key", "$user_id").put("$group_id", "user_123")
                 .put("$unset", new JSONArray().put("old")).put("custom", 1);
         JSONObject envelope = hgBuilder.peopleMessage("$company:acme|$user:user_123", "$set",
@@ -751,7 +754,7 @@ public class HierarchicalGroupsTest {
     public void testNonOperationGroupModifiersBuild() {
         JSONObject modifiers = new JSONObject()
                 .put("$token", TOKEN).put("$time", 1L).put("$ip", "1.2.3.4").put("$ignore_time", true)
-                .put("$ignore_alias", true).put("$mp_metadata", new JSONObject()).put("$distinct_id", "x")
+                .put("$mp_metadata", new JSONObject())
                 .put("$company_id", "acme").put("$remove", new JSONObject().put("tags", "a"));
         JSONObject envelope = hgBuilder.groupMessage("company", "acme", "$set", new JSONObject().put("seats", 1),
                 modifiers);
@@ -1008,6 +1011,8 @@ public class HierarchicalGroupsTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> hgBuilder.set(user, props, new JSONObject().put("$distinct_id", COMBINED)));
         assertTrue(e.getMessage(), e.getMessage().startsWith("$distinct_id modifier"));
+        assertTrue(e.getMessage(), e.getMessage().contains("Pass either an identity or a $distinct_id, not both"));
+        assertFalse(e.getMessage(), e.getMessage().contains("null"));
         MixpanelIdentity combined = MixpanelIdentity.builder().distinctId(COMBINED).build();
         assertThrows(IllegalArgumentException.class, () -> hgBuilder.set(combined, props,
                 new JSONObject().put("$distinct_id", "$company:acme|$user:user_456")));
@@ -1493,6 +1498,160 @@ public class HierarchicalGroupsTest {
         assertEquals("user_123", props.getString("$user_id"));
         assertEquals("acme", props.getString("$company_id"));
         assertEquals("test-flag", props.getString("Experiment name"));
+    }
+
+    // #endregion
+
+    // #region Review fixes
+
+    @Test
+    public void testPipeInIdentityIdsIsRefusedOnHierarchicalBuilder() {
+        List<MixpanelIdentity> identities = Arrays.asList(
+                MixpanelIdentity.builder().userId("user|123").companyId("acme").build(),
+                MixpanelIdentity.builder().userId("user_123").companyId("ac|me").build(),
+                MixpanelIdentity.builder().userId("user|123").build(),
+                MixpanelIdentity.builder().companyId("ac|me").build());
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (MixpanelIdentity identity : identities) {
+            List<ThrowingRunnable> calls = Arrays.asList(
+                    () -> hgBuilder.event(identity, "Signup", null),
+                    () -> hgBuilder.importEvent(identity, "Signup", null),
+                    () -> hgBuilder.set(identity, props),
+                    () -> hgBuilder.delete(identity));
+            for (ThrowingRunnable call : calls) {
+                IllegalArgumentException e = assertThrows(identity + " call " + calls.indexOf(call),
+                        IllegalArgumentException.class, call);
+                assertTrue(e.getMessage(), e.getMessage().contains("contains '|'"));
+            }
+        }
+    }
+
+    @Test
+    public void testPipeInIdsIsAllowedOnLegacyBuilder() {
+        // MixpanelIdentity itself is mode-agnostic, and non-hierarchical ids may contain '|'.
+        MixpanelIdentity identity = MixpanelIdentity.builder().userId("user|123").deviceId("d").build();
+        assertEquals("user|123", eventProperties(legacyBuilder.event(identity, "Signup", null)).getString("$user_id"));
+        assertEquals("ac|me", legacyBuilder.forCompany("ac|me")
+                .groupSet("team", "a", new JSONObject()).getJSONObject("message").getString("$company_id"));
+    }
+
+    @Test
+    public void testPipeInForCompanyIsRefusedOnHierarchicalBuilder() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.forCompany("ac|me"));
+        assertTrue(e.getMessage(), e.getMessage().contains("contains '|'"));
+    }
+
+    @Test
+    public void testPipeInCompanyIdModifierIsRefusedOnHierarchicalBuilder() {
+        JSONObject modifiers = new JSONObject().put("$company_id", "ac|me");
+        JSONObject props = new JSONObject().put("seats", 1);
+        List<ThrowingRunnable> calls = Arrays.asList(
+                () -> hgBuilder.groupSet("team", "a", props, modifiers),
+                () -> hgBuilder.groupMessage("team", "a", "$set", props, modifiers),
+                () -> hgBuilder.set(MixpanelIdentity.builder().userId("user_123").build(), props, modifiers));
+        for (ThrowingRunnable call : calls) {
+            IllegalArgumentException e = assertThrows("call " + calls.indexOf(call),
+                    IllegalArgumentException.class, call);
+            assertTrue(e.getMessage(), e.getMessage().contains("contains '|'"));
+        }
+        // Unchanged on a legacy builder
+        assertEquals("ac|me", legacyBuilder.groupSet("team", "a", props, modifiers)
+                .getJSONObject("message").getString("$company_id"));
+    }
+
+    @Test
+    public void testPipeInCombinedDistinctIdPartsIsRefusedOnHierarchicalBuilder() {
+        // The company is the text before the first "|$user:", so a '|' can only appear in a part
+        // that is not followed by "$user:".
+        List<String> distinctIds = Arrays.asList("$company:ac|me|$user:user_123", "$company:acme|$user:user|123",
+                "$company:acme|$user:user|$user:123");
+        JSONObject props = new JSONObject().put("plan", "pro");
+        for (String distinctId : distinctIds) {
+            MixpanelIdentity identity = MixpanelIdentity.builder().distinctId(distinctId).build();
+            List<ThrowingRunnable> calls = Arrays.asList(
+                    () -> hgBuilder.event(distinctId, "Signup", new JSONObject()),
+                    () -> hgBuilder.importEvent(distinctId, "Signup", new JSONObject()),
+                    () -> hgBuilder.set(distinctId, props),
+                    () -> hgBuilder.peopleMessage(distinctId, "$set", props, null),
+                    () -> hgBuilder.event(identity, "Signup", null),
+                    () -> hgBuilder.set(identity, props));
+            for (ThrowingRunnable call : calls) {
+                IllegalArgumentException e = assertThrows(distinctId + " call " + calls.indexOf(call),
+                        IllegalArgumentException.class, call);
+                assertTrue(e.getMessage(), e.getMessage().contains("contains '|'"));
+            }
+            // Unchanged on a legacy builder
+            assertEquals(distinctId, eventProperties(legacyBuilder.event(distinctId, "Signup", null))
+                    .getString("distinct_id"));
+        }
+    }
+
+    @Test
+    public void testIgnoreAliasIsRefusedOnHierarchicalProfileWrites() {
+        JSONObject modifiers = new JSONObject().put("$ignore_alias", true).put("$company_id", "acme");
+        JSONObject props = new JSONObject().put("plan", "pro");
+        MessageBuilder acme = hgBuilder.forCompany("acme");
+        List<ThrowingRunnable> calls = Arrays.asList(
+                () -> hgBuilder.set(MixpanelIdentity.builder().userId("user_123").companyId("acme").build(),
+                        props, modifiers),
+                () -> hgBuilder.set(COMBINED, props, modifiers),
+                () -> hgBuilder.peopleMessage(COMBINED, "$set", props, modifiers),
+                () -> hgBuilder.groupSet("team", "a", props, modifiers),
+                () -> hgBuilder.groupMessage("team", "a", "$set", props, modifiers),
+                () -> acme.groupSet("team", "a", props, modifiers),
+                () -> acme.companySet(props, modifiers));
+        for (ThrowingRunnable call : calls) {
+            IllegalArgumentException e = assertThrows("call " + calls.indexOf(call),
+                    IllegalArgumentException.class, call);
+            assertTrue(e.getMessage(), e.getMessage().startsWith("$ignore_alias modifier is not supported"));
+        }
+    }
+
+    @Test
+    public void testDistinctIdIsRefusedOnHierarchicalGroupWrites() {
+        JSONObject modifiers = new JSONObject().put("$distinct_id", "x").put("$company_id", "acme");
+        JSONObject props = new JSONObject().put("seats", 1);
+        MessageBuilder acme = hgBuilder.forCompany("acme");
+        List<ThrowingRunnable> calls = Arrays.asList(
+                () -> hgBuilder.groupSet("team", "a", props, modifiers),
+                () -> hgBuilder.groupMessage("team", "a", "$set", props, modifiers),
+                () -> acme.groupSet("team", "a", props, modifiers),
+                () -> acme.companySet(props, modifiers),
+                () -> acme.companyDelete(modifiers));
+        for (ThrowingRunnable call : calls) {
+            IllegalArgumentException e = assertThrows("call " + calls.indexOf(call),
+                    IllegalArgumentException.class, call);
+            assertTrue(e.getMessage(), e.getMessage().startsWith("$distinct_id modifier is not supported"));
+        }
+    }
+
+    @Test
+    public void testDistinctIdStillNamesHierarchicalUserProfile() {
+        JSONObject message = hgBuilder.set("ignored", new JSONObject().put("plan", "pro"),
+                new JSONObject().put("$distinct_id", COMBINED)).getJSONObject("message");
+        assertEquals("user_123", message.getString("$group_id"));
+        assertFalse(message.has("$distinct_id"));
+    }
+
+    @Test
+    public void testIgnoreAliasAndDistinctIdUnchangedOnLegacyBuilder() {
+        JSONObject modifiers = new JSONObject().put("$ignore_alias", true).put("$distinct_id", "x");
+        JSONObject group = legacyBuilder.groupSet("team", "a", new JSONObject(), modifiers).getJSONObject("message");
+        assertTrue(group.getBoolean("$ignore_alias"));
+        assertEquals("x", group.getString("$distinct_id"));
+        JSONObject people = legacyBuilder.set("user_123", new JSONObject(), modifiers).getJSONObject("message");
+        assertTrue(people.getBoolean("$ignore_alias"));
+        assertEquals("x", people.getString("$distinct_id"));
+    }
+
+    @Test
+    public void testIdentityWithoutDistinctIdAndDistinctIdModifierMessage() {
+        MixpanelIdentity user = MixpanelIdentity.builder().userId("user_123").companyId("acme").build();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> hgBuilder.set(user, new JSONObject(), new JSONObject().put("$distinct_id", COMBINED)));
+        assertTrue(e.getMessage(), e.getMessage().contains("Pass either an identity or a $distinct_id, not both"));
+        assertFalse(e.getMessage(), e.getMessage().contains("null"));
     }
 
     // #endregion
