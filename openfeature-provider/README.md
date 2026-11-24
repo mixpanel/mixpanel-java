@@ -32,7 +32,7 @@ This package provides a bridge between Mixpanel's native feature flags implement
 ### Gradle
 
 ```groovy
-implementation 'com.mixpanel:mixpanel-java-openfeature:0.1.0'
+implementation 'com.mixpanel:mixpanel-java-openfeature:0.3.0'
 ```
 
 You will also need the OpenFeature Java SDK:
