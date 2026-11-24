@@ -41,7 +41,7 @@ You will also need the OpenFeature Java SDK:
 <dependency>
     <groupId>dev.openfeature</groupId>
     <artifactId>sdk</artifactId>
-    <version>0.3.0</version>
+    <version>1.20.1</version>
 </dependency>
 ```
 

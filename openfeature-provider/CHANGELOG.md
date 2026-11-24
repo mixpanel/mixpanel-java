@@ -2,6 +2,9 @@
 
 ## [openfeature/v0.3.0](https://github.com/mixpanel/mixpanel-java/tree/openfeature/v0.3.0) (2026-11-24)
 
+### Features
+- tag OpenFeature exposures with $openfeature_provider (SDK-448) ([#107](https://github.com/mixpanel/mixpanel-java/pull/107))
+
 [Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/openfeature/v0.2.0...openfeature/v0.3.0)
 
 ## [openfeature/v0.2.0](https://github.com/mixpanel/mixpanel-java/tree/openfeature/v0.2.0) (2026-07-28)
