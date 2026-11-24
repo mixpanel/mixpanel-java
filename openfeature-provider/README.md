@@ -4,7 +4,7 @@
 [![OpenFeature](https://img.shields.io/badge/OpenFeature-compatible-green)](https://openfeature.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/mixpanel/mixpanel-java/blob/master/LICENSE)
 
-##### _July 28, 2026_ - [openfeature/v0.2.0](https://github.com/mixpanel/mixpanel-java/releases/tag/openfeature/v0.2.0)
+##### _November 24, 2026_ - [openfeature/v0.3.0](https://github.com/mixpanel/mixpanel-java/releases/tag/openfeature/v0.3.0)
 
 An [OpenFeature](https://openfeature.dev/) provider that integrates Mixpanel's feature flags with the OpenFeature Java SDK. This allows you to use Mixpanel's feature flagging capabilities through OpenFeature's standardized, vendor-agnostic API.
 
@@ -25,14 +25,14 @@ This package provides a bridge between Mixpanel's native feature flags implement
 <dependency>
     <groupId>com.mixpanel</groupId>
     <artifactId>mixpanel-java-openfeature</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'com.mixpanel:mixpanel-java-openfeature:0.1.0'
+implementation 'com.mixpanel:mixpanel-java-openfeature:0.3.0'
 ```
 
 You will also need the OpenFeature Java SDK:
@@ -41,7 +41,7 @@ You will also need the OpenFeature Java SDK:
 <dependency>
     <groupId>dev.openfeature</groupId>
     <artifactId>sdk</artifactId>
-    <version>0.2.0</version>
+    <version>1.20.1</version>
 </dependency>
 ```
 
