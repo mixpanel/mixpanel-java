@@ -43,6 +43,23 @@ public final class ExperimentationFlag {
         this(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, "");
     }
 
+    /**
+     * Creates a new ExperimentationFlag with a context value template.
+     *
+     * @param id the unique identifier for this flag
+     * @param name the human-readable name of this flag
+     * @param key the key used to reference this flag in code
+     * @param status the current status of this flag
+     * @param projectId the Mixpanel project ID this flag belongs to
+     * @param ruleset the ruleset defining variant assignment logic
+     * @param context the property name used for rollout hashing (e.g., "distinct_id")
+     * @param experimentId the experiment ID (may be null)
+     * @param isExperimentActive whether the experiment is active (may be null)
+     * @param hashSalt the hash salt for this flag (may be null for legacy flags)
+     * @param contextValueTemplate the template for building the assignment key from the evaluation
+     *            context, for example {@code $company:{$company_id}|$user:{$user_id}}; null or empty
+     *            when the service sends none
+     */
     public ExperimentationFlag(String id, String name, String key, String status, int projectId, RuleSet ruleset, String context, UUID experimentId, Boolean isExperimentActive, String hashSalt, String contextValueTemplate) {
         this.contextValueTemplate = contextValueTemplate == null ? "" : contextValueTemplate;
         this.id = id;

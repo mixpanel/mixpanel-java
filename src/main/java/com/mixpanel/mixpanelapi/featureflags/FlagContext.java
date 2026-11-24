@@ -30,11 +30,11 @@ public final class FlagContext {
     }
 
     public static final class Builder {
-        private final Map<String, Object> mContext = new HashMap<>();
+        private final Map<String, Object> context = new HashMap<>();
         // Identity keys are applied last in build(), so they win over group() and
         // customProperty() whatever the call order; among them the later call wins.
-        private final Map<String, Object> mIdentity = new HashMap<>();
-        private final Map<String, Object> mCustomProperties = new HashMap<>();
+        private final Map<String, Object> identity = new HashMap<>();
+        private final Map<String, Object> customProperties = new HashMap<>();
 
         private Builder() {
         }
@@ -58,23 +58,23 @@ public final class FlagContext {
         }
 
         public Builder distinctId(String distinctId) {
-            mIdentity.put("distinct_id", distinctId);
+            identity.put("distinct_id", distinctId);
             return this;
         }
 
         /** Sets the device id, used as the assignment key by flags that assign on {@code device_id}. */
         public Builder deviceId(String deviceId) {
-            mIdentity.put("device_id", deviceId);
+            identity.put("device_id", deviceId);
             return this;
         }
 
         public Builder userId(String userId) {
-            mIdentity.put("$user_id", userId);
+            identity.put("$user_id", userId);
             return this;
         }
 
         public Builder companyId(String companyId) {
-            mIdentity.put("$company_id", companyId);
+            identity.put("$company_id", companyId);
             return this;
         }
 
@@ -85,22 +85,22 @@ public final class FlagContext {
          * or on the raw group value when the template is absent or cannot be filled.
          */
         public Builder group(String groupKey, Object groupValue) {
-            mContext.put(groupKey, groupValue);
+            context.put(groupKey, groupValue);
             return this;
         }
 
         /** Adds a property used by runtime targeting rules. */
         public Builder customProperty(String name, Object value) {
-            mCustomProperties.put(name, value);
+            customProperties.put(name, value);
             return this;
         }
 
         public Map<String, Object> build() {
-            Map<String, Object> context = new HashMap<>(mContext);
-            if (!mCustomProperties.isEmpty()) {
-                context.put("custom_properties", new HashMap<>(mCustomProperties));
+            Map<String, Object> context = new HashMap<>(this.context);
+            if (!customProperties.isEmpty()) {
+                context.put("custom_properties", new HashMap<>(customProperties));
             }
-            context.putAll(mIdentity);
+            context.putAll(identity);
             return context;
         }
     }

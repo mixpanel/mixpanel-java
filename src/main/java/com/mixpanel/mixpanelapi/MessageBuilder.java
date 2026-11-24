@@ -35,7 +35,7 @@ public class MessageBuilder {
             Arrays.asList("$set", "$set_once", "$unset", "$union", "$remove", "$delete")));
     // Keys of a /engage or /groups message that are not operations
     private static final Set<String> NON_OPERATION_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(
-            Arrays.asList("$token", "$distinct_id", "$group_key", "$group_id", "$company_id", "$time", "$ip",
+            Arrays.asList("$token", "$distinct_id", "$group_key", "$group_id", COMPANY_ID_GROUP_KEY, "$time", "$ip",
                     "$ignore_time", "$ignore_alias", "$mp_metadata", "$latitude", "$longitude")));
 
     private final String mToken;
@@ -309,10 +309,10 @@ public class MessageBuilder {
         if (combined == null || properties == null) {
             return;
         }
-        requireCombinedPartMatches(distinctId, "company", combined.getCompanyId(), "$company_id",
-                properties.opt("$company_id"));
-        requireCombinedPartMatches(distinctId, "user", combined.getUserId(), "$user_id",
-                properties.opt("$user_id"));
+        requireCombinedPartMatches(distinctId, "company", combined.getCompanyId(), COMPANY_ID_GROUP_KEY,
+                properties.opt(COMPANY_ID_GROUP_KEY));
+        requireCombinedPartMatches(distinctId, "user", combined.getUserId(), USER_ID_GROUP_KEY,
+                properties.opt(USER_ID_GROUP_KEY));
     }
 
     private static void requireCombinedPartMatches(String distinctId, String part, String expected, String key,
@@ -752,6 +752,13 @@ public class MessageBuilder {
     }
 
     /**
+     * Sets properties on the user profile for the given identity, with modifiers.
+     *
+     * @param identity whose profile to change
+     * @param properties a collection of properties to set on the profile
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile set message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject set(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
@@ -761,6 +768,9 @@ public class MessageBuilder {
     /**
      * Sets properties on the user profile for the given identity only if they are not already set.
      *
+     * @param identity whose profile to change
+     * @param properties a collection of properties to set on the profile
+     * @return profile setOnce message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject setOnce(MixpanelIdentity identity, JSONObject properties) {
@@ -768,6 +778,14 @@ public class MessageBuilder {
     }
 
     /**
+     * Sets properties on the user profile for the given identity only if they are not already set,
+     * with modifiers.
+     *
+     * @param identity whose profile to change
+     * @param properties a collection of properties to set on the profile
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile setOnce message for consumption by MixpanelAPI
      * @see #setOnce(MixpanelIdentity, JSONObject)
      */
     public JSONObject setOnce(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
@@ -777,6 +795,8 @@ public class MessageBuilder {
     /**
      * Deletes the user profile for the given identity.
      *
+     * @param identity whose profile to delete
+     * @return profile delete message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject delete(MixpanelIdentity identity) {
@@ -784,6 +804,12 @@ public class MessageBuilder {
     }
 
     /**
+     * Deletes the user profile for the given identity, with modifiers.
+     *
+     * @param identity whose profile to delete
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile delete message for consumption by MixpanelAPI
      * @see #delete(MixpanelIdentity)
      */
     public JSONObject delete(MixpanelIdentity identity, JSONObject modifiers) {
@@ -793,6 +819,9 @@ public class MessageBuilder {
     /**
      * Removes values from list properties on the user profile for the given identity.
      *
+     * @param identity whose profile to change
+     * @param properties properties for the remove operation
+     * @return profile remove message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject remove(MixpanelIdentity identity, JSONObject properties) {
@@ -800,6 +829,13 @@ public class MessageBuilder {
     }
 
     /**
+     * Removes values from list properties on the user profile for the given identity, with modifiers.
+     *
+     * @param identity whose profile to change
+     * @param properties properties for the remove operation
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile remove message for consumption by MixpanelAPI
      * @see #remove(MixpanelIdentity, JSONObject)
      */
     public JSONObject remove(MixpanelIdentity identity, JSONObject properties, JSONObject modifiers) {
@@ -810,6 +846,9 @@ public class MessageBuilder {
      * Merges values into list properties on the user profile for the given identity,
      * ignoring values already present.
      *
+     * @param identity whose profile to change
+     * @param properties properties for the union operation
+     * @return profile union message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject union(MixpanelIdentity identity, Map<String, JSONArray> properties) {
@@ -817,6 +856,13 @@ public class MessageBuilder {
     }
 
     /**
+     * Merges values into list properties on the user profile for the given identity, with modifiers.
+     *
+     * @param identity whose profile to change
+     * @param properties properties for the union operation
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile union message for consumption by MixpanelAPI
      * @see #union(MixpanelIdentity, Map)
      */
     public JSONObject union(MixpanelIdentity identity, Map<String, JSONArray> properties, JSONObject modifiers) {
@@ -826,6 +872,9 @@ public class MessageBuilder {
     /**
      * Removes properties from the user profile for the given identity.
      *
+     * @param identity whose profile to change
+     * @param propertyNames names of the properties to remove
+     * @return profile unset message for consumption by MixpanelAPI
      * @see #set(MixpanelIdentity, JSONObject)
      */
     public JSONObject unset(MixpanelIdentity identity, Collection<String> propertyNames) {
@@ -833,6 +882,13 @@ public class MessageBuilder {
     }
 
     /**
+     * Removes properties from the user profile for the given identity, with modifiers.
+     *
+     * @param identity whose profile to change
+     * @param propertyNames names of the properties to remove
+     * @param modifiers modifiers associated with the update message (for example "$time" or "$ignore_time"),
+     *            or null
+     * @return profile unset message for consumption by MixpanelAPI
      * @see #unset(MixpanelIdentity, Collection)
      */
     public JSONObject unset(MixpanelIdentity identity, Collection<String> propertyNames, JSONObject modifiers) {
@@ -1056,8 +1112,8 @@ public class MessageBuilder {
         }
         if (checkCombinedConflicts && groupModifiers != null) {
             requireCompanyIdModifierIsValid(groupModifiers);
-            requireCombinedPartMatches(distinctId, "company", identity.getCompanyId(), "$company_id",
-                    hasCompanyIdModifier(groupModifiers) ? groupModifiers.opt("$company_id") : null);
+            requireCombinedPartMatches(distinctId, "company", identity.getCompanyId(), COMPANY_ID_GROUP_KEY,
+                    hasCompanyIdModifier(groupModifiers) ? groupModifiers.opt(COMPANY_ID_GROUP_KEY) : null);
         }
         requireBoundCompany(identity.getCompanyId(), "\"" + distinctId + "\"");
         return buildGroupMessage(USER_ID_GROUP_KEY, identity.getUserId(), actionType, properties, groupModifiers,
@@ -1327,7 +1383,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companySet(JSONObject properties, JSONObject modifiers) {
-        return groupSet("$company_id", requireBoundCompanyId("companySet"), properties, modifiers);
+        return groupSet(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companySet"), properties, modifiers);
     }
 
     /**
@@ -1359,7 +1415,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companySetOnce(JSONObject properties, JSONObject modifiers) {
-        return groupSetOnce("$company_id", requireBoundCompanyId("companySetOnce"), properties, modifiers);
+        return groupSetOnce(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companySetOnce"), properties, modifiers);
     }
 
     /**
@@ -1384,7 +1440,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companyDelete(JSONObject modifiers) {
-        return groupDelete("$company_id", requireBoundCompanyId("companyDelete"), modifiers);
+        return groupDelete(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companyDelete"), modifiers);
     }
 
     /**
@@ -1414,7 +1470,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companyRemove(JSONObject properties, JSONObject modifiers) {
-        return groupRemove("$company_id", requireBoundCompanyId("companyRemove"), properties, modifiers);
+        return groupRemove(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companyRemove"), properties, modifiers);
     }
 
     /**
@@ -1444,7 +1500,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companyUnion(Map<String, JSONArray> properties, JSONObject modifiers) {
-        return groupUnion("$company_id", requireBoundCompanyId("companyUnion"), properties, modifiers);
+        return groupUnion(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companyUnion"), properties, modifiers);
     }
 
     /**
@@ -1474,7 +1530,7 @@ public class MessageBuilder {
      * @throws IllegalStateException if this builder has no company bound with {@link #forCompany(String)}
      */
     public JSONObject companyUnset(Collection<String> propertyNames, JSONObject modifiers) {
-        return groupUnset("$company_id", requireBoundCompanyId("companyUnset"), propertyNames, modifiers);
+        return groupUnset(COMPANY_ID_GROUP_KEY, requireBoundCompanyId("companyUnset"), propertyNames, modifiers);
     }
 
     private String requireBoundCompanyId(String method) {
@@ -1546,7 +1602,7 @@ public class MessageBuilder {
         }
         if (mHierarchicalGroups && COMPANY_ID_GROUP_KEY.equals(groupKey)) {
             requireCompanyGroupMatchesCompany(groupId, companyId != null ? companyId
-                    : hasCompanyIdModifier(modifiers) ? modifiers.opt("$company_id") : null);
+                    : hasCompanyIdModifier(modifiers) ? modifiers.opt(COMPANY_ID_GROUP_KEY) : null);
         }
         JSONObject dataObj = new JSONObject();
         if (null == properties) {
@@ -1575,11 +1631,11 @@ public class MessageBuilder {
             }
             // A numeric $company_id modifier is written as a string, as a bound company is.
             if (mHierarchicalGroups && companyId == null && hasCompanyIdModifier(modifiers)) {
-                dataObj.put("$company_id", String.valueOf(modifiers.get("$company_id")));
+                dataObj.put(COMPANY_ID_GROUP_KEY, String.valueOf(modifiers.get(COMPANY_ID_GROUP_KEY)));
             }
             // $company_id must be top-level, not inside the operation payload
             if (companyId != null) {
-                dataObj.put("$company_id", companyId);
+                dataObj.put(COMPANY_ID_GROUP_KEY, companyId);
             }
             JSONObject envelope = new JSONObject();
             envelope.put("envelope_version", 1);
@@ -1671,7 +1727,7 @@ public class MessageBuilder {
         if (modifiers == null) {
             return;
         }
-        Object companyId = modifiers.opt("$company_id");
+        Object companyId = modifiers.opt(COMPANY_ID_GROUP_KEY);
         if (companyId == null || JSONObject.NULL.equals(companyId)) {
             return;
         }
@@ -1698,7 +1754,7 @@ public class MessageBuilder {
         if (modifiers == null) {
             return false;
         }
-        Object companyId = modifiers.opt("$company_id");
+        Object companyId = modifiers.opt(COMPANY_ID_GROUP_KEY);
         return companyId != null && !JSONObject.NULL.equals(companyId) && !"".equals(companyId);
     }
 
