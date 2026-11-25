@@ -1899,5 +1899,169 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
 
     // #endregion
 
+    // #region Multi-Experiment Flag Tests
+
+    private static final String MULTI_EXPERIMENT_FLAG_KEY = "checkout";
+    private static final String MULTI_EXPERIMENT_HASH_SALT = "salt1";
+    // Allocation buckets for MULTI_EXPERIMENT_FLAG_KEY with MULTI_EXPERIMENT_HASH_SALT.
+    private static final String DISTINCT_ID_IN_BUCKET_9 = "user23";
+    private static final String DISTINCT_ID_IN_BUCKET_62 = "user848";
+    private static final String FIRST_EXPERIMENT_ID = "00000000-0000-4000-8000-000000000001";
+    private static final String SECOND_EXPERIMENT_ID = "00000000-0000-4000-8000-000000000002";
+    private static final String FLAG_LEVEL_EXPERIMENT_ID = "00000000-0000-4000-8000-0000000000ff";
+
+    private JSONObject experimentEntry(String experimentId, String experimentStatus, int[]... allocation) {
+        JSONArray allocationJson = new JSONArray();
+        for (int[] range : allocation) {
+            allocationJson.put(new JSONObject().put("start", range[0]).put("end", range[1]));
+        }
+        return new JSONObject()
+            .put("type", "experiment")
+            .put("experiment_id", experimentId)
+            .put("experiment_status", experimentStatus)
+            .put("is_experiment_active", "active".equals(experimentStatus))
+            .put("allocation", allocationJson)
+            .put("rollout_percentage", 0)
+            .put("variant_splits", new JSONObject().put("control", 0.5).put("treatment", 0.5));
+    }
+
+    private JSONObject multiExperimentFlag(String hashSalt, JSONObject... rollout) {
+        JSONArray variants = new JSONArray()
+            .put(new JSONObject().put("key", "control").put("value", "control").put("is_control", true))
+            .put(new JSONObject().put("key", "treatment").put("value", "treatment").put("is_control", false));
+        JSONObject flag = new JSONObject()
+            .put("id", "multi-experiment-1")
+            .put("project_id", 31)
+            .put("name", "Checkout")
+            .put("key", MULTI_EXPERIMENT_FLAG_KEY)
+            .put("status", "enabled")
+            .put("context", "distinct_id")
+            .put("ruleset", new JSONObject().put("variants", variants).put("rollout", new JSONArray(rollout)));
+        if (hashSalt != null) {
+            flag.put("hash_salt", hashSalt);
+        }
+        return flag;
+    }
+
+    private SelectedVariant<String> getMultiExperimentVariant(JSONObject flag, Map<String, Object> context) {
+        String response = new JSONObject().put("flags", new JSONArray().put(flag)).toString();
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+        return provider.getVariant(MULTI_EXPERIMENT_FLAG_KEY, new SelectedVariant<>(fallbackVariantValue), context, true);
+    }
+
+    @Test
+    public void testRolloutAllocationRangesAreHalfOpen() {
+        Rollout rollout = new Rollout(0.0f, null, null, null, null, "experiment", null, null, "active", true,
+            Arrays.asList(new AllocationRange(0, 10), new AllocationRange(40, 50)));
+
+        assertTrue(rollout.isExperiment());
+        assertTrue(rollout.allocationContains(0));
+        assertTrue(rollout.allocationContains(45));
+        assertFalse(rollout.allocationContains(10));
+        assertFalse(rollout.allocationContains(50));
+    }
+
+    @Test
+    public void testMultiExperimentFlagSkipsDraftExperiment() {
+        JSONObject flag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT,
+            experimentEntry(FIRST_EXPERIMENT_ID, "draft", new int[] {0, 40}));
+
+        SelectedVariant<String> result = getMultiExperimentVariant(flag, buildContext(DISTINCT_ID_IN_BUCKET_9));
+
+        assertTrue(result.isFallback());
+        assertEquals(fallbackVariantValue, result.getVariantValue());
+        assertEquals(0, eventSender.getEvents().size());
+    }
+
+    @Test
+    public void testMultiExperimentFlagWithoutHashSaltServesFallback() {
+        JSONObject flag = multiExperimentFlag(null,
+            experimentEntry(FIRST_EXPERIMENT_ID, "active", new int[] {0, 100}));
+
+        SelectedVariant<String> result = getMultiExperimentVariant(flag, buildContext(DISTINCT_ID_IN_BUCKET_9));
+
+        assertTrue(result.isFallback());
+        assertEquals(fallbackVariantValue, result.getVariantValue());
+    }
+
+    @Test
+    public void testMultiExperimentFlagDoesNotFallThroughWhenRuntimeRuleFails() {
+        JSONObject proOnlyEntry = experimentEntry(FIRST_EXPERIMENT_ID, "active", new int[] {0, 50})
+            .put("runtime_evaluation_rule", new JSONObject("{\"==\": [{\"var\": \"plan\"}, \"pro\"]}"));
+        JSONObject flag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT,
+            proOnlyEntry,
+            experimentEntry(SECOND_EXPERIMENT_ID, "active", new int[] {50, 100}));
+
+        SelectedVariant<String> withMatchingPlan = getMultiExperimentVariant(flag,
+            buildContextWithProperties(DISTINCT_ID_IN_BUCKET_9, mapOf("plan", (Object) "pro")));
+        SelectedVariant<String> withOtherPlan = getMultiExperimentVariant(flag,
+            buildContextWithProperties(DISTINCT_ID_IN_BUCKET_9, mapOf("plan", (Object) "free")));
+
+        assertTrue(withMatchingPlan.isSuccess());
+        assertEquals(UUID.fromString(FIRST_EXPERIMENT_ID), withMatchingPlan.getExperimentId());
+        assertTrue(withOtherPlan.isFallback());
+        assertEquals(fallbackVariantValue, withOtherPlan.getVariantValue());
+    }
+
+    @Test
+    public void testMultiExperimentFlagTracksExposureWithExperimentEntryAttribution() {
+        JSONObject concludedEntry = experimentEntry(SECOND_EXPERIMENT_ID, "concluded", new int[] {40, 65});
+        concludedEntry.remove("is_experiment_active");
+        JSONObject flag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT,
+            experimentEntry(FIRST_EXPERIMENT_ID, "active", new int[] {0, 40}),
+            concludedEntry)
+            .put("experiment_id", FLAG_LEVEL_EXPERIMENT_ID)
+            .put("is_experiment_active", true);
+
+        SelectedVariant<String> result = getMultiExperimentVariant(flag, buildContext(DISTINCT_ID_IN_BUCKET_62));
+
+        assertTrue(result.isSuccess());
+        assertEquals(UUID.fromString(SECOND_EXPERIMENT_ID), result.getExperimentId());
+        assertEquals(Boolean.FALSE, result.getIsExperimentActive());
+        assertEquals(1, eventSender.getEvents().size());
+        JSONObject exposureProperties = eventSender.getEvents().get(0).properties;
+        assertEquals(SECOND_EXPERIMENT_ID, exposureProperties.getString("$experiment_id"));
+        assertFalse(exposureProperties.getBoolean("$is_experiment_active"));
+    }
+
+    @Test
+    public void testMultiExperimentFlagVariantOverrideUsesExperimentEntryAttribution() {
+        JSONObject shippedEntry = experimentEntry(FIRST_EXPERIMENT_ID, "concluded", new int[] {0, 100})
+            .put("variant_override", new JSONObject().put("key", "treatment"));
+        JSONObject flag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT, shippedEntry)
+            .put("experiment_id", FLAG_LEVEL_EXPERIMENT_ID)
+            .put("is_experiment_active", true);
+
+        SelectedVariant<String> result = getMultiExperimentVariant(flag, buildContext(DISTINCT_ID_IN_BUCKET_9));
+
+        assertEquals("treatment", result.getVariantKey());
+        assertEquals(UUID.fromString(FIRST_EXPERIMENT_ID), result.getExperimentId());
+        assertEquals(Boolean.FALSE, result.getIsExperimentActive());
+        JSONObject exposureProperties = eventSender.getEvents().get(0).properties;
+        assertEquals(FIRST_EXPERIMENT_ID, exposureProperties.getString("$experiment_id"));
+        assertFalse(exposureProperties.getBoolean("$is_experiment_active"));
+    }
+
+    @Test
+    public void testMultiExperimentFlagVariantDependsOnExperimentId() {
+        // Same subject, flag, salt and allocation: only the experiment_id differs,
+        // and it is part of the variant hash input.
+        JSONObject firstExperimentFlag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT,
+            experimentEntry(FIRST_EXPERIMENT_ID, "active", new int[] {0, 100}));
+        JSONObject secondExperimentFlag = multiExperimentFlag(MULTI_EXPERIMENT_HASH_SALT,
+            experimentEntry(SECOND_EXPERIMENT_ID, "active", new int[] {0, 100}));
+
+        SelectedVariant<String> firstExperimentVariant =
+            getMultiExperimentVariant(firstExperimentFlag, buildContext("user123"));
+        SelectedVariant<String> secondExperimentVariant =
+            getMultiExperimentVariant(secondExperimentFlag, buildContext("user123"));
+
+        assertEquals("treatment", firstExperimentVariant.getVariantKey());
+        assertEquals("control", secondExperimentVariant.getVariantKey());
+    }
+
+    // #endregion
+
     // #endregion
 }

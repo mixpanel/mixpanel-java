@@ -242,15 +242,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         String context = json.optString("context", "distinct_id");
 
         // Parse experiment metadata
-        UUID experimentId = null;
-        String experimentIdString = json.optString("experiment_id", null);
-        if (experimentIdString != null && !experimentIdString.isEmpty()) {
-            try {
-                experimentId = UUID.fromString(experimentIdString);
-            } catch (IllegalArgumentException e) {
-                logger.log(Level.WARNING, "Invalid UUID for experiment_id: " + experimentIdString);
-            }
-        }
+        UUID experimentId = parseExperimentId(json.optString("experiment_id", null));
 
         Boolean isExperimentActive = null;
         if (json.has("is_experiment_active")) {
@@ -263,6 +255,21 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         RuleSet ruleset = parseRuleSet(json.optJSONObject("ruleset"));
 
         return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt);
+    }
+
+    /**
+     * Parses an experiment ID, returning null when it is missing or not a valid UUID.
+     */
+    private UUID parseExperimentId(String experimentIdString) {
+        if (experimentIdString == null || experimentIdString.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(experimentIdString);
+        } catch (IllegalArgumentException e) {
+            logger.log(Level.WARNING, "Invalid UUID for experiment_id: " + experimentIdString);
+            return null;
+        }
     }
 
     /**
@@ -360,7 +367,28 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             }
         }
 
-        return new Rollout(rolloutPercentage, runtimeEvaluationRule, legacyRuntimeEval, variantOverride, variantSplits);
+        String type = json.optString("type", null);
+        String rawExperimentId = json.optString("experiment_id", null);
+        UUID experimentId = parseExperimentId(rawExperimentId);
+        String experimentStatus = json.optString("experiment_status", null);
+
+        Boolean isExperimentActive = null;
+        if (json.has("is_experiment_active")) {
+            isExperimentActive = json.optBoolean("is_experiment_active", false);
+        }
+
+        List<AllocationRange> allocation = null;
+        JSONArray allocationJson = json.optJSONArray("allocation");
+        if (allocationJson != null) {
+            allocation = new ArrayList<>();
+            for (int i = 0; i < allocationJson.length(); i++) {
+                JSONObject rangeJson = allocationJson.getJSONObject(i);
+                allocation.add(new AllocationRange(rangeJson.optInt("start", 0), rangeJson.optInt("end", 0)));
+            }
+        }
+
+        return new Rollout(rolloutPercentage, runtimeEvaluationRule, legacyRuntimeEval, variantOverride, variantSplits,
+            type, experimentId, rawExperimentId, experimentStatus, isExperimentActive, allocation);
     }
 
     // #endregion
@@ -419,11 +447,16 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             for (int rolloutIndex = 0; rolloutIndex < rollouts.size(); rolloutIndex++) {
                 Rollout rollout = rollouts.get(rolloutIndex);
 
-                // Calculate rollout hash
-                float rolloutHash = calculateRolloutHash(contextValue, flagKey, flag.getHashSalt(), rolloutIndex);
+                if (rollout.isExperiment()) {
+                    if (!isContextInExperimentAllocation(contextValue, flag, rollout)) {
+                        continue;
+                    }
+                } else {
+                    float rolloutHash = calculateRolloutHash(contextValue, flagKey, flag.getHashSalt(), rolloutIndex);
 
-                if (rolloutHash >= rollout.getRolloutPercentage()) {
-                    continue;
+                    if (rolloutHash >= rollout.getRolloutPercentage()) {
+                        continue;
+                    }
                 }
 
                 // Check runtime evaluation, continue if this rollout has runtime conditions and it doesn't match
@@ -440,11 +473,17 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 if (rollout.hasVariantOverride()) {
                     selectedVariant = findVariantByKey(ruleset.getVariants(), rollout.getVariantOverride().getKey());
                 } else {
-                    float variantHash = calculateVariantHash(contextValue, flagKey, flag.getHashSalt());
+                    float variantHash = rollout.isExperiment()
+                        ? calculateExperimentVariantHash(contextValue, flagKey, flag.getHashSalt(), rollout)
+                        : calculateVariantHash(contextValue, flagKey, flag.getHashSalt());
                     selectedVariant = selectVariantBySplit(ruleset.getVariants(), variantHash, rollout);
                 }
 
                 if (selectedVariant != null) {
+                    if (rollout.isExperiment()) {
+                        return buildResult(selectedVariant, rollout.getExperimentId(),
+                            Boolean.TRUE.equals(rollout.getIsExperimentActive()), false, flagKey, context, startTime, reportExposure);
+                    }
                     return buildResult(selectedVariant, flag, false, flagKey, context, startTime, reportExposure);
                 }
 
@@ -463,23 +502,49 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
     /**
      * Builds a SelectedVariant result and optionally tracks exposure.
      */
-    @SuppressWarnings("unchecked")
     private <T> SelectedVariant<T> buildResult(Variant variant, ExperimentationFlag flag, boolean isQaTester,
                                                 String flagKey, Map<String, Object> context,
+                                                long startTime, boolean reportExposure) {
+        return buildResult(variant, flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester,
+            flagKey, context, startTime, reportExposure);
+    }
+
+    /**
+     * Builds a SelectedVariant result attributed to the given experiment and optionally tracks exposure.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> SelectedVariant<T> buildResult(Variant variant, UUID experimentId, Boolean isExperimentActive,
+                                                boolean isQaTester, String flagKey, Map<String, Object> context,
                                                 long startTime, boolean reportExposure) {
         SelectedVariant<T> result = new SelectedVariant<T>(
             variant.getKey(),
             (T) variant.getValue(),
-            flag.getExperimentId(),
-            flag.getIsExperimentActive(),
+            experimentId,
+            isExperimentActive,
             isQaTester,
             Source.local()
         );
         if (reportExposure) {
             trackLocalExposure(context, flagKey, variant.getKey(), System.currentTimeMillis() - startTime,
-                    flag.getExperimentId(), flag.getIsExperimentActive(), isQaTester);
+                    experimentId, isExperimentActive, isQaTester);
         }
         return result;
+    }
+
+    /**
+     * Checks whether the context's allocation bucket falls in an experiment entry's allocation.
+     * Draft experiments and flags without a hash salt assign no one.
+     */
+    private boolean isContextInExperimentAllocation(String contextValue, ExperimentationFlag flag, Rollout rollout) {
+        if (rollout.isDraftExperiment()) {
+            return false;
+        }
+        String hashSalt = flag.getHashSalt();
+        if (hashSalt == null || hashSalt.isEmpty()) {
+            return false;
+        }
+        int bucket = HashUtils.allocationBucket(contextValue, flag.getKey() + hashSalt);
+        return rollout.allocationContains(bucket);
     }
 
     private boolean matchesRuntimeConditions(Rollout rollout, Map<String,Object> context) {
@@ -657,6 +722,18 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         } else {
             return HashUtils.normalizedHash(contextValue + flagKey, "variant");
         }
+    }
+
+    /**
+     * Calculates the variant hash for an experiment entry of a multi-experiment flag.
+     * <p>
+     * The experiment ID is hashed as it appears in the flag definition, so subjects are
+     * re-randomized independently for each experiment that reuses the same allocation buckets.
+     * </p>
+     */
+    private float calculateExperimentVariantHash(String contextValue, String flagKey, String hashSalt, Rollout rollout) {
+        String rawExperimentId = rollout.getRawExperimentId() != null ? rollout.getRawExperimentId() : "";
+        return HashUtils.mixedNormalizedHash(contextValue + flagKey, hashSalt + rawExperimentId + "variant");
     }
 
     /**
