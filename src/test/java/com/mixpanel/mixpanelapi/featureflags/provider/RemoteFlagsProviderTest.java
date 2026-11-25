@@ -369,6 +369,63 @@ public class RemoteFlagsProviderTest extends BaseFlagsProviderTest {
         assertEquals("$company:acme|$user:user-123", eventSender.getEvents().get(0).distinctId);
     }
 
+    @Test
+    public void testHierarchicalExposureAttachesOnlyStringIds() {
+        config = RemoteFlagsConfig.builder()
+            .projectToken(TEST_TOKEN)
+            .requestTimeoutSeconds(5)
+            .hierarchicalGroups(true)
+            .build();
+        String response = buildRemoteFlagsResponse("test-flag", "variant-a", "value-a");
+        provider = new TestableRemoteFlagsProvider(config, SDK_VERSION, eventSender);
+        provider.setMockResponse("/flags", response);
+
+        // A numeric $company_id is not an id, and a user is never attached without a company.
+        Map<String, Object> context = new HashMap<>();
+        context.put("distinct_id", "d1");
+        context.put("$user_id", "u1");
+        context.put("$company_id", 42);
+        assertEquals("value-a", provider.getVariantValue("test-flag", "fallback", context));
+        assertEquals(1, eventSender.getEvents().size());
+        MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+        assertEquals("d1", event.distinctId);
+        assertFalse(event.properties.has("$user_id"));
+        assertFalse(event.properties.has("$company_id"));
+
+        // A numeric $user_id is left off; the string company is attached.
+        eventSender.reset();
+        context = new HashMap<>();
+        context.put("distinct_id", "d1");
+        context.put("$user_id", 7);
+        context.put("$company_id", "acme");
+        provider.getVariantValue("test-flag", "fallback", context);
+        assertEquals(1, eventSender.getEvents().size());
+        event = eventSender.getEvents().get(0);
+        assertEquals("d1", event.distinctId);
+        assertEquals("acme", event.properties.getString("$company_id"));
+        assertFalse(event.properties.has("$user_id"));
+
+        // With no distinct_id, a numeric $company_id cannot attribute the exposure.
+        eventSender.reset();
+        context = new HashMap<>();
+        context.put("$user_id", "u1");
+        context.put("$company_id", 42);
+        assertEquals("value-a", provider.getVariantValue("test-flag", "fallback", context));
+        assertEquals(0, eventSender.getEvents().size());
+
+        // String ids are attached as given.
+        context = new HashMap<>();
+        context.put("distinct_id", "d1");
+        context.put("$user_id", "u1");
+        context.put("$company_id", "acme");
+        provider.getVariantValue("test-flag", "fallback", context);
+        assertEquals(1, eventSender.getEvents().size());
+        event = eventSender.getEvents().get(0);
+        assertEquals("d1", event.distinctId);
+        assertEquals("u1", event.properties.getString("$user_id"));
+        assertEquals("acme", event.properties.getString("$company_id"));
+    }
+
     // #endregion
 }
 

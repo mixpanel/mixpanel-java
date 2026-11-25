@@ -225,11 +225,12 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     }
 
     /**
-     * Returns true if a $company_id or $user_id is set to something other than an empty or
-     * whitespace-only string; such an id names no one, so it is treated as absent.
+     * Returns true if a $company_id or $user_id is a string other than an empty or
+     * whitespace-only one. Any other value, such as a number, is treated as absent, matching
+     * how flag evaluation reads these ids.
      */
     private static boolean hasId(Object value) {
-        return value != null && !isBlankOrEmpty(value.toString());
+        return value instanceof String && !isBlankOrEmpty((String) value);
     }
 
     /**
@@ -261,14 +262,15 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
         String distinctId;
         try {
             // Carry whichever identity keys the caller sent; Mixpanel resolves the user
-            // from the pair, or from a distinct id it built itself.
-            Object userId = context.get("$user_id");
-            if (hasId(userId)) {
-                identity.put("$user_id", userId.toString());
-            }
+            // from the pair, or from a distinct id it built itself. A user id is only
+            // attached alongside a company, since it names no one on its own.
             Object companyId = context.get("$company_id");
             if (hasId(companyId)) {
-                identity.put("$company_id", companyId.toString());
+                identity.put("$company_id", (String) companyId);
+                Object userId = context.get("$user_id");
+                if (hasId(userId)) {
+                    identity.put("$user_id", (String) userId);
+                }
             }
             Object distinctIdObj = context.get("distinct_id");
             distinctId = isPresent(distinctIdObj) ? distinctIdObj.toString() : null;

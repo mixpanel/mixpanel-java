@@ -2365,7 +2365,6 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 {"user-123", "other", "names company acme, but $company_id is other"},
                 {"user-456", "acme", "names user user-123, but $user_id is user-456"},
                 {null, "other", "names company acme, but $company_id is other"},
-                {"user-456", null, "names user user-123, but $user_id is user-456"},
             };
             for (String[] c : cases) {
                 records.clear();
@@ -2388,7 +2387,8 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             }
 
             // Matching ids, and ids that only partly accompany the combined id, are still sent.
-            String[][] matching = {{"user-123", "acme"}, {"user-123", null}, {null, "acme"}, {null, null}};
+            // A $user_id without a $company_id is never attached, so it cannot conflict.
+            String[][] matching = {{"user-123", "acme"}, {"user-123", null}, {"user-456", null}, {null, "acme"}, {null, null}};
             for (String[] m : matching) {
                 eventSender.reset();
                 Map<String, Object> context = new HashMap<>();
@@ -2402,6 +2402,7 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
                 provider.getVariantValue(flagKey, fallbackVariantValue, context);
                 assertEquals(1, eventSender.getEvents().size());
                 assertEquals(id, eventSender.getEvents().get(0).distinctId);
+                assertEquals(m[1] != null && m[0] != null, eventSender.getEvents().get(0).properties.has("$user_id"));
             }
         } finally {
             logger.removeHandler(handler);
@@ -2465,6 +2466,82 @@ public class LocalFlagsProviderTest extends BaseFlagsProviderTest {
             event = eventSender.getEvents().get(0);
             assertEquals("user-123", event.distinctId);
             assertFalse(event.properties.has("$company_id"));
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    public void testHierarchicalExposureAttachesOnlyStringIds() {
+        useHierarchicalGroupsConfig();
+        List<Variant> variants = Arrays.asList(new Variant("variant-a", "value-a", false, 1.0f));
+        String response = buildFlagsResponse(flagKey, "department", variants, Arrays.asList(new Rollout(1.0f)), null);
+
+        provider = createProviderWithResponse(response);
+        provider.startPollingForDefinitions();
+
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LocalFlagsProvider.class.getName());
+        List<java.util.logging.LogRecord> records = new ArrayList<>();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            public void publish(java.util.logging.LogRecord record) { records.add(record); }
+            public void flush() {}
+            public void close() {}
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        logger.addHandler(handler);
+        try {
+            // A numeric $company_id is not an id, and a user is never attached without a company.
+            Map<String, Object> context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("distinct_id", "d1");
+            context.put("$user_id", "u1");
+            context.put("$company_id", 42);
+            assertEquals("value-a", provider.getVariantValue(flagKey, fallbackVariantValue, context));
+            assertEquals(1, eventSender.getEvents().size());
+            MockEventSender.ExposureEvent event = eventSender.getEvents().get(0);
+            assertEquals("d1", event.distinctId);
+            assertFalse(event.properties.has("$user_id"));
+            assertFalse(event.properties.has("$company_id"));
+
+            // A numeric $user_id is left off; the string company is attached.
+            eventSender.reset();
+            context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("distinct_id", "d1");
+            context.put("$user_id", 7);
+            context.put("$company_id", "acme");
+            provider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(1, eventSender.getEvents().size());
+            event = eventSender.getEvents().get(0);
+            assertEquals("d1", event.distinctId);
+            assertEquals("acme", event.properties.getString("$company_id"));
+            assertFalse(event.properties.has("$user_id"));
+
+            // With no distinct_id, a numeric $company_id cannot attribute the exposure.
+            eventSender.reset();
+            records.clear();
+            context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("$user_id", "u1");
+            context.put("$company_id", 42);
+            assertEquals("value-a", provider.getVariantValue(flagKey, fallbackVariantValue, context));
+            assertEquals(0, eventSender.getEvents().size());
+            assertTrue(records.stream().anyMatch(r -> r.getLevel() == java.util.logging.Level.WARNING
+                && r.getMessage().contains("Cannot track exposure event")));
+
+            // String ids are attached as given.
+            eventSender.reset();
+            context = new HashMap<>();
+            context.put("department", "finance");
+            context.put("distinct_id", "d1");
+            context.put("$user_id", "u1");
+            context.put("$company_id", "acme");
+            provider.getVariantValue(flagKey, fallbackVariantValue, context);
+            assertEquals(1, eventSender.getEvents().size());
+            event = eventSender.getEvents().get(0);
+            assertEquals("d1", event.distinctId);
+            assertEquals("u1", event.properties.getString("$user_id"));
+            assertEquals("acme", event.properties.getString("$company_id"));
         } finally {
             logger.removeHandler(handler);
         }
