@@ -43,10 +43,16 @@ public final class MixpanelIdentity {
         mDeviceId = builder.mDeviceId;
     }
 
+    /**
+     * Starts building an identity.
+     *
+     * @return a new builder with nothing set
+     */
     public static Builder builder() {
         return new Builder();
     }
 
+    /** Builds a {@link MixpanelIdentity}. Values left unset are omitted from what is sent. */
     public static final class Builder {
 
         private String mDistinctId;
@@ -67,6 +73,10 @@ public final class MixpanelIdentity {
          * itself built, of the form {@code $company:{company}|$user:{user}}. User profile updates
          * on a hierarchical groups project accept only that form, and send it to {@code /groups}
          * as the user's profile within the company.
+         *
+         * @param distinctId the distinct id, or null to leave it unset
+         * @return this builder
+         * @throws IllegalArgumentException if the id is empty
          */
         public Builder distinctId(String distinctId) {
             mDistinctId = requireNonEmptyOrNull(distinctId, "distinctId");
@@ -76,6 +86,8 @@ public final class MixpanelIdentity {
         /**
          * The user's id. On a hierarchical groups project it only needs to be unique within the company.
          *
+         * @param userId the user's id, or null to leave it unset
+         * @return this builder
          * @throws IllegalArgumentException if the id is empty or only whitespace
          */
         public Builder userId(String userId) {
@@ -86,6 +98,8 @@ public final class MixpanelIdentity {
         /**
          * The id of the top-level company, on a hierarchical groups project.
          *
+         * @param companyId the company's id, or null to leave it unset
+         * @return this builder
          * @throws IllegalArgumentException if the id is empty or only whitespace
          */
         public Builder companyId(String companyId) {
@@ -96,12 +110,23 @@ public final class MixpanelIdentity {
         /**
          * The client's device id. Events carrying one are attributed to the device until a
          * later event names the user, at which point that earlier activity follows the user.
+         *
+         * @param deviceId the device id, or null to leave it unset
+         * @return this builder
+         * @throws IllegalArgumentException if the id is empty
          */
         public Builder deviceId(String deviceId) {
             mDeviceId = requireNonEmptyOrNull(deviceId, "deviceId");
             return this;
         }
 
+        /**
+         * Builds the identity.
+         *
+         * @return an immutable identity with the values set on this builder
+         * @throws IllegalArgumentException if none of distinctId, userId, companyId or deviceId
+         *           is set
+         */
         public MixpanelIdentity build() {
             if (mDistinctId == null && mUserId == null && mCompanyId == null && mDeviceId == null) {
                 throw new IllegalArgumentException("An identity needs at least one of distinctId, userId, "
@@ -173,18 +198,22 @@ public final class MixpanelIdentity {
         return builder().userId(userId).companyId(companyId).build();
     }
 
+    /** @return the distinct id, or null if unset */
     public String getDistinctId() {
         return mDistinctId;
     }
 
+    /** @return the user's id, or null if unset */
     public String getUserId() {
         return mUserId;
     }
 
+    /** @return the company's id, or null if unset */
     public String getCompanyId() {
         return mCompanyId;
     }
 
+    /** @return the device id, or null if unset */
     public String getDeviceId() {
         return mDeviceId;
     }

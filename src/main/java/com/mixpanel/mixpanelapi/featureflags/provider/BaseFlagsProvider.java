@@ -295,8 +295,8 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
             addTimingProperties, experimentId, isExperimentActive, isQaTester);
     }
 
-    private static final String COMBINED_COMPANY_PREFIX = "$company:";
-    private static final String COMBINED_USER_SEPARATOR = "|$user:";
+    /* package */ static final String COMBINED_COMPANY_PREFIX = "$company:";
+    /* package */ static final String COMBINED_USER_SEPARATOR = "|$user:";
 
     /**
      * For a distinct id of the form {@code $company:{company}|$user:{user}}, split as

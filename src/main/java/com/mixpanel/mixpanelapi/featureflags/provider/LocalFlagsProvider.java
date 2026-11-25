@@ -279,7 +279,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         Object userId = context.get("$user_id");
         Object companyId = context.get("$company_id");
         if (isNonEmptyString(userId) && isNonEmptyString(companyId)) {
-            return "$company:" + companyId + "|$user:" + userId;
+            return COMBINED_COMPANY_PREFIX + companyId + COMBINED_USER_SEPARATOR + userId;
         }
         return "distinct_id".equals(contextProperty)
                 ? contextValue
