@@ -53,11 +53,15 @@ public class HierarchicalGroupsTest {
     }
 
     @Test
-    public void testHierarchicalEventWithDeviceId() {
-        JSONObject props = eventProperties(
-            hgBuilder.event(MixpanelIdentity.builder().userId("user_123").companyId("acme").deviceId("device_abc").build(), "Signup", null));
+    public void testDeviceIdPropertyPassesThroughOnIdentityEvent() {
+        // $device_id is an ordinary event property; the identity neither sets nor checks it.
+        JSONObject props = eventProperties(hgBuilder.event(
+            MixpanelIdentity.builder().userId("user_123").companyId("acme").build(), "Signup",
+            new JSONObject().put("$device_id", "device_abc")));
 
         assertEquals("device_abc", props.getString("$device_id"));
+        assertEquals("user_123", props.getString("$user_id"));
+        assertEquals("acme", props.getString("$company_id"));
         assertFalse(props.has("distinct_id"));
     }
 
@@ -134,7 +138,6 @@ public class HierarchicalGroupsTest {
         // An empty string is a caller error; null simply leaves the value unset.
         assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().userId(""));
         assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().companyId(""));
-        assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().deviceId(""));
         assertThrows(IllegalArgumentException.class, () -> MixpanelIdentity.builder().distinctId("").build());
     }
 
@@ -147,22 +150,10 @@ public class HierarchicalGroupsTest {
 
     @Test
     public void testNullLeavesAValueUnset() {
-        MixpanelIdentity identity = MixpanelIdentity.builder().userId("user_123").deviceId(null).build();
+        MixpanelIdentity identity = MixpanelIdentity.builder().userId("user_123").companyId(null).build();
 
         assertEquals("user_123", identity.getUserId());
-        assertNull(identity.getDeviceId());
-    }
-
-    @Test
-    public void testUserAndDeviceWithoutCompanyIsValidForSimplifiedIdMerge() {
-        // $user_id with $device_id is the standard non-hierarchical server-side identity.
-        JSONObject props = eventProperties(legacyBuilder.event(
-                MixpanelIdentity.builder().userId("user_123").deviceId("device_abc").build(), "Signup", null));
-
-        assertEquals("user_123", props.getString("$user_id"));
-        assertEquals("device_abc", props.getString("$device_id"));
-        assertFalse(props.has("distinct_id"));
-        assertFalse(props.has("$company_id"));
+        assertNull(identity.getCompanyId());
     }
 
     @Test
@@ -172,27 +163,6 @@ public class HierarchicalGroupsTest {
 
         assertEquals("user_123", props.getString("$user_id"));
         assertFalse(props.has("$company_id"));
-    }
-
-    @Test
-    public void testUserWithDeviceButNoCompanyIsAllowedForHierarchicalGroups() {
-        // Mixpanel ignores the user id and keeps the event under the device, which later links to
-        // the company-scoped user. Recoverable, so the library does not refuse it.
-        JSONObject props = eventProperties(hgBuilder.event(
-                MixpanelIdentity.builder().userId("user_123").deviceId("device_abc").build(), "Signup", null));
-
-        assertEquals("device_abc", props.getString("$device_id"));
-        assertFalse(props.has("$company_id"));
-    }
-
-    @Test
-    public void testAnonymousDeviceEventIsValidForHierarchicalGroups() {
-        JSONObject props = eventProperties(hgBuilder.event(
-                MixpanelIdentity.builder().deviceId("device_abc").build(), "Page View", null));
-
-        assertEquals("device_abc", props.getString("$device_id"));
-        assertFalse(props.has("distinct_id"));
-        assertFalse(props.has("$user_id"));
     }
 
     @Test
@@ -220,33 +190,6 @@ public class HierarchicalGroupsTest {
                 .getString("distinct_id"));
         assertEquals("user_123", eventProperties(legacyBuilder.event("user_123", "Signup", null))
                 .getString("distinct_id"));
-    }
-
-    @Test
-    public void testAnonymousDeviceEvent() {
-        JSONObject props = eventProperties(hgBuilder.event(MixpanelIdentity.builder().deviceId("device_abc").build(), "Page View", null));
-
-        assertEquals("device_abc", props.getString("$device_id"));
-        assertFalse(props.has("distinct_id"));
-        assertFalse(props.has("$user_id"));
-        assertFalse(props.has("$company_id"));
-    }
-
-    @Test
-    public void testAnonymousDeviceEventWorksForLegacyProjects() {
-        JSONObject props = eventProperties(legacyBuilder.event(MixpanelIdentity.builder().deviceId("device_abc").build(), "Page View", null));
-
-        assertEquals("device_abc", props.getString("$device_id"));
-        assertFalse(props.has("distinct_id"));
-    }
-
-    @Test
-    public void testDeviceIdentityCannotIdentifyAProfile() {
-        JSONObject props = new JSONObject().put("plan", "pro");
-
-        assertThrows(IllegalArgumentException.class, () -> hgBuilder.set(MixpanelIdentity.builder().deviceId("device_abc").build(), props));
-        assertThrows(IllegalArgumentException.class,
-                () -> legacyBuilder.set(MixpanelIdentity.builder().deviceId("device_abc").build(), props));
     }
 
     // #endregion
@@ -1223,7 +1166,6 @@ public class HierarchicalGroupsTest {
         assertEquals(" u ", padded.getUserId());
         assertEquals(" c ", padded.getCompanyId());
         assertEquals(" ", MixpanelIdentity.builder().distinctId(" ").build().getDistinctId());
-        assertEquals(" ", MixpanelIdentity.builder().deviceId(" ").build().getDeviceId());
     }
 
     @Test
@@ -1365,14 +1307,14 @@ public class HierarchicalGroupsTest {
     @Test
     public void testFlagContextFromHierarchicalIdentity() {
         Map<String, Object> context = FlagContext.builder()
-            .identity(MixpanelIdentity.builder().userId("user_123").companyId("acme").deviceId("device_abc").build())
+            .identity(MixpanelIdentity.builder().userId("user_123").companyId("acme").build())
             .group("department", "finance")
             .customProperty("plan", "enterprise")
             .build();
 
         assertEquals("user_123", context.get("$user_id"));
         assertEquals("acme", context.get("$company_id"));
-        assertEquals("device_abc", context.get("device_id"));
+        assertFalse(context.containsKey("device_id"));
         assertEquals("finance", context.get("department"));
         assertFalse(context.containsKey("distinct_id"));
         assertEquals("enterprise", ((Map<?, ?>) context.get("custom_properties")).get("plan"));
@@ -1381,10 +1323,10 @@ public class HierarchicalGroupsTest {
     @Test
     public void testFlagContextIdentityWinsOverGroupsWhateverTheOrder() {
         MixpanelIdentity identity = MixpanelIdentity.builder().distinctId("d1").userId("user_123")
-                .companyId("acme").deviceId("device_abc").build();
+                .companyId("acme").build();
 
         Map<String, Object> groupsFirst = FlagContext.builder()
-            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g")
             .group("custom_properties", "g")
             .customProperty("plan", "enterprise")
             .identity(identity)
@@ -1392,14 +1334,13 @@ public class HierarchicalGroupsTest {
         Map<String, Object> identityFirst = FlagContext.builder()
             .identity(identity)
             .customProperty("plan", "enterprise")
-            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g").group("device_id", "g")
+            .group("distinct_id", "g").group("$user_id", "g").group("$company_id", "g")
             .build();
 
         for (Map<String, Object> context : Arrays.asList(groupsFirst, identityFirst)) {
             assertEquals("d1", context.get("distinct_id"));
             assertEquals("user_123", context.get("$user_id"));
             assertEquals("acme", context.get("$company_id"));
-            assertEquals("device_abc", context.get("device_id"));
             assertEquals("enterprise", ((Map<?, ?>) context.get("custom_properties")).get("plan"));
         }
     }
@@ -1529,7 +1470,7 @@ public class HierarchicalGroupsTest {
     @Test
     public void testPipeInIdsIsAllowedOnLegacyBuilder() {
         // MixpanelIdentity itself is mode-agnostic, and non-hierarchical ids may contain '|'.
-        MixpanelIdentity identity = MixpanelIdentity.builder().userId("user|123").deviceId("d").build();
+        MixpanelIdentity identity = MixpanelIdentity.builder().userId("user|123").build();
         assertEquals("user|123", eventProperties(legacyBuilder.event(identity, "Signup", null)).getString("$user_id"));
         assertEquals("ac|me", legacyBuilder.forCompany("ac|me")
                 .groupSet("team", "a", new JSONObject()).getJSONObject("message").getString("$company_id"));

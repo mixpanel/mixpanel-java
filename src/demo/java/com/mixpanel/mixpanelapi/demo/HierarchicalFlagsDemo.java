@@ -72,11 +72,6 @@ public class HierarchicalFlagsDemo {
                         .identity(MixpanelIdentity.builder().companyId(companyId).build())
                         .build());
 
-        evaluate(flags, flagKey, "anonymous: device only",
-                FlagContext.builder()
-                        .identity(MixpanelIdentity.builder().deviceId("device_abc").build())
-                        .build());
-
         evaluate(flags, flagKey, "combined distinct id",
                 FlagContext.builder()
                         .identity(MixpanelIdentity.builder()

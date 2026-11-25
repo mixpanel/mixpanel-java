@@ -46,8 +46,6 @@ public class HierarchicalGroupsScenariosTest {
 
     private static final MixpanelIdentity IDENTIFIED =
             MixpanelIdentity.builder().userId(USER_ID).companyId(COMPANY_ID).build();
-    private static final MixpanelIdentity IDENTIFIED_WITH_DEVICE =
-            MixpanelIdentity.builder().userId(USER_ID).companyId(COMPANY_ID).deviceId(DEVICE_ID).build();
 
     private static final class Sent {
         final String endpoint;
@@ -194,7 +192,8 @@ public class HierarchicalGroupsScenariosTest {
 
     @Test
     public void testTrackAnonymous() {
-        send(mBuilder.event(MixpanelIdentity.builder().deviceId(DEVICE_ID).build(), "Page View", null));
+        // No identity: $device_id is an ordinary event property.
+        send(mBuilder.event((String) null, "Page View", json("$device_id", DEVICE_ID)));
 
         JSONObject props = onlyTrack("Page View", "$device_id");
         assertEquals(DEVICE_ID, props.getString("$device_id"));
@@ -204,7 +203,8 @@ public class HierarchicalGroupsScenariosTest {
 
     @Test
     public void testTrackIdentified() {
-        send(mBuilder.event(IDENTIFIED_WITH_DEVICE, "Signup", null));
+        // $device_id is an ordinary event property and passes through alongside the identity.
+        send(mBuilder.event(IDENTIFIED, "Signup", json("$device_id", DEVICE_ID)));
 
         JSONObject props = onlyTrack("Signup", "$user_id", "$company_id", "$device_id");
         assertEquals(USER_ID, props.getString("$user_id"));
@@ -237,7 +237,7 @@ public class HierarchicalGroupsScenariosTest {
 
     @Test
     public void testImportIdentified() {
-        send(mBuilder.importEvent(IDENTIFIED_WITH_DEVICE, "Signup", null));
+        send(mBuilder.importEvent(IDENTIFIED, "Signup", json("$device_id", DEVICE_ID)));
 
         JSONObject props = onlyEvent(IMPORT, "Signup", IMPORT_PROPERTY_KEYS, "$user_id", "$company_id", "$device_id");
         assertEquals(USER_ID, props.getString("$user_id"));

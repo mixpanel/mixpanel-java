@@ -47,8 +47,8 @@ public final class FlagContext {
 
         /**
          * Sets the identity keys from a {@link MixpanelIdentity}: {@code distinct_id} for a
-         * legacy identity, or {@code $user_id}, {@code $company_id} and {@code device_id}
-         * for a hierarchical groups identity.
+         * legacy identity, or {@code $user_id} and {@code $company_id} for a hierarchical
+         * groups identity.
          *
          * <p>Identity keys, whether set here or with {@link #distinctId}, {@link #userId},
          * {@link #companyId} or {@link #deviceId}, win over the same keys set with
@@ -62,7 +62,6 @@ public final class FlagContext {
             if (identity.getDistinctId() != null) distinctId(identity.getDistinctId());
             if (identity.getUserId() != null) userId(identity.getUserId());
             if (identity.getCompanyId() != null) companyId(identity.getCompanyId());
-            if (identity.getDeviceId() != null) deviceId(identity.getDeviceId());
             return this;
         }
 

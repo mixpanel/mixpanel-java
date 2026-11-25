@@ -197,9 +197,9 @@ public class MessageBuilder {
      * Creates a message tracking an event for the given identity. In hierarchical
      * group mode the message carries {@code $user_id} and {@code $company_id} instead
      * of {@code distinct_id}; Mixpanel constructs the distinct id from them.
-     * Each of {@code distinct_id}, {@code $user_id}, {@code $company_id} and
-     * {@code $device_id} that the identity sets replaces any value for that key in
-     * properties; a key the identity leaves unset is kept as given in properties.
+     * Each of {@code distinct_id}, {@code $user_id} and {@code $company_id} that the
+     * identity sets replaces any value for that key in properties; a key the identity
+     * leaves unset is kept as given in properties.
      *
      * @param identity who the event belongs to
      * @param eventName a human readable name for the event
@@ -916,10 +916,6 @@ public class MessageBuilder {
                     + "User profiles are addressed by distinct id unless the project uses hierarchical groups.");
         }
         if (identity.getUserId() == null) {
-            if (identity.getCompanyId() == null) {
-                throw new IllegalArgumentException(identity + " names no user, so it cannot identify a profile. "
-                        + "Device ids identify anonymous events, not profiles.");
-            }
             throw new IllegalArgumentException("User profile updates require a user id, and " + identity
                     + " has none. Use forCompany(companyId).companySet(properties) to update the company's "
                     + "profile.");

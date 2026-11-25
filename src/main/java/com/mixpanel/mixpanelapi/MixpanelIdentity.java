@@ -6,16 +6,14 @@ import org.json.JSONObject;
 /**
  * Identifies who an event or profile update belongs to.
  *
- * Mixpanel resolves an identity from whichever of {@code distinct_id}, {@code $user_id},
- * {@code $company_id} and {@code $device_id} an event carries, so this type sets any
- * combination of them and leaves the rest unset.
+ * Mixpanel resolves an identity from whichever of {@code distinct_id}, {@code $user_id} and
+ * {@code $company_id} an event carries, so this type sets any combination of them and leaves
+ * the rest unset.
  *
  * <pre>
  * {@code
  *     MixpanelIdentity.builder().distinctId("user_123").build();               // a plain distinct id
- *     MixpanelIdentity.builder().userId("user_123").deviceId("device_abc").build();  // simplified id merge
  *     MixpanelIdentity.builder().userId("user_123").companyId("acme").build();  // hierarchical groups
- *     MixpanelIdentity.builder().deviceId("device_abc").build();                // anonymous, no user yet
  *     MixpanelIdentity.builder().companyId("acme").build();                     // a company, no user
  * }
  * </pre>
@@ -34,13 +32,11 @@ public final class MixpanelIdentity {
     private final String mDistinctId;
     private final String mUserId;
     private final String mCompanyId;
-    private final String mDeviceId;
 
     private MixpanelIdentity(Builder builder) {
         mDistinctId = builder.mDistinctId;
         mUserId = builder.mUserId;
         mCompanyId = builder.mCompanyId;
-        mDeviceId = builder.mDeviceId;
     }
 
     /**
@@ -58,7 +54,6 @@ public final class MixpanelIdentity {
         private String mDistinctId;
         private String mUserId;
         private String mCompanyId;
-        private String mDeviceId;
 
         private Builder() {
         }
@@ -108,29 +103,15 @@ public final class MixpanelIdentity {
         }
 
         /**
-         * The client's device id. Events carrying one are attributed to the device until a
-         * later event names the user, at which point that earlier activity follows the user.
-         *
-         * @param deviceId the device id, or null to leave it unset
-         * @return this builder
-         * @throws IllegalArgumentException if the id is empty
-         */
-        public Builder deviceId(String deviceId) {
-            mDeviceId = requireNonEmptyOrNull(deviceId, "deviceId");
-            return this;
-        }
-
-        /**
          * Builds the identity.
          *
          * @return an immutable identity with the values set on this builder
-         * @throws IllegalArgumentException if none of distinctId, userId, companyId or deviceId
-         *           is set
+         * @throws IllegalArgumentException if none of distinctId, userId or companyId is set
          */
         public MixpanelIdentity build() {
-            if (mDistinctId == null && mUserId == null && mCompanyId == null && mDeviceId == null) {
-                throw new IllegalArgumentException("An identity needs at least one of distinctId, userId, "
-                        + "companyId or deviceId");
+            if (mDistinctId == null && mUserId == null && mCompanyId == null) {
+                throw new IllegalArgumentException("An identity needs at least one of distinctId, userId "
+                        + "or companyId");
             }
             return new MixpanelIdentity(this);
         }
@@ -213,11 +194,6 @@ public final class MixpanelIdentity {
         return mCompanyId;
     }
 
-    /** @return the device id, or null if unset */
-    public String getDeviceId() {
-        return mDeviceId;
-    }
-
     /**
      * @return true if this identity names a company, which is what sends it down Mixpanel's
      *           hierarchical groups resolution
@@ -235,7 +211,6 @@ public final class MixpanelIdentity {
         putIfSet(properties, "distinct_id", mDistinctId);
         putIfSet(properties, "$user_id", mUserId);
         putIfSet(properties, "$company_id", mCompanyId);
-        putIfSet(properties, "$device_id", mDeviceId);
     }
 
     private static void putIfSet(JSONObject properties, String key, String value) throws JSONException {
@@ -250,7 +225,6 @@ public final class MixpanelIdentity {
         append(out, "distinctId", mDistinctId);
         append(out, "userId", mUserId);
         append(out, "companyId", mCompanyId);
-        append(out, "deviceId", mDeviceId);
         return out.append("}").toString();
     }
 
