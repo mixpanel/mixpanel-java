@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.logging.Logger;
 
 
@@ -230,6 +232,60 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         return definitions;
     }
 
+    /** A {@code {key}} placeholder in a context value template. */
+    private static final Pattern CONTEXT_PLACEHOLDER = Pattern.compile("\\{([^{}]+)\\}");
+
+    /**
+     * Fills a flag's {@code context_value_template} with values from the evaluation context.
+     * Each {@code {key}} placeholder is replaced with the string value of {@code key}; text
+     * outside the braces is literal.
+     *
+     * A placeholder counts as present only when its context value is a non-empty string,
+     * as on the server.
+     *
+     * @return the filled template, or null when there is no template or any placeholder's
+     *         context value is absent, not a string, or empty
+     */
+    private static String applyContextValueTemplate(String template, Map<String, Object> context) {
+        if (template == null || template.isEmpty()) {
+            return null;
+        }
+        StringBuffer out = new StringBuffer();
+        Matcher matcher = CONTEXT_PLACEHOLDER.matcher(template);
+        while (matcher.find()) {
+            Object value = context.get(matcher.group(1));
+            if (!isNonEmptyString(value)) {
+                return null;
+            }
+            matcher.appendReplacement(out, Matcher.quoteReplacement((String) value));
+        }
+        matcher.appendTail(out);
+        return out.toString();
+    }
+
+    private static boolean isNonEmptyString(Object value) {
+        return value instanceof String && !((String) value).isEmpty();
+    }
+
+    /**
+     * Returns the distinct id test user overrides are looked up by. When the context has
+     * non-empty string {@code $user_id} and {@code $company_id}, that is the distinct id Mixpanel
+     * builds from them, {@code $company:{company}|$user:{user}}, for every flag, as the server
+     * does. Otherwise it is the resolved assignment key for a flag that assigns on
+     * {@code distinct_id}, or the context's {@code distinct_id}.
+     */
+    private static String testUserOverrideKey(Map<String, Object> context, String contextProperty,
+                                              String contextValue) {
+        Object userId = context.get("$user_id");
+        Object companyId = context.get("$company_id");
+        if (isNonEmptyString(userId) && isNonEmptyString(companyId)) {
+            return COMBINED_COMPANY_PREFIX + companyId + COMBINED_USER_SEPARATOR + userId;
+        }
+        return "distinct_id".equals(contextProperty)
+                ? contextValue
+                : (context.get("distinct_id") != null ? context.get("distinct_id").toString() : null);
+    }
+
     /**
      * Parses a single flag from JSON.
      */
@@ -240,6 +296,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
         String status = json.optString("status", "");
         int projectId = json.optInt("project_id", 0);
         String context = json.optString("context", "distinct_id");
+        String contextValueTemplate = json.optString("context_value_template", "");
 
         // Parse experiment metadata
         UUID experimentId = null;
@@ -262,7 +319,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         RuleSet ruleset = parseRuleSet(json.optJSONObject("ruleset"));
 
-        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt);
+        return new ExperimentationFlag(id, name, key, status, projectId, ruleset, context, experimentId, isExperimentActive, hashSalt, contextValueTemplate);
     }
 
     /**
@@ -390,19 +447,24 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
                 return fallback.withSource(Source.fallback(Source.Fallback.Reason.FLAG_NOT_FOUND));
             }
 
-            // Extract context value
+            // Resolve the assignment key: the flag's context_value_template when every
+            // placeholder resolves, otherwise the raw context value, as the server does.
             String contextProperty = flag.getContext();
-            Object contextValueObj = context.get(contextProperty);
-            if (contextValueObj == null) {
-                logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
-                return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+            String contextValue = applyContextValueTemplate(flag.getContextValueTemplate(), context);
+            if (contextValue == null) {
+                Object contextValueObj = context.get(contextProperty);
+                if (contextValueObj == null) {
+                    logger.log(Level.WARNING, "Variant assignment key property '" + contextProperty + "' not found for flag: " + flagKey);
+                    return fallback.withSource(Source.fallback(Source.Fallback.Reason.MISSING_CONTEXT_KEY));
+                }
+                contextValue = contextValueObj.toString();
             }
-            String contextValue = contextValueObj.toString();
 
             // Check test user overrides
             RuleSet ruleset = flag.getRuleset();
             if (ruleset.hasTestUserOverrides()) {
-                String distinctId = context.get("distinct_id") != null ? context.get("distinct_id").toString() : null;
+                // Overrides are keyed by distinct id.
+                String distinctId = testUserOverrideKey(context, contextProperty, contextValue);
                 if (distinctId != null) {
                     String testVariantKey = ruleset.getTestUserOverrides().get(distinctId);
                     if (testVariantKey != null) {
@@ -713,20 +775,25 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
             return;
         }
 
-        Object distinctIdObj = context.get("distinct_id");
-        if (distinctIdObj == null) {
+        if (!canAttributeExposure(context)) {
             // Local eval succeeds when the flag's Variant Assignment Key is
             // something other than distinct_id (e.g., device_id), but the
-            // exposure event still needs distinct_id to attribute the user.
-            // Surface the drop instead of silently returning so callers can
-            // see they need to include distinct_id in the context.
-            logger.log(Level.WARNING,
-                "Cannot track exposure event for flag ''{0}'' without a distinct_id in the context",
-                flagKey);
+            // exposure event still needs distinct_id ($company_id for hierarchical
+            // groups) to attribute the user. Surface the drop instead of silently
+            // returning so callers can see what to include in the context.
+            if (config.isHierarchicalGroups()) {
+                logger.log(Level.WARNING,
+                    "Cannot track exposure event for flag ''{0}'' without a {1} in the context",
+                    new Object[] {flagKey, "$company_id"});
+            } else {
+                logger.log(Level.WARNING,
+                    "Cannot track exposure event for flag ''{0}'' without a distinct_id in the context",
+                    flagKey);
+            }
             return;
         }
 
-        trackExposure(distinctIdObj.toString(), flagKey, variantKey, "local", properties -> {
+        trackExposure(context, flagKey, variantKey, "local", properties -> {
             properties.put("Variant fetch latency (ms)", latencyMs);
             addOpenFeatureProviderProperty(context, properties);
         }, experimentId, isExperimentActive, isQaTester);

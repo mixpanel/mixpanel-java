@@ -19,8 +19,8 @@ public final class RemoteFlagsConfig extends BaseFlagsConfig {
      * @param requestTimeoutSeconds HTTP request timeout in seconds
      * @param exposureExecutor executor used to dispatch exposure event HTTP sends; may be null
      */
-    private RemoteFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor) {
-        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
+    private RemoteFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor, boolean hierarchicalGroups) {
+        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, hierarchicalGroups);
     }
 
     /**
@@ -35,7 +35,7 @@ public final class RemoteFlagsConfig extends BaseFlagsConfig {
          */
         @Override
         public RemoteFlagsConfig build() {
-            return new RemoteFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
+            return new RemoteFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, hierarchicalGroups);
         }
     }
 

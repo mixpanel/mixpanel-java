@@ -23,8 +23,8 @@ public final class LocalFlagsConfig extends BaseFlagsConfig {
      * @param enablePolling whether to periodically refresh flag definitions
      * @param pollingIntervalSeconds time between refresh cycles in seconds
      */
-    private LocalFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor, boolean enablePolling, int pollingIntervalSeconds) {
-        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor);
+    private LocalFlagsConfig(String projectToken, String apiHost, int requestTimeoutSeconds, Executor exposureExecutor, boolean hierarchicalGroups, boolean enablePolling, int pollingIntervalSeconds) {
+        super(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, hierarchicalGroups);
         this.enablePolling = enablePolling;
         this.pollingIntervalSeconds = pollingIntervalSeconds;
     }
@@ -79,7 +79,7 @@ public final class LocalFlagsConfig extends BaseFlagsConfig {
          */
         @Override
         public LocalFlagsConfig build() {
-            return new LocalFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, enablePolling, pollingIntervalSeconds);
+            return new LocalFlagsConfig(projectToken, apiHost, requestTimeoutSeconds, exposureExecutor, hierarchicalGroups, enablePolling, pollingIntervalSeconds);
         }
     }
 

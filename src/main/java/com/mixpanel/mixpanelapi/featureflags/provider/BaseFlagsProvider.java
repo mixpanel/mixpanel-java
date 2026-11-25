@@ -207,13 +207,181 @@ public abstract class BaseFlagsProvider<C extends BaseFlagsConfig> {
     // #region Exposure Tracking
 
     /**
+     * Returns true if an exposure event for this context can be attributed: by distinct_id,
+     * or on a hierarchical groups project by $company_id as well (plus $user_id when present),
+     * from which Mixpanel constructs the distinct id.
+     */
+    protected boolean canAttributeExposure(Map<String, Object> context) {
+        if (!config.isHierarchicalGroups()) {
+            return context.get("distinct_id") != null;
+        }
+        // A distinct id attributes on any project, including one Mixpanel built from a
+        // company and user, which ingestion parses back into its parts.
+        return hasId(context.get("$company_id")) || isPresent(context.get("distinct_id"));
+    }
+
+    private static boolean isPresent(Object value) {
+        return value != null && !value.toString().isEmpty();
+    }
+
+    /**
+     * Returns true if a $company_id or $user_id is a string other than an empty or
+     * whitespace-only one. Any other value, such as a number, is treated as absent, matching
+     * how flag evaluation reads these ids.
+     */
+    private static boolean hasId(Object value) {
+        return value instanceof String && !isBlankOrEmpty((String) value);
+    }
+
+    /**
      * Common helper method for tracking exposure events.
      */
     protected void trackExposure(String distinctId, String flagKey, String variantKey,
                                  String evaluationMode, Consumer<JSONObject> addTimingProperties,
                                  UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        sendExposure(distinctId, new JSONObject(), flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    /**
+     * Tracks an exposure event for a flag context. For hierarchical groups the event carries
+     * $user_id and $company_id instead of distinct_id. Without hierarchical groups this calls
+     * {@link #trackExposure(String, String, String, String, Consumer, UUID, Boolean, Boolean)}
+     * with the context's distinct_id, so subclasses overriding that method still take effect.
+     */
+    protected void trackExposure(Map<String, Object> context, String flagKey, String variantKey,
+                                 String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                                 UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        if (!config.isHierarchicalGroups()) {
+            Object distinctIdObj = context.get("distinct_id");
+            trackExposure(distinctIdObj != null ? distinctIdObj.toString() : null, flagKey, variantKey,
+                evaluationMode, addTimingProperties, experimentId, isExperimentActive, isQaTester);
+            return;
+        }
+        JSONObject identity = new JSONObject();
+        String distinctId;
         try {
-            JSONObject properties = new JSONObject();
+            // Carry whichever identity keys the caller sent; Mixpanel resolves the user
+            // from the pair, or from a distinct id it built itself. A user id is only
+            // attached alongside a company, since it names no one on its own.
+            Object companyId = context.get("$company_id");
+            if (hasId(companyId)) {
+                identity.put("$company_id", (String) companyId);
+                Object userId = context.get("$user_id");
+                if (hasId(userId)) {
+                    identity.put("$user_id", (String) userId);
+                }
+            }
+            Object distinctIdObj = context.get("distinct_id");
+            distinctId = isPresent(distinctIdObj) ? distinctIdObj.toString() : null;
+        } catch (Exception e) {
+            getLogger().log(Level.WARNING, "Error tracking exposure event for flag: " + flagKey + ", variant: " + variantKey + " - " + e.getMessage(), e);
+            return;
+        }
+        String blankPart = blankCombinedDistinctIdPart(distinctId);
+        if (blankPart != null) {
+            getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
+                + " dropped - distinct_id " + distinctId + " names a " + blankPart
+                + " that is empty or only whitespace. Nothing sent");
+            return;
+        }
+        String conflict = combinedDistinctIdConflict(distinctId, identity);
+        if (conflict != null) {
+            getLogger().log(Level.WARNING, "Exposure event for flag: " + flagKey + ", variant: " + variantKey
+                + " dropped - " + conflict);
+            return;
+        }
+        sendExposure(distinctId, identity, flagKey, variantKey, evaluationMode,
+            addTimingProperties, experimentId, isExperimentActive, isQaTester);
+    }
+
+    /* package */ static final String COMBINED_COMPANY_PREFIX = "$company:";
+    /* package */ static final String COMBINED_USER_SEPARATOR = "|$user:";
+
+    /**
+     * For a distinct id of the form {@code $company:{company}|$user:{user}}, split as
+     * MixpanelIdentity splits it (the company is the text before the first {@code |$user:}),
+     * returns "company" or "user" if that part is empty or only whitespace. Such an id becomes a
+     * junk user, so its exposure is not sent.
+     *
+     * @return the blank part, or null if the id is not in that form or names both parts
+     */
+    private static String blankCombinedDistinctIdPart(String distinctId) {
+        String[] parts = splitCombinedDistinctId(distinctId);
+        if (parts == null) {
+            return null;
+        }
+        if (isBlankOrEmpty(parts[0])) {
+            return "company";
+        }
+        if (isBlankOrEmpty(parts[1])) {
+            return "user";
+        }
+        return null;
+    }
+
+    /**
+     * Splits a distinct id of the form {@code $company:{company}|$user:{user}} as
+     * MixpanelIdentity splits it (the company is the text before the first {@code |$user:}).
+     *
+     * @return {company, user}, or null if the id is not in that form
+     */
+    private static String[] splitCombinedDistinctId(String distinctId) {
+        if (distinctId == null || !distinctId.startsWith(COMBINED_COMPANY_PREFIX)) {
+            return null;
+        }
+        int separator = distinctId.indexOf(COMBINED_USER_SEPARATOR, COMBINED_COMPANY_PREFIX.length());
+        if (separator < 0) {
+            return null;
+        }
+        return new String[] {
+            distinctId.substring(COMBINED_COMPANY_PREFIX.length(), separator),
+            distinctId.substring(separator + COMBINED_USER_SEPARATOR.length())
+        };
+    }
+
+    /**
+     * For a distinct id of the form {@code $company:{company}|$user:{user}}, describes how it names
+     * a different company or user than the $company_id or $user_id the exposure carries, compared
+     * as strings.
+     * Ingestion would resolve such an event to the company alone, dropping the user, so it is not sent.
+     *
+     * @return the conflict, or null if the id is not in that form or agrees with the exposure's ids
+     */
+    private static String combinedDistinctIdConflict(String distinctId, JSONObject identity) {
+        String[] parts = splitCombinedDistinctId(distinctId);
+        if (parts == null) {
+            return null;
+        }
+        String company = parts[0];
+        String user = parts[1];
+        String companyId = identity.optString("$company_id", null);
+        if (companyId != null && !company.equals(companyId)) {
+            return "distinct_id " + distinctId + " names company " + company + ", but $company_id is "
+                + companyId + ". Nothing sent";
+        }
+        String userId = identity.optString("$user_id", null);
+        if (userId != null && !user.equals(userId)) {
+            return "distinct_id " + distinctId + " names user " + user + ", but $user_id is "
+                + userId + ". Nothing sent";
+        }
+        return null;
+    }
+
+    private static boolean isBlankOrEmpty(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isWhitespace(c) && !Character.isSpaceChar(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void sendExposure(String distinctId, JSONObject properties, String flagKey, String variantKey,
+                              String evaluationMode, Consumer<JSONObject> addTimingProperties,
+                              UUID experimentId, Boolean isExperimentActive, Boolean isQaTester) {
+        try {
             properties.put("Experiment name", flagKey);
             properties.put("Variant name", variantKey);
             properties.put("$experiment_type", "feature_flag");
