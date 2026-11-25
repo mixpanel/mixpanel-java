@@ -795,6 +795,7 @@ public class LocalFlagsProvider extends BaseFlagsProvider<LocalFlagsConfig> impl
 
         trackExposure(context, flagKey, variantKey, "local", properties -> {
             properties.put("Variant fetch latency (ms)", latencyMs);
+            addOpenFeatureProviderProperty(context, properties);
         }, experimentId, isExperimentActive, isQaTester);
     }
 

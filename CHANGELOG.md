@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.12.0](https://github.com/mixpanel/mixpanel-java/tree/v1.12.0) (2026-11-23)
+
+### Features
+- tag OpenFeature exposures with $openfeature_provider (SDK-448) ([#107](https://github.com/mixpanel/mixpanel-java/pull/107))
+
+[Full Changelog](https://github.com/mixpanel/mixpanel-java/compare/v1.11.0...v1.12.0)
+
 ## [v1.11.0](https://github.com/mixpanel/mixpanel-java/tree/v1.11.0) (2026-09-01)
 
 ### Features

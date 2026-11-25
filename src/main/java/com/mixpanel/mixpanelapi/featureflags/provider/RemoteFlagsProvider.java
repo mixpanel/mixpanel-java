@@ -192,6 +192,7 @@ public class RemoteFlagsProvider extends BaseFlagsProvider<RemoteFlagsConfig> {
         trackExposure(context, flagKey, variantKey, "remote", properties -> {
             properties.put("Variant fetch start time", startTime);
             properties.put("Variant fetch complete time", completeTime);
+            addOpenFeatureProviderProperty(context, properties);
         }, experimentId, isExperimentActive, isQaTester);
     }
 
