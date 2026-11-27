@@ -360,7 +360,9 @@ public class MixpanelAPI implements AutoCloseable {
      * Package scope for mocking purposes
      */
     /* package */ boolean sendData(String dataString, String endpointUrl) throws IOException {
-        URL endpoint = new URL(endpointUrl);
+        // verbose=1 makes the server explain a rejection, e.g. {"status":0,"error":"token, missing or empty"}
+        String separator = endpointUrl.contains("?") ? "&" : "?";
+        URL endpoint = new URL(endpointUrl + separator + "verbose=1");
         URLConnection conn = endpoint.openConnection();
         conn.setReadTimeout(mReadTimeout);
         conn.setConnectTimeout(mConnectTimeout);
@@ -429,7 +431,34 @@ public class MixpanelAPI implements AutoCloseable {
             }
         }
 
-        return ((response != null) && response.equals("1"));
+        return isAccepted(response);
+    }
+
+    /**
+     * Reads a /track, /engage or /groups response. Accepts both the plain "1" and the
+     * verbose {"status":1} forms, and throws with the server's reason when it gives one.
+     */
+    /* package */ static boolean isAccepted(String response) throws MixpanelServerException {
+        if (response == null) {
+            return false;
+        }
+        if (response.equals("1")) {
+            return true;
+        }
+        JSONObject verbose;
+        try {
+            verbose = new JSONObject(response);
+        } catch (JSONException e) {
+            return false;
+        }
+        if (verbose.optInt("status") == 1) {
+            return true;
+        }
+        String error = verbose.optString("error", "");
+        if (error.isEmpty()) {
+            return false;
+        }
+        throw new MixpanelServerException("Server refused to accept messages: " + error, null);
     }
 
     private void sendMessages(List<JSONObject> messages, String endpointUrl) throws IOException {
@@ -440,7 +469,13 @@ public class MixpanelAPI implements AutoCloseable {
 
             if (batch.size() > 0) {
                 String messagesString = dataString(batch);
-                boolean accepted = sendData(messagesString, endpointUrl);
+                boolean accepted;
+                try {
+                    accepted = sendData(messagesString, endpointUrl);
+                } catch (MixpanelServerException e) {
+                    // Attach the rejected batch so callers can still inspect or retry it
+                    throw new MixpanelServerException(e.getMessage(), batch);
+                }
 
                 if (! accepted) {
                     throw new MixpanelServerException("Server refused to accept messages, they may be malformed.", batch);
