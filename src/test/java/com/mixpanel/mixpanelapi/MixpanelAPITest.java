@@ -2,6 +2,8 @@ package com.mixpanel.mixpanelapi;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -18,6 +20,8 @@ import com.mixpanel.mixpanelapi.internal.OrgJsonSerializer;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import com.sun.net.httpserver.HttpServer;
 
 import junit.framework.Test;
 import junit.framework.TestCase;
@@ -1832,6 +1836,58 @@ public class MixpanelAPITest extends TestCase
 
         assertNotNull("API should be created with credentials", api);
         api.close();
+    }
+
+    /**
+     * Like the real /track endpoint: "0" by default, a reason when verbose=1 is requested.
+     */
+    private static HttpServer startTrackServer(final String verboseBody, final String plainBody) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/track", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            boolean verbose = query != null && query.contains("verbose=1");
+            byte[] body = (verbose ? verboseBody : plainBody).getBytes("utf-8");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        server.start();
+        return server;
+    }
+
+    public void testServerRejectionIncludesServerReason() throws IOException {
+        HttpServer server = startTrackServer("{\"error\":\"token, missing or empty\",\"status\":0}", "0");
+        String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
+        MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
+        try {
+            ClientDelivery delivery = new ClientDelivery();
+            delivery.addMessage(new MessageBuilder(null).event("a distinct id", "Test Event", null));
+            api.deliver(delivery);
+            fail("Expected MixpanelServerException");
+        } catch (MixpanelServerException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("token, missing or empty"));
+            assertEquals(1, e.getBadDeliveryContents().size());
+        } finally {
+            api.close();
+            server.stop(0);
+        }
+    }
+
+    public void testServerAcceptsVerboseAndPlainSuccess() throws IOException {
+        for (String body : new String[] {"{\"error\":null,\"status\":1}", "1"}) {
+            HttpServer server = startTrackServer(body, body);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
+            MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
+            try {
+                ClientDelivery delivery = new ClientDelivery();
+                delivery.addMessage(mBuilder.event("a distinct id", "Test Event", null));
+                api.deliver(delivery);
+            } finally {
+                api.close();
+                server.stop(0);
+            }
+        }
     }
 
 }
