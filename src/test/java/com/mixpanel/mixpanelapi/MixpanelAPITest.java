@@ -1858,20 +1858,18 @@ public class MixpanelAPITest extends TestCase
 
     public void testServerRejectionIncludesServerReason() throws IOException {
         HttpServer server = startTrackServer("{\"error\":\"token, missing or empty\",\"status\":0}", "0");
+        String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
+        MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
         try {
-            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
-            MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
             ClientDelivery delivery = new ClientDelivery();
             delivery.addMessage(new MessageBuilder(null).event("a distinct id", "Test Event", null));
-            try {
-                api.deliver(delivery);
-                fail("Expected MixpanelServerException");
-            } catch (MixpanelServerException e) {
-                assertTrue(e.getMessage(), e.getMessage().contains("token, missing or empty"));
-                assertEquals(1, e.getBadDeliveryContents().size());
-            }
-            api.close();
+            api.deliver(delivery);
+            fail("Expected MixpanelServerException");
+        } catch (MixpanelServerException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("token, missing or empty"));
+            assertEquals(1, e.getBadDeliveryContents().size());
         } finally {
+            api.close();
             server.stop(0);
         }
     }
@@ -1879,14 +1877,14 @@ public class MixpanelAPITest extends TestCase
     public void testServerAcceptsVerboseAndPlainSuccess() throws IOException {
         for (String body : new String[] {"{\"error\":null,\"status\":1}", "1"}) {
             HttpServer server = startTrackServer(body, body);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
+            MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
             try {
-                String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/track";
-                MixpanelAPI api = new MixpanelAPI(url, "people url", "groups url");
                 ClientDelivery delivery = new ClientDelivery();
                 delivery.addMessage(mBuilder.event("a distinct id", "Test Event", null));
                 api.deliver(delivery);
-                api.close();
             } finally {
+                api.close();
                 server.stop(0);
             }
         }

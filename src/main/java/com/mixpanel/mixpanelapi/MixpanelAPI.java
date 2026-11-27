@@ -474,7 +474,9 @@ public class MixpanelAPI implements AutoCloseable {
                     accepted = sendData(messagesString, endpointUrl);
                 } catch (MixpanelServerException e) {
                     // Attach the rejected batch so callers can still inspect or retry it
-                    throw new MixpanelServerException(e.getMessage(), batch);
+                    MixpanelServerException withBatch = new MixpanelServerException(e.getMessage(), batch);
+                    withBatch.initCause(e);
+                    throw withBatch;
                 }
 
                 if (! accepted) {
